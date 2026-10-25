@@ -1,0 +1,395 @@
+{
+  "assessedAtUtc": "2026-10-25T18:06:59.390Z",
+  "sourceBaseline": "ba4216c71538b669a096ed962d5355575e0e406b",
+  "supportSource": "1e8a7f41abd330be210361ff0fa529549f11ab1e",
+  "supersededCandidate": {
+    "id": "1161700c2727e10e2df9abdb5a818920eea422bd6c64784b5ee0b25a5080639b",
+    "deployable": false
+  },
+  "releaseAuthorization": {
+    "ownerAuthorizedDeploymentAfterBackups": true,
+    "provider90PercentVerificationWaivedByOwner": true,
+    "waiverIsNotMeasuredDelivery": true,
+    "noticeCounts": {
+      "checkedAtUtc": "2026-10-25T17:56:54.554Z",
+      "campaignKey": "security_maintenance_20261025",
+      "queueRequested": false,
+      "productionEmailQueueWrites": 0,
+      "securityDeployment": false,
+      "clientBatches": [
+        {
+          "batchId": "batch_1792949980900_eq2un9",
+          "recipients": 166,
+          "providerAccepted": 155
+        }
+      ],
+      "nonClientRecipients": 9,
+      "nonClientSuppressed": 1,
+      "nonClientOutbox": [
+        {
+          "status": "sent",
+          "total": 8
+        }
+      ],
+      "audience": 174,
+      "requiredConfirmed": 157,
+      "providerConfirmedDelivered": 8,
+      "confirmedPercentage": 4.6,
+      "gateMet": false,
+      "latestStatuses": {
+        "delivered": 8,
+        "sent": 155,
+        "skipped_suppressed": 10
+      },
+      "auditRows": 174,
+      "acceptanceIsNotDelivery": true,
+      "clientBccRequestCount": 1,
+      "clientBccWebhookCoverage": [
+        {
+          "requestId": "2d6f.7629f60dd4646afb.m1.10dcf360-d09b-11f1-a281-525400114fe6.1a174259d96",
+          "totalEvents": 1,
+          "matchedSelectedAddresses": 0,
+          "recipientGroups": 1,
+          "deliveredGroups": 1
+        }
+      ],
+      "recentWebhookCount": [
+        {
+          "total": 161
+        }
+      ],
+      "recentEmailStatusCounts": [
+        {
+          "status": "delivered",
+          "total": 160
+        },
+        {
+          "status": "failed",
+          "total": 8
+        },
+        {
+          "status": "sent",
+          "total": 620
+        },
+        {
+          "status": "skipped_suppressed",
+          "total": 79
+        }
+      ]
+    }
+  },
+  "candidate": {
+    "candidateId": "434e425c44305f12a90b8875b7620c3893213dfa10abf1624d868c6664a73109",
+    "artifactSetId": "93c82c3371ac9be32b3f81bac12758b92564ba3936eb68e22aaf047a9d7dcebe",
+    "archives": [
+      {
+        "file": "source.zip",
+        "bytes": 35743580,
+        "sha256": "490748c999337ccfaf0d7603ad5f4b003d7fc8a401812226819ece59a02fd1c2",
+        "entryBytesVerifiedAgainstManifest": true
+      },
+      {
+        "file": "artifacts.zip",
+        "bytes": 41580848,
+        "sha256": "68ba71e6f6d7f1b8e857720203229d580718889bf6c7afd93774fff3fafc324d",
+        "entryBytesVerifiedAgainstManifest": true
+      }
+    ]
+  },
+  "sourceFiles": 815,
+  "selectedChangedFiles": [
+    ".gitignore",
+    "backend/_core/index.ts",
+    "backend/_core/vite.ts",
+    "frontend/src/pages/AdminJobs.tsx",
+    "package.json",
+    "pnpm-lock.yaml",
+    "server/emailOutboxScheduledHealth.test.ts",
+    "vite.config.ts",
+    "wrangler-worker.toml",
+    ".node-version",
+    ".npmrc",
+    ".nvmrc",
+    "frontend/src/components/admin/AiScreeningContent.tsx",
+    "scripts/check-content-rendering.mjs",
+    "scripts/check-node-runtime.mjs",
+    "scripts/check-node-runtime.test.mjs",
+    "scripts/check-staging-resources.mjs",
+    "scripts/check-staging-resources.test.mjs",
+    "scripts/fixtures/content-security-entry.tsx",
+    "scripts/use-project-node.ps1",
+    "server/aiScreeningContentSecurity.test.ts",
+    "server/axiosHttpSecurity.test.ts",
+    "server/devServerHost.test.ts",
+    "server/drizzleD1Security.test.ts",
+    "server/expressProxySecurity.test.ts",
+    "server/fixtures/axios-method-probe.mjs",
+    "server/r2StorageCompatibility.test.ts",
+    "server/viteMiddlewarePolicy.test.ts",
+    "server/zodRequestValidation.test.ts",
+    "shared/devServerHost.ts"
+  ],
+  "verification": {
+    "runtime": "Node 24.22.1",
+    "install": "frozen --ignore-scripts passed",
+    "typecheck": "passed",
+    "policyTestsPassed": 29,
+    "fullSuite": {
+      "passed": 1025,
+      "failed": 3,
+      "total": 1028,
+      "exitCode": 1,
+      "failures": [
+        {
+          "file": "adminSubscribersReportUi.test.ts",
+          "name": "subscribers report ILS revenue contract uses canonical gross, refund, and net ILS fields in UI and CSV"
+        },
+        {
+          "file": "clientKeyActivationNavigation.test.ts",
+          "name": "client key activation navigation shows renewal state from the latest truly expired service history"
+        },
+        {
+          "file": "financialAuthorizationUi.test.ts",
+          "name": "financial authorization UI contracts separates financial confirmation controls from operational order controls"
+        }
+      ]
+    },
+    "criticalCycle": {
+      "files": 33,
+      "passed": 203,
+      "failed": 0
+    },
+    "builtSiteBrowser": {
+      "passed": 9,
+      "failed": 0
+    },
+    "supportBrowser": {
+      "passed": 6,
+      "failed": 0
+    },
+    "contentBrowser": {
+      "passed": 11,
+      "failed": 0
+    },
+    "localWorker": {
+      "checkedAtUtc": "2026-10-25T17:50:03.136Z",
+      "origin": "http://127.0.0.1:8799",
+      "runtime": "Wrangler local workerd",
+      "checks": [
+        "Actual workerd health with isolated test bindings",
+        "Actual local Cloudflare D1 SELECT 1",
+        "Actual Worker tRPC anonymous session is null",
+        "Actual Worker protected procedure denies anonymous access",
+        "Production-origin credentialed CORS preflight",
+        "Untrusted-origin CORS is not granted"
+      ],
+      "passed": 6,
+      "remote": false,
+      "scheduledEventsInvoked": 0,
+      "productionWrites": 0,
+      "productionCredentialsProvided": false,
+      "resourceScope": "Dedicated local D1/R2, fake D1 ID, no cron and no outbound provider secrets"
+    },
+    "builds": {
+      "frontendBuildExit": 0,
+      "workerBuildExit": 0,
+      "seoTestsExit": 0,
+      "apiOrigin": "https://api.xflexacademy.com",
+      "dynamicArticles": "true"
+    },
+    "dependencyAudit": {
+      "critical": 0,
+      "scope": "Same lockfile as fresh 25 October audit; noncritical backlog deferred"
+    },
+    "apiAndUiBusinessMutationProductionTest": false
+  },
+  "publicationPreparation": {
+    "preparedAtUtc": "2026-10-25T18:04:51.070Z",
+    "publishDirectory": ".tools/releases/security-20261025/publish",
+    "candidateId": "434e425c44305f12a90b8875b7620c3893213dfa10abf1624d868c6664a73109",
+    "artifactSetId": "93c82c3371ac9be32b3f81bac12758b92564ba3936eb68e22aaf047a9d7dcebe",
+    "artifactFilesVerified": 772,
+    "recoveryArchive": {
+      "file": "recovery-snapshot.zip",
+      "bytes": 40078450,
+      "sha256": "a7c028f3b3fe1f7f60100428e728e0b15c82a419a7494ae321c01dff78eddaea",
+      "verifiedEntries": 766
+    },
+    "databaseRecovery": {
+      "checkedAtUtc": "2026-10-25T18:01:40.945Z",
+      "bookmark": "00001800-00000092-0000510f-b7d3a1fd7869e933e173ed1d90be70b2",
+      "bookmarkReadable": true,
+      "method": "Cloudflare D1 automatic Time Travel recovery point; no blocking export or restore invoked",
+      "refreshImmediatelyBeforeRelease": true
+    },
+    "workerRollbackVersion": "4b952089-4bd2-4bcd-8f26-006707b01bba",
+    "pagesRollbackDeployment": "875d6ef3-0e42-4c28-99bf-9d11fc626905",
+    "noOfflineDatabaseExport": true,
+    "noR2ObjectCopy": true
+  },
+  "predeploymentAnalytics": {
+    "checkedAtUtc": "2026-10-25T18:01:25.946Z",
+    "label": "predeploy",
+    "windowStart": "2026-10-25T17:44:25.946Z",
+    "windowEnd": "2026-10-25T17:59:25.946Z",
+    "lagAllowanceSeconds": 120,
+    "httpStatus": 200,
+    "groups": [
+      {
+        "dimensions": {
+          "status": "success"
+        },
+        "quantiles": {
+          "cpuTimeP50": 2496,
+          "cpuTimeP99": 206086
+        },
+        "sum": {
+          "errors": 0,
+          "requests": 133,
+          "subrequests": 36
+        }
+      },
+      {
+        "dimensions": {
+          "status": "clientDisconnected"
+        },
+        "quantiles": {
+          "cpuTimeP50": 4924,
+          "cpuTimeP99": 4924
+        },
+        "sum": {
+          "errors": 0,
+          "requests": 1,
+          "subrequests": 0
+        }
+      }
+    ],
+    "requests": 134,
+    "errors": 0,
+    "errorRate": 0,
+    "sampled": true
+  },
+  "productionSnapshot": {
+    "checkedAtUtc": "2026-10-25T18:01:33.809Z",
+    "productionWrites": 0,
+    "requests": [
+      {
+        "path": "/workers/scripts/xflexacademy-api-production/deployments",
+        "status": 200,
+        "method": "GET"
+      },
+      {
+        "path": "/workers/scripts/xflexacademy-api-production/versions/4b952089-4bd2-4bcd-8f26-006707b01bba",
+        "status": 200,
+        "method": "GET"
+      },
+      {
+        "path": "/d1/database/cf374361-2caa-4597-a38d-5cecced7827d/time_travel/bookmark",
+        "status": 200,
+        "method": "GET"
+      },
+      {
+        "path": "/workers/scripts/xflexacademy-api-production/schedules",
+        "status": 200,
+        "method": "GET"
+      },
+      {
+        "path": "/pages/projects/xflexacademy",
+        "status": 200,
+        "method": "GET"
+      }
+    ],
+    "rollbackExecuted": false,
+    "worker": {
+      "deploymentId": "39d710f5-0089-4152-b861-e267453e3a83",
+      "versions": [
+        {
+          "version_id": "4b952089-4bd2-4bcd-8f26-006707b01bba",
+          "percentage": 100
+        }
+      ],
+      "createdAt": "2026-10-25T17:13:43.153035Z"
+    },
+    "mailConfig": {
+      "provider": "auto",
+      "sender": "support@xflexacademy.com",
+      "webhookSecretBindingPresent": true
+    },
+    "databaseRecovery": {
+      "checkedAtUtc": "2026-10-25T18:01:40.945Z",
+      "bookmark": "00001800-00000092-0000510f-b7d3a1fd7869e933e173ed1d90be70b2",
+      "bookmarkReadable": true,
+      "method": "Cloudflare D1 automatic Time Travel recovery point; no blocking export or restore invoked",
+      "refreshImmediatelyBeforeRelease": true
+    },
+    "workerBaselineSnapshot": {
+      "versionId": "4b952089-4bd2-4bcd-8f26-006707b01bba",
+      "bytes": 3506582,
+      "sha256": "742f4fdca599d9436c218beddacdc437270049fee0088d710cf0513948adc584",
+      "etag": "\"a2a0398b42b779766a5301edd1b4c4fdb68d3a7fd2051595609b7123adc5f3d0\"",
+      "contentType": "multipart/form-data; boundary=46bf14b6530a0de7aeb927ac6684b5c5c7d5bdf8fdabe9d8219d1b38dd2a",
+      "executed": false
+    },
+    "schedules": {
+      "live": [
+        "* * * * *",
+        "*/5 * * * *",
+        "0 5 * * *",
+        "30 23 * * *"
+      ],
+      "local": [
+        "* * * * *",
+        "*/5 * * * *",
+        "0 5 * * *",
+        "30 23 * * *"
+      ],
+      "match": true
+    },
+    "runtime": {
+      "compatibilityDate": "2025-02-09",
+      "compatibilityFlags": [
+        "nodejs_compat"
+      ]
+    },
+    "pages": {
+      "project": "xflexacademy",
+      "deploymentId": "875d6ef3-0e42-4c28-99bf-9d11fc626905",
+      "environment": "production",
+      "status": "success",
+      "url": "https://875d6ef3.xflexwithai.pages.dev"
+    },
+    "publicChecks": [
+      {
+        "url": "https://api.xflexacademy.com/health",
+        "status": 200,
+        "location": null,
+        "elapsedMs": 188,
+        "health": "ok"
+      },
+      {
+        "url": "https://xflexacademy.com/ar",
+        "status": 200,
+        "location": null,
+        "elapsedMs": 212
+      },
+      {
+        "url": "https://xflexacademy.com/en",
+        "status": 200,
+        "location": null,
+        "elapsedMs": 99
+      },
+      {
+        "url": "https://www.xflexacademy.com/",
+        "status": 301,
+        "location": "https://xflexacademy.com/",
+        "elapsedMs": 172
+      }
+    ]
+  },
+  "pushed": false,
+  "deployed": false,
+  "rollbackExecuted": false,
+  "rollbackRehearsed": false,
+  "runbook": "docs/security-release-readiness-support-baseline-2026-10-25.md",
+  "evidenceDirectory": ".tools/security-release-readiness/candidate-ba4216c/"
+}

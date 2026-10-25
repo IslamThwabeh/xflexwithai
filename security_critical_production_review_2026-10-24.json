@@ -1,0 +1,204 @@
+{
+  "checkedAtUtc": "2026-10-24T20:18:04.903Z",
+  "scope": "Critical-only, read-only snapshot of the identified XFlex Cloudflare production deployment; not complete website security clearance",
+  "methods": [
+    "Cloudflare deployment status and version metadata",
+    "Version-pinned Worker source download with matching API ETag",
+    "Static package-name/signature scans and TypeScript AST import analysis; no source execution",
+    "Pages canonical deployment metadata and middleware source at the reported commit",
+    "Normal public health/HEAD checks",
+    "Fresh critical-threshold local dependency registry audit"
+  ],
+  "worker": {
+    "name": "xflexacademy-api-production",
+    "domain": "api.xflexacademy.com",
+    "deploymentId": "fce4f365-90dd-40e3-aee0-c49cee7bd80f",
+    "deployedAt": "2026-10-23T07:42:01.272358Z",
+    "traffic": [
+      {
+        "version_id": "059c1e23-9e9d-4383-94e0-fb62f881c25e",
+        "percentage": 100
+      }
+    ],
+    "versionId": "059c1e23-9e9d-4383-94e0-fb62f881c25e",
+    "etag": "7b795456d3017eacdb084275dbff2add4ac5f56d5e028e9916d163057d403963",
+    "sourceEtagMatches": true,
+    "modules": [
+      {
+        "name": "worker.js",
+        "type": "application/javascript+module",
+        "bytes": 3504913,
+        "sha256": "a0f222d83391f2332794be0386771e580e2b0ab663073ae77efc5e8176f38541"
+      }
+    ],
+    "runtime": {
+      "compatibility_date": "2025-02-09",
+      "compatibility_flags": [
+        "nodejs_compat"
+      ],
+      "usage_model": "standard"
+    },
+    "bindingTypeCounts": {
+      "plain_text": 21,
+      "d1": 1,
+      "secret_text": 5,
+      "r2_bucket": 2
+    },
+    "criticalPackageNameMatches": {
+      "fast-xml-parser": false,
+      "proxy-addr": false,
+      "tinypool": false,
+      "vitest": false,
+      "@aws-sdk": false,
+      "require_proxy_addr": false,
+      "require_fast_xml_parser": false
+    },
+    "criticalSignatureMatches": {
+      "XMLParser": false,
+      "OrderedObjParser": false,
+      "S3Client": false,
+      "proxyaddr": false,
+      "trustMulti": false,
+      "parseipNotation": false,
+      "Tinypool": false,
+      "createVitest": false,
+      "startVitest": false
+    },
+    "externalLiteralImports": [
+      "crypto",
+      "node:events",
+      "node:stream"
+    ],
+    "resolvedNonLiteralImport": "better-sqlite3",
+    "sourceScanLimits": "Wrangler rebundling retains only some module attribution comments. Package-name/symbol scans, AST external imports and the fixed local SQLite import were checked; this is not a complete version SBOM."
+  },
+  "pages": {
+    "project": "xflexacademy",
+    "domains": [
+      "xflexwithai.pages.dev",
+      "www.xflexacademy.com",
+      "xflexacademy.com"
+    ],
+    "canonicalDeployment": {
+      "id": "9a6bfc98-8544-4e55-9b68-1cc9410ec60e",
+      "environment": "production",
+      "created_on": "2026-10-23T15:07:55.683301Z",
+      "url": "https://9a6bfc98.xflexwithai.pages.dev",
+      "aliases": [
+        "https://www.xflexacademy.com",
+        "https://xflexacademy.com"
+      ],
+      "latest_stage": {
+        "name": "deploy",
+        "status": "success"
+      },
+      "trigger": {
+        "type": "ad_hoc",
+        "commit": "fc70c79c08c5642164abe2ddc16b56ea55cfb65e",
+        "branch": "main"
+      }
+    },
+    "usesFunctions": true,
+    "directUpload": true,
+    "buildRuntimeAttested": false,
+    "middlewareReview": {
+      "metadataCommit": "fc70c79c08c5642164abe2ddc16b56ea55cfb65e",
+      "sourceAvailableLocally": true,
+      "matchesCurrentRepository": true,
+      "sha256": "32243658bb76059bb4e82cf59fbfb1d7c892929779bb5852a583c1363c76c72e",
+      "staticImports": [],
+      "scope": "Repository file at Pages-reported deployment commit; not a downloaded deployed Functions artifact"
+    }
+  },
+  "publicHealth": {
+    "checkedAtUtc": "2026-10-24T20:14:14.817Z",
+    "checks": [
+      {
+        "label": "api-health",
+        "url": "https://api.xflexacademy.com/health",
+        "method": "GET",
+        "status": 200,
+        "location": null,
+        "server": "cloudflare",
+        "health": {
+          "status": "ok",
+          "environment": "production"
+        }
+      },
+      {
+        "label": "public-ar",
+        "url": "https://xflexacademy.com/ar/",
+        "method": "HEAD",
+        "status": 200,
+        "location": null,
+        "server": "cloudflare"
+      },
+      {
+        "label": "www-redirect",
+        "url": "https://www.xflexacademy.com/",
+        "method": "HEAD",
+        "status": 301,
+        "location": "https://xflexacademy.com/",
+        "server": "cloudflare"
+      }
+    ]
+  },
+  "localCriticalAudit": {
+    "checkedAtUtc": "2026-10-24T20:14:22.063Z",
+    "criticalFindings": 0,
+    "criticalAdvisoryRecords": 0,
+    "scope": "Current working-tree dependency graph; earlier local patches are not deployed"
+  },
+  "findingDisposition": [
+    {
+      "package": "fast-xml-parser / AWS SDK",
+      "result": "Not found by names/signatures/imports in downloaded active API bundle; no production XML path demonstrated"
+    },
+    {
+      "package": "proxy-addr / Express",
+      "result": "Not found in downloaded active API bundle; API hostname maps directly to the fetch-handler Worker"
+    },
+    {
+      "package": "Vitest / Tinypool",
+      "result": "Not found in downloaded active API bundle; local development-tool critical findings have been cleared"
+    }
+  ],
+  "conclusion": {
+    "applicationCriticalReview": "No confirmed original critical dependency exposure identified in the reviewed API artifact or repository Pages middleware; qualified by artifact/scope limits",
+    "criticalDependencyReleaseIndicated": false,
+    "providerBrotliStatus": "Unconfirmed; public workerd source uses upstream Brotli decoder APIs. Deployed fix/backport status is not attested by the supplied AI response.",
+    "productionChanged": false,
+    "deployed": false
+  },
+  "remainingLimits": [
+    "Exact deployed Pages Functions module was not downloaded; repository middleware matches the Pages-reported commit and imports no packages",
+    "Worker rebundling strips inner module comments; static scans are not a complete dependency-version SBOM or proof against every possible critical vulnerability",
+    "Cloudflare control-plane compatibility metadata does not attest to native Brotli patch rollout",
+    "Direct-upload build-host runtime and unrelated infrastructure are not attested",
+    "Other high/moderate/low findings and prior local fixes remain deferred/undeployed under the user-selected scope"
+  ],
+  "providerFollowup": {
+    "checkedAtUtc": "2026-10-24T20:36:28.677Z",
+    "responseSource": "User-supplied Cloudflare AI agent assessment; not maintainer attestation",
+    "assessment": "Unconfirmed. Different runtimes can use the same upstream decoder; architecture alone does not prove non-applicability.",
+    "primarySources": {
+      "brotliSecurityRelease": "https://github.com/google/brotli/releases/tag/v1.2.1",
+      "brotliFix": "https://github.com/google/brotli/commit/0ed4268a4401abcb44720963",
+      "workerdCommit": "5d3d11d0d9d00050e80a97806716244446d7dd4f",
+      "workerdDecoder": "https://github.com/cloudflare/workerd/blob/5d3d11d0d9d00050e80a97806716244446d7dd4f/src/workerd/api/compression.c%2B%2B#L485"
+    },
+    "publicSourceUsesBrotliDecoderCAPI": true,
+    "deployedRuntimePatchLevelVerified": false,
+    "customerConfigurationChangeIndicated": false,
+    "externalMessageSent": false
+  },
+  "userDirectedDeferral": {
+    "dateLocal": "2026-10-25",
+    "timezone": "Asia/Amman",
+    "item": "Cloudflare managed-runtime/Brotli applicability and patch assurance",
+    "status": "deferred at user request",
+    "technicalStatus": "unconfirmed",
+    "releaseGate": false,
+    "scope": "This provider item only; unrelated release/verification safeguards remain"
+  }
+}

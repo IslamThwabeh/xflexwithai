@@ -19,6 +19,7 @@
 - Arabic dates must use `ar-EG`, never `ar-SA`.
 - Episode duration is stored in seconds. Display with `Math.floor(duration / 60)` and use `duration * 0.7` for watch thresholds.
 - Frontend builds must use the root `vite.config.ts`, not `frontend/vite.config.ts`.
+- Build/development Node must satisfy `.node-version` and the runtime preflight. Use the guarded package scripts; Windows activation is documented in `docs/security-node-runtime.md`.
 
 ## Scoped Instructions
 - Backend, database, package keys, subscriptions, workers, and D1 rules: `.github/instructions/backend-xflex.instructions.md`

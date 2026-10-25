@@ -1,0 +1,15 @@
+{
+  "assessmentDate": "2026-10-24",
+  "timezone": "Asia/Amman",
+  "scope": "Zod dependency only; not a whole-project audit",
+  "nodeVersion": "v24.22.1",
+  "manifestVersion": "4.6.7",
+  "installedVersion": "4.6.7",
+  "lockedVersions": [
+    "4.6.7"
+  ],
+  "openaiResolvedZodVersion": "4.6.7",
+  "registryEndpoint": "https://registry.npmjs.org/-/npm/v1/security/advisories/bulk",
+  "advisories": {},
+  "remediatedAdvisory": "https://github.com/advisories/GHSA-mrhx-c7xc-m3w5"
+}

@@ -1,0 +1,17 @@
+# Release baseline test triage — 25 October 2026
+
+This review preserves the three existing failing tests and the business behavior they inspect. It does not change permissions, wording, accounting behavior or assertions to obtain a passing exit code.
+
+| Existing failure | Current source evidence | Release disposition |
+| --- | --- | --- |
+| `adminSubscribersReportUi.test.ts` — canonical gross/refund/net ILS UI/CSV assertion | Numeric fields remain `grossSpentIls`, `refundedIls`, `totalSpentIls`, with the shekel display. CSV labels now explicitly describe historical activated-key indicators as **not revenue**, rather than the older expected `Gross Spent (ILS)` / `Net Spent (ILS)` labels. | Older label expectation; retain the clearer existing accounting distinction. No new financial reporting change in this candidate. |
+| `clientKeyActivationNavigation.test.ts` — expired-service renewal state assertion | The expected Arabic “enter renewal key” phrase has been replaced by paid renewal-order wording. The existing page retains a separate `/activate-key` link for an activation or renewal key. | Older wording expectation; retain the existing order/activation paths. No renewal-rule or entitlement change in this candidate. |
+| `financialAuthorizationUi.test.ts` — financial confirmation versus operational controls | The existing `finance_manager` navigation list also includes `/admin/copier`. The copier backend already explicitly allows finance-manager list access and payment confirmation. The other finance role controls remain unchanged. | Existing UI/backend permission agreement differs from the older exact-array expectation. Do not remove a business permission as part of a dependency release. |
+
+The three test files, `AdminSubscribersReport.tsx`, `StudentPackages.tsx`, `ClientLayout.tsx`, `shared/const.ts` and `backend/db.ts` are byte/diff unchanged against HEAD and the Pages deployment-reported source commit `fc70c79`. The committed backend/database/shared source also has no changes from the active Worker's reported source commit `d60bc21` to HEAD. Source metadata is supporting evidence, not an attestation of every live artifact byte.
+
+The first candidate full-suite run, while the frontend build was also consuming resources, reported **1,023 passed / 5 failed**. Two additional financial SQLite tests took more than five seconds and reported runner stack-trace errors. Both files then passed **8/8** in isolation with original assertions and timeouts. A full confirmation run with two workers and no concurrent build reported **1,025 passed / the same 3 baseline failures / 1,028 total**. Resource contention is consistent with the additional failures; it is not evidence that test timeouts should be increased or ignored.
+
+All **33 critical-cycle files / 203 tests** passed in the confirmation report. Financial payment confirmation, expense workflows, and the disposable SQLite/D1 compatibility checks passed. The full-suite exit code remains **1**, correctly retained in the release evidence.
+
+**Recommended technical disposition:** carry these unchanged baseline mismatches as explicit release exceptions for the scoped security candidate. This document records the assessment; it does not claim the user has accepted the exceptions or that the full suite is green. Exception acceptance belongs in the final deployment decision. No application code or tests were changed in this readiness phase.

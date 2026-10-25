@@ -1,0 +1,17 @@
+{
+  "assessmentDate": "2026-10-24",
+  "timezone": "Asia/Amman",
+  "scope": "Drizzle ORM dependency only; not a whole-project audit or production exploitability verdict",
+  "nodeVersion": "v24.22.1",
+  "manifestVersion": "0.45.4",
+  "installedVersion": "0.45.4",
+  "lockedVersions": [
+    "0.45.4"
+  ],
+  "unchangedDrizzleKitVersions": [
+    "0.31.9"
+  ],
+  "registryEndpoint": "https://registry.npmjs.org/-/npm/v1/security/advisories/bulk",
+  "advisories": {},
+  "remediatedAdvisory": "https://github.com/advisories/GHSA-gpj5-g38j-94v9"
+}

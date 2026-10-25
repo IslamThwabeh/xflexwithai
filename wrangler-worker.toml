@@ -57,6 +57,10 @@ crons = ["* * * * *", "*/5 * * * *", "30 23 * * *", "0 5 * * *"]
 
 [env.staging]
 name = "xflexacademy-api-staging"
+routes = []
+
+[env.staging.triggers]
+crons = []
 
 [env.staging.vars]
 ENVIRONMENT = "staging"

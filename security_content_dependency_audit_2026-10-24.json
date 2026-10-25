@@ -1,0 +1,1587 @@
+{
+  "checkedAtUtc": "2026-10-24T19:31:59.616Z",
+  "scope": "Local rich-content dependency remediation and Admin Jobs model-output rendering fix; no deployment or production exploit claim",
+  "runtime": "v24.22.1",
+  "installed": {
+    "streamdown": {
+      "version": "1.6.11",
+      "mermaidRange": "^11.11.0"
+    },
+    "mermaid": {
+      "before": "11.12.2",
+      "after": "11.17.2",
+      "dompurifyRange": "^3.3.3"
+    },
+    "dompurify": {
+      "before": "3.3.1",
+      "after": "3.4.17"
+    },
+    "lodashEs": {
+      "before": [
+        "4.17.21",
+        "4.17.23"
+      ],
+      "after": "4.18.1"
+    }
+  },
+  "directDependencyDeclarationsUnchanged": true,
+  "manifestChange": "Added test:security-content only",
+  "removed": [
+    "@chevrotain/cst-dts-gen@11.0.3",
+    "@chevrotain/gast@11.0.3",
+    "@chevrotain/regexp-to-ast@11.0.3",
+    "@chevrotain/types@11.0.3",
+    "@chevrotain/utils@11.0.3",
+    "@mermaid-js/parser@0.6.3",
+    "chevrotain-allstar@0.3.1",
+    "chevrotain@11.0.3",
+    "cytoscape@3.33.1",
+    "dagre-d3-es@7.0.13",
+    "dayjs@1.11.19",
+    "dompurify@3.3.1",
+    "langium@3.3.1",
+    "lodash-es@4.17.21",
+    "lodash-es@4.17.23",
+    "mermaid@11.12.2",
+    "vscode-jsonrpc@8.2.0",
+    "vscode-languageserver-protocol@3.17.5",
+    "vscode-languageserver-textdocument@1.0.12",
+    "vscode-languageserver-types@3.17.5",
+    "vscode-languageserver@9.0.1",
+    "vscode-uri@3.0.8"
+  ],
+  "added": [
+    "@chevrotain/types@11.1.2",
+    "@mermaid-js/parser@1.2.1",
+    "@upsetjs/venn.js@2.0.0",
+    "cytoscape@3.34.4",
+    "dagre-d3-es@7.0.14",
+    "dayjs@1.11.23",
+    "dompurify@3.4.17",
+    "es-toolkit@1.53.0",
+    "fastdom@1.0.12",
+    "katex@0.16.47",
+    "lodash-es@4.18.1",
+    "mermaid@11.17.2",
+    "strictdom@1.0.1"
+  ],
+  "retainedPackageMetadataChanges": [],
+  "sourceScope": {
+    "changedOriginalFiles": [
+      "frontend/src/pages/AdminJobs.tsx"
+    ],
+    "newApplicationComponent": "frontend/src/components/admin/AiScreeningContent.tsx",
+    "otherOriginalSourceAndConfigurationFilesUnchanged": 696,
+    "backendSchemasAuthAndProductionConfigurationUnchanged": true
+  },
+  "regression": {
+    "beforeRenderTests": {
+      "compatibilityPassed": 8,
+      "securityFailed": 6,
+      "total": 14
+    },
+    "afterRenderTests": {
+      "passed": 14,
+      "total": 14
+    },
+    "browserBefore": {
+      "passed": 9,
+      "failed": [
+        "Screening markup is escaped text",
+        "No synthetic script execution"
+      ],
+      "inMemoryProbe": 1
+    },
+    "browserAfter": {
+      "checkedAtUtc": "2026-10-24T19:28:02.347Z",
+      "browser": "156.0.4314.42",
+      "host": "127.0.0.1",
+      "checks": [
+        {
+          "name": "Bilingual headings",
+          "passed": true
+        },
+        {
+          "name": "Bold emphasis",
+          "passed": true
+        },
+        {
+          "name": "Lists and tables",
+          "passed": true
+        },
+        {
+          "name": "Code blocks",
+          "passed": true
+        },
+        {
+          "name": "HTTPS links",
+          "passed": true
+        },
+        {
+          "name": "Flow, sequence and state diagrams",
+          "passed": true
+        },
+        {
+          "name": "Markdown rejects active markup and script links",
+          "passed": true
+        },
+        {
+          "name": "Screening formatting",
+          "passed": true
+        },
+        {
+          "name": "Screening markup is escaped text",
+          "passed": true
+        },
+        {
+          "name": "No synthetic script execution",
+          "passed": true
+        },
+        {
+          "name": "No browser runtime errors",
+          "passed": true
+        }
+      ],
+      "observed": {
+        "proseText": "ملخص / Summary\nStrong result and نتيجة جيدة.\n\nFirst item\nالعنصر الثاني\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nItemValueScore85\nDocumentation\njsconst score = 85;",
+        "heading": "ملخص / Summary",
+        "strongCount": 2,
+        "listCount": 2,
+        "tableRows": 2,
+        "code": "jsconst score = 85;",
+        "link": "https://example.invalid/docs",
+        "diagramCount": 3,
+        "diagramText": "#mermaid-662920492-1792870081379-pin6n4l{font-family:monospace;font-size:16px;fill:#333;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#mermaid-662920492-1792870081379-pin6n4l .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#mermaid-662920492-1792870081379-pin6n4l .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#mermaid-662920492-1792870081379-pin6n4l .error-icon{fill:#552222;}#mermaid-662920492-1792870081379-pin6n4l .error-text{fill:#552222;stroke:#552222;}#mermaid-662920492-1792870081379-pin6n4l .edge-thickness-normal{stroke-width:1px;}#mermaid-662920492-1792870081379-pin6n4l .edge-thickness-thick{stroke-width:3.5px;}#mermaid-662920492-1792870081379-pin6n4l .edge-pattern-solid{stroke-dasharray:0;}#mermaid-662920492-1792870081379-pin6n4l .edge-thickness-invisible{stroke-width:0;fill:none;}#mermaid-662920492-1792870081379-pin6n4l .edge-pattern-dashed{stroke-dasharray:3;}#mermaid-662920492-1792870081379-pin6n4l .edge-pattern-dotted{stroke-dasharray:2;}#mermaid-662920492-1792870081379-pin6n4l .marker{fill:#333333;stroke:#333333;}#mermaid-662920492-1792870081379-pin6n4l .marker.cross{stroke:#333333;}#mermaid-662920492-1792870081379-pin6n4l svg{font-family:monospace;font-size:16px;}#mermaid-662920492-1792870081379-pin6n4l p{margin:0;}#mermaid-662920492-1792870081379-pin6n4l .label{font-family:monospace;color:#333;}#mermaid-662920492-1792870081379-pin6n4l .cluster-label text{fill:#333;}#mermaid-662920492-1792870081379-pin6n4l .cluster-label span{color:#333;}#mermaid-662920492-1792870081379-pin6n4l .cluster-label span p{background-color:transparent;}#mermaid-662920492-1792870081379-pin6n4l .label text,#mermaid-662920492-1792870081379-pin6n4l span{fill:#333;color:#333;}#mermaid-662920492-1792870081379-pin6n4l .node rect,#mermaid-662920492-1792870081379-pin6n4l .node circle,#mermaid-662920492-1792870081379-pin6n4l .node ellipse,#mermaid-662920492-1792870081379-pin6n4l .node polygon,#mermaid-662920492-1792870081379-pin6n4l .node path{fill:#ECECFF;stroke:#9370DB;stroke-width:1px;}#mermaid-662920492-1792870081379-pin6n4l .rough-node .label text,#mermaid-662920492-1792870081379-pin6n4l .node .label text,#mermaid-662920492-1792870081379-pin6n4l .image-shape .label,#mermaid-662920492-1792870081379-pin6n4l .icon-shape .label{text-anchor:middle;}#mermaid-662920492-1792870081379-pin6n4l .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#mermaid-662920492-1792870081379-pin6n4l .rough-node .label,#mermaid-662920492-1792870081379-pin6n4l .node .label,#mermaid-662920492-1792870081379-pin6n4l .image-shape .label,#mermaid-662920492-1792870081379-pin6n4l .icon-shape .label{text-align:center;}#mermaid-662920492-1792870081379-pin6n4l .node.clickable{cursor:pointer;}#mermaid-662920492-1792870081379-pin6n4l .root .anchor path{fill:#333333!important;stroke-width:0;stroke:#333333;}#mermaid-662920492-1792870081379-pin6n4l .arrowheadPath{fill:#333333;}#mermaid-662920492-1792870081379-pin6n4l .edgePaths .path{stroke:#333333;stroke-width:1px;}#mermaid-662920492-1792870081379-pin6n4l .flowchart-link{stroke:#333333;fill:none;}#mermaid-662920492-1792870081379-pin6n4l .edgeLabel{background-color:rgba(232,232,232, 0.8);text-align:center;}#mermaid-662920492-1792870081379-pin6n4l .edgeLabel p{background-color:rgba(232,232,232, 0.8);}#mermaid-662920492-1792870081379-pin6n4l .edgeLabel rect{opacity:0.5;background-color:rgba(232,232,232, 0.8);fill:rgba(232,232,232, 0.8);}#mermaid-662920492-1792870081379-pin6n4l .labelBkg{background-color:rgba(232, 232, 232, 0.5);}#mermaid-662920492-1792870081379-pin6n4l .cluster rect{fill:#ffffde;stroke:#aaaa33;stroke-width:1px;}#mermaid-662920492-1792870081379-pin6n4l .cluster text{fill:#333;}#mermaid-662920492-1792870081379-pin6n4l .cluster span{color:#333;}#mermaid-662920492-1792870081379-pin6n4l .node .collapsed-indicator{fill:#aaaa33;stroke:none;opacity:0.6;}#mermaid-662920492-1792870081379-pin6n4l .node .collapsed-separator{stroke:#aaaa33;stroke-width:0.75px;}#mermaid-662920492-1792870081379-pin6n4l div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:monospace;font-size:12px;background:hsl(80, 100%, 96.2745098039%);border:1px solid #aaaa33;border-radius:2px;pointer-events:none;z-index:100;}#mermaid-662920492-1792870081379-pin6n4l .flowchartTitleText{text-anchor:middle;font-size:18px;fill:#333;}#mermaid-662920492-1792870081379-pin6n4l rect.text{fill:none;stroke-width:0;}#mermaid-662920492-1792870081379-pin6n4l .icon-shape,#mermaid-662920492-1792870081379-pin6n4l .image-shape{background-color:rgba(232,232,232, 0.8);text-align:center;}#mermaid-662920492-1792870081379-pin6n4l .icon-shape p,#mermaid-662920492-1792870081379-pin6n4l .image-shape p{background-color:rgba(232,232,232, 0.8);padding:2px;}#mermaid-662920492-1792870081379-pin6n4l .icon-shape .label rect,#mermaid-662920492-1792870081379-pin6n4l .image-shape .label rect{opacity:0.5;background-color:rgba(232,232,232, 0.8);fill:rgba(232,232,232, 0.8);}#mermaid-662920492-1792870081379-pin6n4l .label-icon{display:inline-block;height:1em;overflow:visible;vertical-align:-0.125em;}#mermaid-662920492-1792870081379-pin6n4l .node .label-icon path{fill:currentColor;stroke:revert;stroke-width:revert;}#mermaid-662920492-1792870081379-pin6n4l .node .neo-node{stroke:#9370DB;}#mermaid-662920492-1792870081379-pin6n4l [data-look=\"neo\"].node rect,#mermaid-662920492-1792870081379-pin6n4l [data-look=\"neo\"].cluster rect,#mermaid-662920492-1792870081379-pin6n4l [data-look=\"neo\"].node polygon{stroke:#9370DB;filter:drop-shadow(1px 2px 2px rgba(185, 185, 185, 1));}#mermaid-662920492-1792870081379-pin6n4l [data-look=\"neo\"].swimlane.cluster rect{filter:none;}#mermaid-662920492-1792870081379-pin6n4l [data-look=\"neo\"].node path{stroke:#9370DB;stroke-width:1px;}#mermaid-662920492-1792870081379-pin6n4l [data-look=\"neo\"].node .outer-path{filter:drop-shadow(1px 2px 2px rgba(185, 185, 185, 1));}#mermaid-662920492-1792870081379-pin6n4l [data-look=\"neo\"].node .neo-line path{stroke:#9370DB;filter:none;}#mermaid-662920492-1792870081379-pin6n4l [data-look=\"neo\"].node circle{stroke:#9370DB;filter:drop-shadow(1px 2px 2px rgba(185, 185, 185, 1));}#mermaid-662920492-1792870081379-pin6n4l [data-look=\"neo\"].node circle .state-start{fill:#000000;}#mermaid-662920492-1792870081379-pin6n4l [data-look=\"neo\"].icon-shape .icon{fill:#9370DB;filter:drop-shadow(1px 2px 2px rgba(185, 185, 185, 1));}#mermaid-662920492-1792870081379-pin6n4l [data-look=\"neo\"].icon-shape .icon-neo path{stroke:#9370DB;filter:drop-shadow(1px 2px 2px rgba(185, 185, 185, 1));}#mermaid-662920492-1792870081379-pin6n4l :root{--mermaid-font-family:monospace;}البداية / StartDoneStaffStudentStaffStudent#mermaid-1689403619-1792870081387-spv2ib4{font-family:monospace;font-size:16px;fill:#333;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#mermaid-1689403619-1792870081387-spv2ib4 .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#mermaid-1689403619-1792870081387-spv2ib4 .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#mermaid-1689403619-1792870081387-spv2ib4 .error-icon{fill:#552222;}#mermaid-1689403619-1792870081387-spv2ib4 .error-text{fill:#552222;stroke:#552222;}#mermaid-1689403619-1792870081387-spv2ib4 .edge-thickness-normal{stroke-width:1px;}#mermaid-1689403619-1792870081387-spv2ib4 .edge-thickness-thick{stroke-width:3.5px;}#mermaid-1689403619-1792870081387-spv2ib4 .edge-pattern-solid{stroke-dasharray:0;}#mermaid-1689403619-1792870081387-spv2ib4 .edge-thickness-invisible{stroke-width:0;fill:none;}#mermaid-1689403619-1792870081387-spv2ib4 .edge-pattern-dashed{stroke-dasharray:3;}#mermaid-1689403619-1792870081387-spv2ib4 .edge-pattern-dotted{stroke-dasharray:2;}#mermaid-1689403619-1792870081387-spv2ib4 .marker{fill:#333333;stroke:#333333;}#mermaid-1689403619-1792870081387-spv2ib4 .marker.cross{stroke:#333333;}#mermaid-1689403619-1792870081387-spv2ib4 svg{font-family:monospace;font-size:16px;}#mermaid-1689403619-1792870081387-spv2ib4 p{margin:0;}#mermaid-1689403619-1792870081387-spv2ib4 .actor{stroke:#9370DB;fill:#ECECFF;stroke-width:1;}#mermaid-1689403619-1792870081387-spv2ib4 rect.actor.outer-path[data-look=\"neo\"]{filter:drop-shadow(1px 2px 2px rgba(185, 185, 185, 1));}#mermaid-1689403619-1792870081387-spv2ib4 rect.note[data-look=\"neo\"]{stroke:#aaaa33;fill:#fff5ad;filter:drop-shadow(1px 2px 2px rgba(185, 185, 185, 1));}#mermaid-1689403619-1792870081387-spv2ib4 text.actor>tspan{fill:black;stroke:none;}#mermaid-1689403619-1792870081387-spv2ib4 .actor-line{stroke:#9370DB;}#mermaid-1689403619-1792870081387-spv2ib4 .innerArc{stroke-width:1.5;stroke-dasharray:none;}#mermaid-1689403619-1792870081387-spv2ib4 .messageLine0{stroke-width:1.5;stroke-dasharray:none;stroke:#333;}#mermaid-1689403619-1792870081387-spv2ib4 .messageLine1{stroke-width:1.5;stroke-dasharray:2,2;stroke:#333;}#mermaid-1689403619-1792870081387-spv2ib4 [id$=\"-arrowhead\"] path{fill:#333;stroke:#333;}#mermaid-1689403619-1792870081387-spv2ib4 .sequenceNumber{fill:white;}#mermaid-1689403619-1792870081387-spv2ib4 [id$=\"-sequencenumber\"]{fill:#333;}#mermaid-1689403619-1792870081387-spv2ib4 [id$=\"-crosshead\"] path{fill:#333;stroke:#333;}#mermaid-1689403619-1792870081387-spv2ib4 .messageText{fill:#333;stroke:none;}#mermaid-1689403619-1792870081387-spv2ib4 .labelBox{stroke:#9370DB;fill:#ECECFF;filter:none;}#mermaid-1689403619-1792870081387-spv2ib4 .labelText,#mermaid-1689403619-1792870081387-spv2ib4 .labelText>tspan{fill:black;stroke:none;}#mermaid-1689403619-1792870081387-spv2ib4 .loopText,#mermaid-1689403619-1792870081387-spv2ib4 .loopText>tspan{fill:black;stroke:none;}#mermaid-1689403619-1792870081387-spv2ib4 .sectionTitle,#mermaid-1689403619-1792870081387-spv2ib4 .sectionTitle>tspan{fill:black;stroke:none;}#mermaid-1689403619-1792870081387-spv2ib4 .loopLine{stroke-width:2px;stroke-dasharray:2,2;stroke:#9370DB;fill:#9370DB;}#mermaid-1689403619-1792870081387-spv2ib4 .note{stroke:#aaaa33;fill:#fff5ad;}#mermaid-1689403619-1792870081387-spv2ib4 .noteText,#mermaid-1689403619-1792870081387-spv2ib4 .noteText>tspan{fill:black;stroke:none;font-weight:normal;}#mermaid-1689403619-1792870081387-spv2ib4 .activation0{fill:#f4f4f4;stroke:#666;}#mermaid-1689403619-1792870081387-spv2ib4 .activation1{fill:#f4f4f4;stroke:#666;}#mermaid-1689403619-1792870081387-spv2ib4 .activation2{fill:#f4f4f4;stroke:#666;}#mermaid-1689403619-1792870081387-spv2ib4 .actorPopupMenu{position:absolute;}#mermaid-1689403619-1792870081387-spv2ib4 .actorPopupMenuPanel{position:absolute;fill:#ECECFF;box-shadow:0px 8px 16px 0px rgba(0,0,0,0.2);filter:drop-shadow(3px 5px 2px rgb(0 0 0 / 0.4));}#mermaid-1689403619-1792870081387-spv2ib4 .actor-man circle,#mermaid-1689403619-1792870081387-spv2ib4 line{fill:#ECECFF;stroke-width:2px;}#mermaid-1689403619-1792870081387-spv2ib4 g rect.rect{filter:drop-shadow(1px 2px 2px rgba(185, 185, 185, 1));stroke:#9370DB;}#mermaid-1689403619-1792870081387-spv2ib4 .node .neo-node{stroke:#9370DB;}#mermaid-1689403619-1792870081387-spv2ib4 [data-look=\"neo\"].node rect,#mermaid-1689403619-1792870081387-spv2ib4 [data-look=\"neo\"].cluster rect,#mermaid-1689403619-1792870081387-spv2ib4 [data-look=\"neo\"].node polygon{stroke:#9370DB;filter:drop-shadow(1px 2px 2px rgba(185, 185, 185, 1));}#mermaid-1689403619-1792870081387-spv2ib4 [data-look=\"neo\"].swimlane.cluster rect{filter:none;}#mermaid-1689403619-1792870081387-spv2ib4 [data-look=\"neo\"].node path{stroke:#9370DB;stroke-width:1px;}#mermaid-1689403619-1792870081387-spv2ib4 [data-look=\"neo\"].node .outer-path{filter:drop-shadow(1px 2px 2px rgba(185, 185, 185, 1));}#mermaid-1689403619-1792870081387-spv2ib4 [data-look=\"neo\"].node .neo-line path{stroke:#9370DB;filter:none;}#mermaid-1689403619-1792870081387-spv2ib4 [data-look=\"neo\"].node circle{stroke:#9370DB;filter:drop-shadow(1px 2px 2px rgba(185, 185, 185, 1));}#mermaid-1689403619-1792870081387-spv2ib4 [data-look=\"neo\"].node circle .state-start{fill:#000000;}#mermaid-1689403619-1792870081387-spv2ib4 [data-look=\"neo\"].icon-shape .icon{fill:#9370DB;filter:drop-shadow(1px 2px 2px rgba(185, 185, 185, 1));}#mermaid-1689403619-1792870081387-spv2ib4 [data-look=\"neo\"].icon-shape .icon-neo path{stroke:#9370DB;filter:drop-shadow(1px 2px 2px rgba(185, 185, 185, 1));}#mermaid-1689403619-1792870081387-spv2ib4 :root{--mermaid-font-family:monospace;}ReviewDone#mermaid-806508145-1792870081388-9e5xdg6{font-family:monospace;font-size:16px;fill:#333;}@keyframes edge-animation-frame{from{stroke-dashoffset:0;}}@keyframes dash{to{stroke-dashoffset:0;}}#mermaid-806508145-1792870081388-9e5xdg6 .edge-animation-slow{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 50s linear infinite;stroke-linecap:round;}#mermaid-806508145-1792870081388-9e5xdg6 .edge-animation-fast{stroke-dasharray:9,5!important;stroke-dashoffset:900;animation:dash 20s linear infinite;stroke-linecap:round;}#mermaid-806508145-1792870081388-9e5xdg6 .error-icon{fill:#552222;}#mermaid-806508145-1792870081388-9e5xdg6 .error-text{fill:#552222;stroke:#552222;}#mermaid-806508145-1792870081388-9e5xdg6 .edge-thickness-normal{stroke-width:1px;}#mermaid-806508145-1792870081388-9e5xdg6 .edge-thickness-thick{stroke-width:3.5px;}#mermaid-806508145-1792870081388-9e5xdg6 .edge-pattern-solid{stroke-dasharray:0;}#mermaid-806508145-1792870081388-9e5xdg6 .edge-thickness-invisible{stroke-width:0;fill:none;}#mermaid-806508145-1792870081388-9e5xdg6 .edge-pattern-dashed{stroke-dasharray:3;}#mermaid-806508145-1792870081388-9e5xdg6 .edge-pattern-dotted{stroke-dasharray:2;}#mermaid-806508145-1792870081388-9e5xdg6 .marker{fill:#333333;stroke:#333333;}#mermaid-806508145-1792870081388-9e5xdg6 .marker.cross{stroke:#333333;}#mermaid-806508145-1792870081388-9e5xdg6 svg{font-family:monospace;font-size:16px;}#mermaid-806508145-1792870081388-9e5xdg6 p{margin:0;}#mermaid-806508145-1792870081388-9e5xdg6 defs [id$=\"-barbEnd\"]{fill:#333333;stroke:#333333;}#mermaid-806508145-1792870081388-9e5xdg6 g.stateGroup text{fill:#9370DB;stroke:none;font-size:10px;}#mermaid-806508145-1792870081388-9e5xdg6 g.stateGroup text{fill:#333;stroke:none;font-size:10px;}#mermaid-806508145-1792870081388-9e5xdg6 g.stateGroup .state-title{font-weight:bolder;fill:#131300;}#mermaid-806508145-1792870081388-9e5xdg6 g.stateGroup rect{fill:#ECECFF;stroke:#9370DB;}#mermaid-806508145-1792870081388-9e5xdg6 g.stateGroup line{stroke:#333333;stroke-width:1;}#mermaid-806508145-1792870081388-9e5xdg6 .transition{stroke:#333333;stroke-width:1;fill:none;}#mermaid-806508145-1792870081388-9e5xdg6 .stateGroup .composit{fill:white;border-bottom:1px;}#mermaid-806508145-1792870081388-9e5xdg6 .stateGroup .alt-composit{fill:#e0e0e0;border-bottom:1px;}#mermaid-806508145-1792870081388-9e5xdg6 .state-note{stroke:#aaaa33;fill:#fff5ad;}#mermaid-806508145-1792870081388-9e5xdg6 .state-note text{fill:black;stroke:none;font-size:10px;}#mermaid-806508145-1792870081388-9e5xdg6 .stateLabel .box{stroke:none;stroke-width:0;fill:#ECECFF;opacity:0.5;}#mermaid-806508145-1792870081388-9e5xdg6 .edgeLabel .label rect{fill:#ECECFF;opacity:0.5;}#mermaid-806508145-1792870081388-9e5xdg6 .edgeLabel{background-color:rgba(232,232,232, 0.8);text-align:center;}#mermaid-806508145-1792870081388-9e5xdg6 .edgeLabel p{background-color:rgba(232,232,232, 0.8);}#mermaid-806508145-1792870081388-9e5xdg6 .edgeLabel rect{opacity:0.5;background-color:rgba(232,232,232, 0.8);fill:rgba(232,232,232, 0.8);}#mermaid-806508145-1792870081388-9e5xdg6 .edgeLabel .label text{fill:#333;}#mermaid-806508145-1792870081388-9e5xdg6 .label div .edgeLabel{color:#333;}#mermaid-806508145-1792870081388-9e5xdg6 .stateLabel text{fill:#131300;font-size:10px;font-weight:bold;}#mermaid-806508145-1792870081388-9e5xdg6 .node circle.state-start{fill:#333333;stroke:#333333;}#mermaid-806508145-1792870081388-9e5xdg6 .node .fork-join{fill:#333333;stroke:#333333;}#mermaid-806508145-1792870081388-9e5xdg6 .node circle.state-end{fill:#9370DB;stroke:white;stroke-width:1.5;}#mermaid-806508145-1792870081388-9e5xdg6 .end-state-inner{fill:white;stroke-width:1.5;}#mermaid-806508145-1792870081388-9e5xdg6 .node rect{fill:#ECECFF;stroke:#9370DB;stroke-width:1px;}#mermaid-806508145-1792870081388-9e5xdg6 .node polygon{fill:#ECECFF;stroke:#9370DB;stroke-width:1px;}#mermaid-806508145-1792870081388-9e5xdg6 [id$=\"-barbEnd\"]{fill:#333333;}#mermaid-806508145-1792870081388-9e5xdg6 .statediagram-cluster rect{fill:#ECECFF;stroke:#9370DB;stroke-width:1px;}#mermaid-806508145-1792870081388-9e5xdg6 .cluster-label,#mermaid-806508145-1792870081388-9e5xdg6 .nodeLabel{color:#131300;}#mermaid-806508145-1792870081388-9e5xdg6 .statediagram-cluster rect.outer{rx:5px;ry:5px;}#mermaid-806508145-1792870081388-9e5xdg6 .statediagram-state .divider{stroke:#9370DB;}#mermaid-806508145-1792870081388-9e5xdg6 .statediagram-state .title-state{rx:5px;ry:5px;}#mermaid-806508145-1792870081388-9e5xdg6 .statediagram-cluster.statediagram-cluster .inner{fill:white;}#mermaid-806508145-1792870081388-9e5xdg6 .statediagram-cluster.statediagram-cluster-alt .inner{fill:#f0f0f0;}#mermaid-806508145-1792870081388-9e5xdg6 .statediagram-cluster .inner{rx:0;ry:0;}#mermaid-806508145-1792870081388-9e5xdg6 .statediagram-state rect.basic{rx:5px;ry:5px;}#mermaid-806508145-1792870081388-9e5xdg6 .statediagram-state rect.divider{stroke-dasharray:10,10;fill:#f0f0f0;}#mermaid-806508145-1792870081388-9e5xdg6 .note-edge{stroke-dasharray:5;}#mermaid-806508145-1792870081388-9e5xdg6 .statediagram-note rect{fill:#fff5ad;stroke:#aaaa33;stroke-width:1px;rx:0;ry:0;}#mermaid-806508145-1792870081388-9e5xdg6 .statediagram-note rect{fill:#fff5ad;stroke:#aaaa33;stroke-width:1px;rx:0;ry:0;}#mermaid-806508145-1792870081388-9e5xdg6 .statediagram-note text{fill:black;}#mermaid-806508145-1792870081388-9e5xdg6 .statediagram-note .nodeLabel{color:black;}#mermaid-806508145-1792870081388-9e5xdg6 .statediagram .edgeLabel{color:red;}#mermaid-806508145-1792870081388-9e5xdg6 [id$=\"-dependencyStart\"],#mermaid-806508145-1792870081388-9e5xdg6 [id$=\"-dependencyEnd\"]{fill:#333333;stroke:#333333;stroke-width:1;}#mermaid-806508145-1792870081388-9e5xdg6 .statediagramTitleText{text-anchor:middle;font-size:18px;fill:#333;}#mermaid-806508145-1792870081388-9e5xdg6 [data-look=\"neo\"].statediagram-cluster rect{fill:#ECECFF;stroke:#9370DB;stroke-width:1;}#mermaid-806508145-1792870081388-9e5xdg6 [data-look=\"neo\"].statediagram-cluster rect.outer{rx:5px;ry:5px;filter:drop-shadow(1px 2px 2px rgba(185, 185, 185, 1));}#mermaid-806508145-1792870081388-9e5xdg6 .node .neo-node{stroke:#9370DB;}#mermaid-806508145-1792870081388-9e5xdg6 [data-look=\"neo\"].node rect,#mermaid-806508145-1792870081388-9e5xdg6 [data-look=\"neo\"].cluster rect,#mermaid-806508145-1792870081388-9e5xdg6 [data-look=\"neo\"].node polygon{stroke:#9370DB;filter:drop-shadow(1px 2px 2px rgba(185, 185, 185, 1));}#mermaid-806508145-1792870081388-9e5xdg6 [data-look=\"neo\"].swimlane.cluster rect{filter:none;}#mermaid-806508145-1792870081388-9e5xdg6 [data-look=\"neo\"].node path{stroke:#9370DB;stroke-width:1px;}#mermaid-806508145-1792870081388-9e5xdg6 [data-look=\"neo\"].node .outer-path{filter:drop-shadow(1px 2px 2px rgba(185, 185, 185, 1));}#mermaid-806508145-1792870081388-9e5xdg6 [data-look=\"neo\"].node .neo-line path{stroke:#9370DB;filter:none;}#mermaid-806508145-1792870081388-9e5xdg6 [data-look=\"neo\"].node circle{stroke:#9370DB;filter:drop-shadow(1px 2px 2px rgba(185, 185, 185, 1));}#mermaid-806508145-1792870081388-9e5xdg6 [data-look=\"neo\"].node circle .state-start{fill:#000000;}#mermaid-806508145-1792870081388-9e5xdg6 [data-look=\"neo\"].icon-shape .icon{fill:#9370DB;filter:drop-shadow(1px 2px 2px rgba(185, 185, 185, 1));}#mermaid-806508145-1792870081388-9e5xdg6 [data-look=\"neo\"].icon-shape .icon-neo path{stroke:#9370DB;filter:drop-shadow(1px 2px 2px rgba(185, 185, 185, 1));}#mermaid-806508145-1792870081388-9e5xdg6 :root{--mermaid-font-family:monospace;}ReviewApproved",
+        "markdownUnsafeElements": 0,
+        "jobsText": "التقييم / ScreeningGood fit / مناسبScore: 85/100USD 123.45",
+        "jobsStrongCount": 2,
+        "jobsBreaks": 4,
+        "jobsUnsafeElements": 0,
+        "jobsEscapedText": "<img src=\"/fixture-missing\" onerror=\"window.fixtureProbe=1\">",
+        "probe": 0
+      },
+      "pageErrors": [],
+      "blockedRequests": [],
+      "productionRequests": 0
+    },
+    "notes": "Synthetic helper used exact original formatting expression before the security fix; benign marker demonstrates unsafe markup execution only inside the isolated fixture"
+  },
+  "fullSuite": {
+    "passed": 1025,
+    "failed": 3,
+    "total": 1028,
+    "files": 194,
+    "pending": 0,
+    "originalTestFilesUnchanged": 193,
+    "perFileCountsPreserved": true,
+    "criticalCycleFilesPassed": 33,
+    "criticalCycleTestsPassed": 203,
+    "existingFailures": [
+      "server/adminSubscribersReportUi.test.ts",
+      "server/clientKeyActivationNavigation.test.ts",
+      "server/financialAuthorizationUi.test.ts"
+    ],
+    "originalPerFile": [
+      {
+        "file": "server/accountAccessRefunds.test.ts",
+        "beforeTests": 6,
+        "afterTests": 6,
+        "status": "passed",
+        "sha256": "cf279a5aa65dee9b3ed613a6acdecfc7289b626c17eca181e0d4cf1ba730d835"
+      },
+      {
+        "file": "server/accountAccessRoutes.test.ts",
+        "beforeTests": 7,
+        "afterTests": 7,
+        "status": "passed",
+        "sha256": "16999c110540f55466e9dc3e5afa9cc4534b1179c91d39b1f15dc0051859640f"
+      },
+      {
+        "file": "server/adminBrokerReportAndPassword.test.ts",
+        "beforeTests": 6,
+        "afterTests": 6,
+        "status": "passed",
+        "sha256": "01742095ebef41e5ce4bfe65ed201a383d724c40b8806fd8b98505b1ff81bc53"
+      },
+      {
+        "file": "server/adminCommunitySetupLinks.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "e2ea80cc41e0146507eea77f70473c6c9161f89314d3a76243797bd9d59f05fd"
+      },
+      {
+        "file": "server/adminDemoSafetyUi.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "7e83ece4e813c300f7b79800ea5ca07758375421c9cf56f7526500342b648fc0"
+      },
+      {
+        "file": "server/adminEmailLogsPolling.test.ts",
+        "beforeTests": 5,
+        "afterTests": 5,
+        "status": "passed",
+        "sha256": "9beafa5a69f95402c16ec2e33aabfd2e5c8e10291e664a9ae753879a1eddd8f6"
+      },
+      {
+        "file": "server/adminFeatureActorMigration.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "4b4c09184cd240bd35551e622480c50fc023c4bc2120d0358ba9ec1cfd5adb89"
+      },
+      {
+        "file": "server/adminFeatureCatalog.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "d8d9a77eeddfde750520388e983aa11d15c4c93ae256d3ed661dac3dca01d408"
+      },
+      {
+        "file": "server/adminFeatureFlags.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "95eb520a0df12d5fd42f67ac7c246b2a43474f2c46690ef0eb88b4d7817e7f79"
+      },
+      {
+        "file": "server/adminFeatureReadinessUi.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "bb5f68ebe9a110b7c7f51d93078cc6be06f4dd8fe7c663957b4d8c718010d3a2"
+      },
+      {
+        "file": "server/adminLivePackageFeatureCenter.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "2e1a3a66670b2054b40e6ac5c7e2df636fd1a48fc66e7034b38e5a0d11a417f4"
+      },
+      {
+        "file": "server/adminLivePackageJourneyPreview.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "8baa403a8c4cd644897ea0fbdd01ea61d02cab1e0b952b4f09f9173139b817f3"
+      },
+      {
+        "file": "server/adminLivePackageLoading.test.ts",
+        "beforeTests": 1,
+        "afterTests": 1,
+        "status": "passed",
+        "sha256": "2e3d9e08c3adc27d64094d8c58b70375cc0dce9b771c7c6718dcd00299e7de48"
+      },
+      {
+        "file": "server/adminNotificationBccEmail.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "5f2220d3c2cf5da216ff9bcfab1793e53fb844ef78b002ae064c1d11af2d45fb"
+      },
+      {
+        "file": "server/adminNotificationsEmail.test.ts",
+        "beforeTests": 5,
+        "afterTests": 5,
+        "status": "passed",
+        "sha256": "3c8b4d5ae1e13fa3a4e1b0a343ca204ef4999de9cadc1ec9d9db523a80150cc2"
+      },
+      {
+        "file": "server/adminPointsAtomicAdjustment.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "36c78219d7a5424e0e368f4b7c2bcdbb54748f53e961673afbc07e8e06902687"
+      },
+      {
+        "file": "server/adminPointsSafetyUi.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "892859322b0e6f721b3388af42cc0bdcf768a1df368afe54ed6e51068d80dca9"
+      },
+      {
+        "file": "server/adminRecommendationFreezeControls.test.ts",
+        "beforeTests": 1,
+        "afterTests": 1,
+        "status": "passed",
+        "sha256": "61ff3d18d2a0c219c19b77507f96ff48a0c6b9f1619c0dd19fa97f24af02610e"
+      },
+      {
+        "file": "server/adminRecommendationOpenThreadsPolling.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "c42ce16d2830f6d9b79e34885498f3a8a637afbb501d8f204160d517330baf8d"
+      },
+      {
+        "file": "server/adminRecommendationSummaryPolling.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "347e254ac6af32e69e10e958c64acc4ad570a0ccb556c864ec1899ad435d0177"
+      },
+      {
+        "file": "server/adminSubscribersReportUi.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "failed",
+        "sha256": "a5f20e6ae346aaa849aec5c6e15543fae8d5b476ddda5a0955e1f3e765f7f374"
+      },
+      {
+        "file": "server/adminSupportCopy.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "7e35ce217d07b2bdec55c43bf5489d58b880521d13f0361aefd602a7262c8653"
+      },
+      {
+        "file": "server/adminSupportNavigation.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "410614c7fd473343305c621225b76b4f5ce6b504a1de05b3d5fe811ed731f955"
+      },
+      {
+        "file": "server/adminSurveyQuestionBuilderUi.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "33a5d661786f7ec87a960a16a7ec33524e2eb552ed8cb9e629777c37ea82013e"
+      },
+      {
+        "file": "server/analyticsIntegrationUi.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "c29c14cf35314b8d6acdb4087880749a7aa70ceadd10319365ec281e9eb3427b"
+      },
+      {
+        "file": "server/analyticsTracking.test.ts",
+        "beforeTests": 6,
+        "afterTests": 6,
+        "status": "passed",
+        "sha256": "dfdfe9c6106019dfabec8332f1905d4bfe861f6c5f39750efbe810c6918d962e"
+      },
+      {
+        "file": "server/articleContentFormatting.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "9a92d78e44e5e2b55af1fc588184cedb65ec109723b40460ea2e09dd04055cc7"
+      },
+      {
+        "file": "server/articleLanguageAvailability.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "38b469ed0c9cfad13e14769b8a890b76ce40100e41c43b6bd77a03d21fcc6b40"
+      },
+      {
+        "file": "server/axiosHttpSecurity.test.ts",
+        "beforeTests": 14,
+        "afterTests": 14,
+        "status": "passed",
+        "sha256": "9419ef1717b894d9488c070911b1104b319ff99efdcd9d489f0655789c52ec49"
+      },
+      {
+        "file": "server/brokerFreezeAndSkipRoutes.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "20268ebb15f59a0c74afba687ee044b197d6c335822f370e4701abff70cc0566"
+      },
+      {
+        "file": "server/bugReports.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "0b235e830a6a5d803d37b5e4de5052b3a963c4f9479a917492a9a501ef141497"
+      },
+      {
+        "file": "server/checkoutAuthenticationGate.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "bc8c3b9c9c43ef7d5268bda4154a4688732499a145b2ed78bb065524285c9089"
+      },
+      {
+        "file": "server/cinematicPublicLinkMarkup.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "a3c06f6920a9de61c44e0918f31f9e61355a2c89cebabc3aac0d71f74bd959c3"
+      },
+      {
+        "file": "server/clientKeyActivationNavigation.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "failed",
+        "sha256": "822e42716417983ab69401b6d3645f878e37a803f22d7ec0800bf9afc3f89fd2"
+      },
+      {
+        "file": "server/clientRecommendationOpenThreadsPolling.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "348b155d4cd5bf1f65c53c53249cfa43f34b7fef1d5c966efda3893a6729fc93"
+      },
+      {
+        "file": "server/clientSeoAlternates.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "8b72e403c971063c55695b5994f05feeacaca27b022007aab3e90fc0f9d1046d"
+      },
+      {
+        "file": "server/courseMetadataCaching.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "16b97f91fe783eb73909cc271aa9cc7ec65ad3635cce220177d3c3436f21da86"
+      },
+      {
+        "file": "server/d1FreePlanGuardrailScript.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "3fb53ad408c1d9145a1a9893ac3c7655a6ac97e23b5e6f7c85fbb618b68d8649"
+      },
+      {
+        "file": "server/d1HotPathIndexesMigration.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "78d4a394e6999b34c11c4e48af0f03498867a6bb350f7e697014ec820828d621"
+      },
+      {
+        "file": "server/d1RemainingHotPaths.test.ts",
+        "beforeTests": 6,
+        "afterTests": 6,
+        "status": "passed",
+        "sha256": "8aeb251b72f206eb1b39a711c704d522a2232f3b820574a23d119ab4f2aa1254"
+      },
+      {
+        "file": "server/databaseErrors.test.ts",
+        "beforeTests": 5,
+        "afterTests": 5,
+        "status": "passed",
+        "sha256": "f8ccfd24de7c35bfb3d38f5cc3f5747b51cfe60c249225ae7e795903f0e326c2"
+      },
+      {
+        "file": "server/devEnvironmentBootstrap.test.ts",
+        "beforeTests": 1,
+        "afterTests": 1,
+        "status": "passed",
+        "sha256": "767289ea8493e1dc1f4faefbcc4be100cd8dda5ebdf280981c92cac3e008377b"
+      },
+      {
+        "file": "server/devServerHost.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "e21598151522918577760891023767466003a15b760cb2471f6e48aa07224af4"
+      },
+      {
+        "file": "server/drizzleD1Security.test.ts",
+        "beforeTests": 9,
+        "afterTests": 9,
+        "status": "passed",
+        "sha256": "70e9d505e19a935d8210d69a40253dac50e90c91a442529276559d99d42fc61c"
+      },
+      {
+        "file": "server/emailBulkDeliveryControl.test.ts",
+        "beforeTests": 5,
+        "afterTests": 5,
+        "status": "passed",
+        "sha256": "5c319c7e729cddb858a80ae82f4da4e5d4bf120fb85cdd8c366a052670bf87a2"
+      },
+      {
+        "file": "server/emailDeliveryCategories.test.ts",
+        "beforeTests": 16,
+        "afterTests": 16,
+        "status": "passed",
+        "sha256": "1e3448e3aae63a623e66d1be1d1c1abe9e3feb22917b3a45fb610b5b5d03b8fc"
+      },
+      {
+        "file": "server/emailDeliveryClassLanes.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "d31205badfa243e67eb5ee689ef0af89c0b9f7a88837d0d4268411a0f94b6e7c"
+      },
+      {
+        "file": "server/emailDeliveryLifecycle.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "009e44764fed5a587e4d5eb61c9b73e8cb9d9804ed126ab0fad8842f73df22db"
+      },
+      {
+        "file": "server/emailMonitoringHotPathIndexes.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "2907397e2f0bdaa1fe7a7bd3d314c27fbf4859b33a2fc7ddbec00956d575f087"
+      },
+      {
+        "file": "server/emailOutboxHealthQuery.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "45a6f8dd9202677a30db7ab1caa961f7294ce2b77d6bcac0e015c21353575be9"
+      },
+      {
+        "file": "server/emailOutboxScheduledHealth.test.ts",
+        "beforeTests": 11,
+        "afterTests": 11,
+        "status": "passed",
+        "sha256": "bdb7797ab8b7489c745a0f5f4eeb05b849232332f23ac7fb6bc5fbf62e710591"
+      },
+      {
+        "file": "server/emailOutboxService.test.ts",
+        "beforeTests": 7,
+        "afterTests": 7,
+        "status": "passed",
+        "sha256": "be7f5577f62670be3e3ba3b02d6af802f718e40ffa7ad514e094a5656a0ec9f7"
+      },
+      {
+        "file": "server/emailProviderDeliveryMigration.test.ts",
+        "beforeTests": 1,
+        "afterTests": 1,
+        "status": "passed",
+        "sha256": "28da38a60743d09f0153b50daf9d394e27d7f924296b806700e10ffd3bc4a489"
+      },
+      {
+        "file": "server/emailValidation.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "4479fc627648d3e1d4f8e36d9a0b1e2631eedfbb7187e84a3a68198755ba9fb7"
+      },
+      {
+        "file": "server/enrollmentAuthorization.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "98b50c8b280822a78bfbfe008f678c84fe90ee13e38155ee8c6b60a4bbbf9dbb"
+      },
+      {
+        "file": "server/episodeProgressWriteThrottle.test.ts",
+        "beforeTests": 6,
+        "afterTests": 6,
+        "status": "passed",
+        "sha256": "6951dec6f0e31aacf7dd8c9b9a86bda7ef922cdebb2f3e9f15d4e364bd6111b2"
+      },
+      {
+        "file": "server/expressProxySecurity.test.ts",
+        "beforeTests": 15,
+        "afterTests": 15,
+        "status": "passed",
+        "sha256": "e9339a2875b4724f561a72a325032ef129191e6cef61e71edd776c2221a58614"
+      },
+      {
+        "file": "server/featureTaskBarMapping.test.ts",
+        "beforeTests": 7,
+        "afterTests": 7,
+        "status": "passed",
+        "sha256": "6037bc4edf17ddf9770c884ade5c3e015ad948f518887931170691e3c3acabd2"
+      },
+      {
+        "file": "server/financialAuthorization.test.ts",
+        "beforeTests": 7,
+        "afterTests": 7,
+        "status": "passed",
+        "sha256": "5b7f5de8056f00c53a36b17a8ac36c0e44828be3439292e4aa6eb0c03b3a4bb9"
+      },
+      {
+        "file": "server/financialAuthorizationDb.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "79eb6880d3e12ba5716c7cb7318a595096f595851fcf894a7afc003b6d1fb0b6"
+      },
+      {
+        "file": "server/financialAuthorizationUi.test.ts",
+        "beforeTests": 7,
+        "afterTests": 7,
+        "status": "failed",
+        "sha256": "881a5d466c1ebbbb0ea21c9d286d42052ac9b18297c2410f910e8c2fa93c3074"
+      },
+      {
+        "file": "server/financialControls.test.ts",
+        "beforeTests": 5,
+        "afterTests": 5,
+        "status": "passed",
+        "sha256": "cdb8ddd38e2770b9e842abe50d525b8749d5afaf0fbd5803435e77c887d41742"
+      },
+      {
+        "file": "server/financialControlsRoutes.test.ts",
+        "beforeTests": 5,
+        "afterTests": 5,
+        "status": "passed",
+        "sha256": "66e74c5231f109daabb1b3604858a1926a4922e6f94d11a984ba7376a4fb9b3b"
+      },
+      {
+        "file": "server/financialExpenseRoutes.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "b19c14439c2a579c7003a3b6f31d80e09c1842366ca00a493a7367618d66c5cd"
+      },
+      {
+        "file": "server/financialExpenseWorkflow.test.ts",
+        "beforeTests": 5,
+        "afterTests": 5,
+        "status": "passed",
+        "sha256": "e4d09055060dc1b71a35089d66d3d58eaf5d7e405ebf364ed5ca906d35c16153"
+      },
+      {
+        "file": "server/financialManagementFoundationMigration.test.ts",
+        "beforeTests": 6,
+        "afterTests": 6,
+        "status": "passed",
+        "sha256": "e83ba8f3de1fa1a2c58944682ed121acc9610e7e88146cd8b57bbb9da31d9722"
+      },
+      {
+        "file": "server/financialPaymentConfirmation.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "a67901f4adedbe83155f97d52b486660b039fe72dd907326f428a31ea2e0bda6"
+      },
+      {
+        "file": "server/financialReconciliation.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "d9f87bbb72a6d79ec61f2270fb758fdc476b9ec68fb1e8b2094f9c1ee36e4c83"
+      },
+      {
+        "file": "server/financialReconciliationRoutes.test.ts",
+        "beforeTests": 5,
+        "afterTests": 5,
+        "status": "passed",
+        "sha256": "ce9c15f862346d7950756d0fac40c5677a534f7bcbf5b924bb17ff9bd3a2f457"
+      },
+      {
+        "file": "server/financialReporting.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "439f8fc1ab6c0a5b3220a79e3ae13212682c45ac7f7ec39d9830bc1f4f483417"
+      },
+      {
+        "file": "server/financialReportingRoutes.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "bfa399fdec0ca4c93efbd682b95c8f5ef1772288a5c2386beecac75acc06628f"
+      },
+      {
+        "file": "server/financialTransactionPurposeAndLegacyMigration.test.ts",
+        "beforeTests": 18,
+        "afterTests": 18,
+        "status": "passed",
+        "sha256": "786de9a4d7fbbbc603c418d766a5e1217e40b3e0501513e07ecbc32e61a2be2f"
+      },
+      {
+        "file": "server/idleTimeoutActivity.test.ts",
+        "beforeTests": 7,
+        "afterTests": 7,
+        "status": "passed",
+        "sha256": "0a972a6d46982ff8794e63ac67e5fbd6b2614389d338631951238959848cc0a9"
+      },
+      {
+        "file": "server/inactivityLifecycle.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "be19e23245bf7ccdac7372bac4f24a430be51ced50223a4ee4354d3f33e89efa"
+      },
+      {
+        "file": "server/legacyMigrationAndRenewalRoutes.test.ts",
+        "beforeTests": 5,
+        "afterTests": 5,
+        "status": "passed",
+        "sha256": "ec5f5a4f49036ebba74848bfae23d5b33327db4d7d8c38bc661c3b31aa6d4749"
+      },
+      {
+        "file": "server/lexaiAccess.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "ca97928d1a717200beb992c5b4a7acee86efcdfae57eb515eb46d66ca28253f2"
+      },
+      {
+        "file": "server/lexaiCourseHotPathIndexes.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "7a75ef89bfea06f02970b347eb2e5d9712fd7e53f23f299a0ebe6778ddc12a44"
+      },
+      {
+        "file": "server/livePackageAvailability.test.ts",
+        "beforeTests": 6,
+        "afterTests": 6,
+        "status": "passed",
+        "sha256": "708a8ec0eadb4f930ab9ac0f06ed10cf7e756455b42cc1c1a8ce183e4c04f2aa"
+      },
+      {
+        "file": "server/livePackageEnrollmentCutoff.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "b8c8aed7ae1e217600908e952fdc2777a0b5eb274f8553a545f901dda6eba495"
+      },
+      {
+        "file": "server/livePackageFoundation.test.ts",
+        "beforeTests": 9,
+        "afterTests": 9,
+        "status": "passed",
+        "sha256": "3809ff07953cfde4fe486348e5ce37c88c76a61f0575fdb935df958709a15f6a"
+      },
+      {
+        "file": "server/livePackageHistoricalPricingQuery.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "5a58c4b233ab3c0017f9dc80256250c4d5ff0ca289f695b6cad1e920b2209b60"
+      },
+      {
+        "file": "server/livePackageOwnerReview.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "64b6926ccfa2f74a01b1ee1e637f177e4d3702b138730ae5d5874fe1f8f3a4f0"
+      },
+      {
+        "file": "server/livePackagePhase2Contracts.test.ts",
+        "beforeTests": 8,
+        "afterTests": 8,
+        "status": "passed",
+        "sha256": "f17e0aaeff2f5344b2fcd5554812f5ea710f425aa852dac769ce3011616bf648"
+      },
+      {
+        "file": "server/livePackagePhaseA.test.ts",
+        "beforeTests": 16,
+        "afterTests": 16,
+        "status": "passed",
+        "sha256": "af960efb32c463028ed63ce54e9cf7826cb3baad8f642c21923ca5b14c39a920"
+      },
+      {
+        "file": "server/livePackagePublicCopy.test.ts",
+        "beforeTests": 6,
+        "afterTests": 6,
+        "status": "passed",
+        "sha256": "180bbd4c24d4f7cc368144555852549bb8b569eb44cd67194b710e2cb7970486"
+      },
+      {
+        "file": "server/livePackageRecordingCors.test.ts",
+        "beforeTests": 8,
+        "afterTests": 8,
+        "status": "passed",
+        "sha256": "8d3d5026c8f1eaa06d4d49ba97f2bfaf429993966e00e6986c6449cb064bf6af"
+      },
+      {
+        "file": "server/localD1Batch.test.ts",
+        "beforeTests": 1,
+        "afterTests": 1,
+        "status": "passed",
+        "sha256": "496cd00c5d37d8e080a2baebd74cf3e22ea330ab7212c35de0173726e8084adf"
+      },
+      {
+        "file": "server/loyaltyRewardsIntegrityMigration.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "0d2ee53d64f5ecc92c9631841648e8b0e03e307cb52d4509eae302ea9a552821"
+      },
+      {
+        "file": "server/loyaltyRewardsMigration.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "235be2f2549ad4fba483b4905790aa68e406e1076049c4558b38f5b0553f9e4d"
+      },
+      {
+        "file": "server/loyaltyRewardsRoutes.test.ts",
+        "beforeTests": 18,
+        "afterTests": 18,
+        "status": "passed",
+        "sha256": "b2ed72d98d986aab6f057ce2bd0a9459d91fb5b7cb74f77a9aead1e47d705db3"
+      },
+      {
+        "file": "server/loyaltyRewardsService.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "679f8616d36134f47e632183de5d920f221cd23686dd2f3dc6c5ddc1bfe586ba"
+      },
+      {
+        "file": "server/manualKeyActivationPolicyMigration.test.ts",
+        "beforeTests": 1,
+        "afterTests": 1,
+        "status": "passed",
+        "sha256": "7bfeb05704ba87d15ddbbc4dac657adaea4284db8719bd87cbcfb208a6c6821d"
+      },
+      {
+        "file": "server/markEpisodeComplete.test.ts",
+        "beforeTests": 12,
+        "afterTests": 12,
+        "status": "passed",
+        "sha256": "eea3909b640b8af553b59ac4683ba6b34874b0c722c32d3ce8ac6230eca63054"
+      },
+      {
+        "file": "server/openaiUsage.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "ed8a17537dc61a58b1bddf9296a4da466cdb36bc91e82858a4b9b0dc95d98100"
+      },
+      {
+        "file": "server/orderLinkedActivation.test.ts",
+        "beforeTests": 9,
+        "afterTests": 9,
+        "status": "passed",
+        "sha256": "5df016a75d24a57b0bebff82c251ec8dba795d30d8b4d91874fb043cdeb0d8f9"
+      },
+      {
+        "file": "server/orderManagementAccess.test.ts",
+        "beforeTests": 5,
+        "afterTests": 5,
+        "status": "passed",
+        "sha256": "b66e7bf1633d07eab7837a0d1ad0f325a1aa00da5428fedbc5e2278f9114e6f4"
+      },
+      {
+        "file": "server/orderManagementSearch.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "41f5565dfe4bfbd076c0cb450649df244e30ad8c963bf4fe9221b40e90fb8fec"
+      },
+      {
+        "file": "server/packageActivationRoutes.test.ts",
+        "beforeTests": 20,
+        "afterTests": 20,
+        "status": "passed",
+        "sha256": "56a756c83bc5e4183b2fc4fd8a11b3c682512006719566acd8bef4473a75f195"
+      },
+      {
+        "file": "server/packageKeyConfigurationMigration.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "5db91014b1fc6b9f3fd008d3e187af0495e3a0663bcc515fbc9def106a37332b"
+      },
+      {
+        "file": "server/packageKeyDuplicatePreventionMigration.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "910a3a8451ff59619570d01a1d4da7052f697aa27e35f57dcd895fd3ff199baf"
+      },
+      {
+        "file": "server/packageKeyLifecycle.test.ts",
+        "beforeTests": 8,
+        "afterTests": 8,
+        "status": "passed",
+        "sha256": "d8ac1cc439459d5c784ba1e0fb71d3c59f14e7e25c2d67bc10bbd57f54f38781"
+      },
+      {
+        "file": "server/packageKeyPricing.test.ts",
+        "beforeTests": 10,
+        "afterTests": 10,
+        "status": "passed",
+        "sha256": "5965dec76f7ba1d22a1f52d3778df073e9ee9d02d8cb8497fa5a55ec9fc98e40"
+      },
+      {
+        "file": "server/packageKeyRenewalEligibility.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "4cabfe2cf0091a0e599b75607367bf0705a9432086fc74f48642025e8329698f"
+      },
+      {
+        "file": "server/packageUpgrade.test.ts",
+        "beforeTests": 11,
+        "afterTests": 11,
+        "status": "passed",
+        "sha256": "d2175b7f564e1563b228faf3308f98178602b8dd6bb91034ada32bb97cbf7e00"
+      },
+      {
+        "file": "server/packageUpgradeRoutes.test.ts",
+        "beforeTests": 8,
+        "afterTests": 8,
+        "status": "passed",
+        "sha256": "7c1a1056a663140cff2b03e2c6d54079e4720b46fc9e43b2fe6f0b6efb49fc6e"
+      },
+      {
+        "file": "server/paymentProofUpload.test.ts",
+        "beforeTests": 10,
+        "afterTests": 10,
+        "status": "passed",
+        "sha256": "82d1884935dd255353c491fa9fee8165b117fb86abc04974459918a9d98ce35d"
+      },
+      {
+        "file": "server/profilePasswordRecovery.test.ts",
+        "beforeTests": 5,
+        "afterTests": 5,
+        "status": "passed",
+        "sha256": "f491c83b860f8f20f58641540c163f36476b1f5f7c58a4f42e5ccd612579afbd"
+      },
+      {
+        "file": "server/publicCatalogCaching.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "ce13430cd55588b25193d0c9e4805bc3845e48a55ba097458bfd2af97349d7a3"
+      },
+      {
+        "file": "server/r2StorageCompatibility.test.ts",
+        "beforeTests": 7,
+        "afterTests": 7,
+        "status": "passed",
+        "sha256": "514e5a876138ea3a263ffc4ce0c7cf38220ce6c59705f74009711aabb6e80df9"
+      },
+      {
+        "file": "server/rawDataRetentionMaintenance.test.ts",
+        "beforeTests": 7,
+        "afterTests": 7,
+        "status": "passed",
+        "sha256": "a5c2ea536dc6fd59848add374de4cede8404c82df74b1d2efab1a766f8c88ea0"
+      },
+      {
+        "file": "server/recommendationBccEmail.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "80ae47c3219cc6fdccf30dfb6e6f5f6ddd1add19dba1ca43252688b0940e7535"
+      },
+      {
+        "file": "server/recommendationComplimentaryGrant.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "2586baebbef65b628d781b58e737a44542cd1bbc52663f8c6181a14bf55d25ef"
+      },
+      {
+        "file": "server/recommendationCumulativeReport.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "e8e153525ac676259cb33f6ab2a27843994b32368bd8d403b0237e8d75206dba"
+      },
+      {
+        "file": "server/recommendationDeliveryService.test.ts",
+        "beforeTests": 8,
+        "afterTests": 8,
+        "status": "passed",
+        "sha256": "627e5e0990f9cf486bc5ddbf150d14fc9c0a26a055da452abd7b090fd3744a4d"
+      },
+      {
+        "file": "server/recommendationEmailTemplate.test.ts",
+        "beforeTests": 1,
+        "afterTests": 1,
+        "status": "passed",
+        "sha256": "805efd6b9f912e9d70d6cc8ea15f2c160bf29765bb32c74ecce46746315fe1f2"
+      },
+      {
+        "file": "server/recommendationManagerIsolationContracts.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "6a6b369ec1362366f5be2a431761eb3ac2e3b36699f3b4a8c6cde18397f0a054"
+      },
+      {
+        "file": "server/recommendationMessageThreadIndexMigration.test.ts",
+        "beforeTests": 1,
+        "afterTests": 1,
+        "status": "passed",
+        "sha256": "6ffdf2e80fbb74372bdd3f3e3661fef55410fbf8367e70d450729f221b9f7c11"
+      },
+      {
+        "file": "server/recommendationMonthlyReportParserGuard.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "4e3f26074d28e2d18f58684a4049fca171ea2b282c37c7abf4597854919f6593"
+      },
+      {
+        "file": "server/recommendationParser.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "8d108dac8fd66c5b32b2cbf8ae41e89a5f7fe1309dd414ed8c60d2c4aea6bde5"
+      },
+      {
+        "file": "server/recommendationsWorkflow.test.ts",
+        "beforeTests": 18,
+        "afterTests": 18,
+        "status": "passed",
+        "sha256": "9e289d19efcd90a5d766a8d8e8e79e636cd5ddf1490467e9cd23f639af4fbf53"
+      },
+      {
+        "file": "server/recommendationThreadMute.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "338dc560d26c59ac5839a1ae3692b75c06e959c59cb6df322651519831a34e53"
+      },
+      {
+        "file": "server/recommendationThreadSummaryQuery.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "0f2d81b48dc00c1e7a270e41552c94f746a3d2955757a28d36ee34ce8ce2c273"
+      },
+      {
+        "file": "server/seoArticleRebuildReadiness.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "1a4bdf660509add04558830fd391f878e23323e0d03da1f7b1bee711219625b3"
+      },
+      {
+        "file": "server/seoContentQuality.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "5ea2ad7b9fc7e111ffeffec580f37c8566d3027918037f38f98f280fb622bde1"
+      },
+      {
+        "file": "server/seoOwnerIntakeMigration.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "e4c6578d73e65b7b9dcfa5f54ef10779be1a30794a2e5b5e6b795e6351e008fc"
+      },
+      {
+        "file": "server/seoOwnerIntakeRoutes.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "c5d48de45d42a1d6753a2cee6202b278099b976bc4651b8f0892b69330e9e220"
+      },
+      {
+        "file": "server/seoOwnerIntakeUi.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "3424bae247fd581c3f4a433a128e5a2b585340ab39fac38ea0a4d18227700985"
+      },
+      {
+        "file": "server/sessionCookieOptions.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "699428dd83a066eaca172cecf83b44cc126f1d968e191d71d7a62b4ddb88e72d"
+      },
+      {
+        "file": "server/staffMonitoring.test.ts",
+        "beforeTests": 6,
+        "afterTests": 6,
+        "status": "passed",
+        "sha256": "7e4dd03ed823bbd39614243bf74fd5a85f48f7fa1bc59165735103d4fcd8ec62"
+      },
+      {
+        "file": "server/staffNotificationArchiveAutomation.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "17f4dabe94bb9037aa6015eef1f34d60f9034c3694957845c198f1572b98dded"
+      },
+      {
+        "file": "server/staffNotificationArchiveDashboard.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "cb80b663c659954fcceb5237ae8dcb34f61230ad2e82b6686ba930ded2df1205"
+      },
+      {
+        "file": "server/staffNotificationArchiveMigrations.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "ae28b2a8a12bb7909ad73b9175eaae8063b203e3166f073f7f99d6cd09781a6f"
+      },
+      {
+        "file": "server/staffNotificationArchiveQuery.test.ts",
+        "beforeTests": 5,
+        "afterTests": 5,
+        "status": "passed",
+        "sha256": "30849ecf24502e4961d067cbef6bf36d01d3af2b6f556ded9f11d1ad4e5049df"
+      },
+      {
+        "file": "server/staffNotificationBadgeDashboard.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "23512669c2757492bbfed8ce82ee001cf4a0965cd9bec1a9b11dd59ff67e5956"
+      },
+      {
+        "file": "server/staffNotificationBadgeQuery.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "222890c1cebef463a85fdab0d0b5a606bb9e94cc177c6becf0498a871a0c91c6"
+      },
+      {
+        "file": "server/staffNotificationBadgeRoutes.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "1901035e55d948f765fbbf4873bc5a16aec819dc27dbe5c4ecb5ae8a38a8427d"
+      },
+      {
+        "file": "server/staffNotificationCoalescing.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "f0804e404e07c2baf7746196416d0920dd2da6b1fc455a231e720bf30958c6b9"
+      },
+      {
+        "file": "server/staffPerformanceArabicUi.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "0bd0b770549b2c3a9a18ea08e730643be797baac76b3fc60fd5d85f5a465b5ee"
+      },
+      {
+        "file": "server/staffPerformanceCsv.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "53d7fa6809eaa1058fce2fc0688c36368785610b34fcefc21c26b5b1c65c3d5b"
+      },
+      {
+        "file": "server/staffPerformanceMigration.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "972ba8eecaae3c75f65a9af6898a1b9f212e80985413a9743f97f7760ea51645"
+      },
+      {
+        "file": "server/staffPerformanceRoutes.test.ts",
+        "beforeTests": 22,
+        "afterTests": 22,
+        "status": "passed",
+        "sha256": "e8d4590c18dfb675e23c695dfbcff1af8d511eec6ec5b7aa0d3713fe6d6e4f9b"
+      },
+      {
+        "file": "server/staffPerformanceService.test.ts",
+        "beforeTests": 8,
+        "afterTests": 8,
+        "status": "passed",
+        "sha256": "c184f1f265c694ede6bf0df514795fa110c8fb791e3ce48a9deebe43300ff5dd"
+      },
+      {
+        "file": "server/staffTrainingNavigation.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "90c39affc7661e8ab58c2babcd64447f2cfe7bab5b4133dc398376ce96f79362"
+      },
+      {
+        "file": "server/studentCommunityAccessMigration.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "3a59b3234f10ab382d990e94686eccfa9d4d3a59a6186ce646a78479a1afd62a"
+      },
+      {
+        "file": "server/studentCommunityClientEmails.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "e412db4bc492fe2c268897045b0aad538cf55aa7ac59dd911a31a919efc6370e"
+      },
+      {
+        "file": "server/studentCommunityEmailNotificationPolicy.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "16b96713655d83a02d4cc09062e2a1f19e8af924253ba3875a913e889ac780dd"
+      },
+      {
+        "file": "server/studentCommunityMigration.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "79e0fd94783655b2727a755e20f5a347bbc547fac85ace4d46114839474819de"
+      },
+      {
+        "file": "server/studentCommunityModerationMigration.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "a705c33296a27511db8ea49e303700b880dac9d95ed997d44b8e57512b74be39"
+      },
+      {
+        "file": "server/studentCommunityModerationService.test.ts",
+        "beforeTests": 7,
+        "afterTests": 7,
+        "status": "passed",
+        "sha256": "c31af99d6af5d5fca4fa10482def7df18330c136808d8089cc3d35ebb9092c4a"
+      },
+      {
+        "file": "server/studentCommunityProhibitedLanguageMigration.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "975d84e5efe124e167b5fe3ebe4b9d0b106d4ce014cde4054ae1be4e80fc4dcc"
+      },
+      {
+        "file": "server/studentCommunityRoutes.test.ts",
+        "beforeTests": 27,
+        "afterTests": 27,
+        "status": "passed",
+        "sha256": "084820c5773964272446e4f9e1226470f1fd46b4fd3a0a04eba48d33a5ed33ea"
+      },
+      {
+        "file": "server/studentCommunityService.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "9711f44dd2398c0c71f50232b724c867c374a0e50856f4c311a7f87ba699954a"
+      },
+      {
+        "file": "server/studentDocumentAccess.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "1a8b0d6096a254c4c450e616312044f039ef02e70fdad54e619251b03e28f4c3"
+      },
+      {
+        "file": "server/studentJobEligibilityMigration.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "158cc3a7bf0001320683c373f233c5c36e55cd51d67e74afb0e54b8273e3ad3c"
+      },
+      {
+        "file": "server/studentJobEligibilityRoutes.test.ts",
+        "beforeTests": 17,
+        "afterTests": 17,
+        "status": "passed",
+        "sha256": "31a0fb0e77595aee9adfff7a1eb933d5188c2c1845f011a6bbd2ed3eefdb46ae"
+      },
+      {
+        "file": "server/studentJobEligibilityService.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "c1e71fc01b96a7e841b6e69adec00dd1633cbe756011ccc807c2817269c9f389"
+      },
+      {
+        "file": "server/studentRecommendationAudience.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "66ef5e0f8c8f91538ea342b3ddde6bd539e4ff66531b20b734965a448595f097"
+      },
+      {
+        "file": "server/studentRecommendationAudienceRoutes.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "3455507c38ca3fceb4c13a9f8cf73fb95df0649f022c00cde5a962cc46817662"
+      },
+      {
+        "file": "server/studentSurveyNotificationSqlContract.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "1f5220b5ab9eb7cd5f1fa199a61e8bda97862cf961bd385430f073d4843b7d7b"
+      },
+      {
+        "file": "server/studentSurveyNotificationsService.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "d257ffc5089b83c6d7f8134a75283fb15664cc516789bbb60cb8f9416d0dc2a5"
+      },
+      {
+        "file": "server/studentSurveyQuestionOptions.test.ts",
+        "beforeTests": 5,
+        "afterTests": 5,
+        "status": "passed",
+        "sha256": "5102b341b8e2e9da5a9d5c1334dba8e7952bdca3b994daaa6c66dd1f75ce9a70"
+      },
+      {
+        "file": "server/studentSurveyReferenceUi.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "a6ff213e4dc08df0f49d6bc7532e0205a8ebfbf564ce0485aac8694f0abc4acc"
+      },
+      {
+        "file": "server/studentSurveysMigration.test.ts",
+        "beforeTests": 7,
+        "afterTests": 7,
+        "status": "passed",
+        "sha256": "6166bea78ffd7e9870b64c5426c0681d637440eb7e063d9db2f6e45ee256646a"
+      },
+      {
+        "file": "server/studentSurveysRoutes.test.ts",
+        "beforeTests": 55,
+        "afterTests": 55,
+        "status": "passed",
+        "sha256": "7ad24326f9e1a5cee972c11af0f3f81030ed11b4b31f8d9e98ad28f083cc231a"
+      },
+      {
+        "file": "server/studentSurveysService.test.ts",
+        "beforeTests": 12,
+        "afterTests": 12,
+        "status": "passed",
+        "sha256": "2c88652b03d44326dd09f8c6da98042cff7a2e8fb7ac54cdee3ff8db1dc0980a"
+      },
+      {
+        "file": "server/subscriptionExpiryDigest.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "6fb6571d59be155b2d208a3642c284556afae79c006f5ce716429a40978690a0"
+      },
+      {
+        "file": "server/supportAiCurrentFeatures.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "5bd48f2c52fcfaab43e0274e221365802eca24019cbad740d6d25cd5d5cef9b1"
+      },
+      {
+        "file": "server/supportChatCopy.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "98eadae440322431c298232584f7c60596ce570eab735800537a00e926f89c0d"
+      },
+      {
+        "file": "server/supportChatNotifications.test.ts",
+        "beforeTests": 20,
+        "afterTests": 20,
+        "status": "passed",
+        "sha256": "8a552c3672523a2a654435f567aa201a6e3855be0bf342d4ecfbeaae12ee6d62"
+      },
+      {
+        "file": "server/supportChatStudentUi.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "a0ed321f88a6b271ae1229cd856714d843069430866307e8ecf22199e3edd9a4"
+      },
+      {
+        "file": "server/supportConversationList.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "b4eef17bfc689a8c4141d640532a9201061229fe7b6f8953e9df0aa687335a8c"
+      },
+      {
+        "file": "server/supportEmailCooldownPolicy.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "0509456cd8863b8de083a2af195bb6160fcfd833123f4212d8483d2d625fdace"
+      },
+      {
+        "file": "server/supportInboxSearchSafeguards.test.ts",
+        "beforeTests": 5,
+        "afterTests": 5,
+        "status": "passed",
+        "sha256": "6192bcc0cc7bd4157f2c1f65d3b4972c1aedf81a536fba1c369e73f3bf732dcc"
+      },
+      {
+        "file": "server/supportMediaUpload.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "b1367759d26c532a36871687745ea1c61b2d96e48e89d1a94482a868dc06c268"
+      },
+      {
+        "file": "server/supportMessageModeration.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "22b6c84106faaf540c580fee5993796f8ea552714de4473950266b052d1b5905"
+      },
+      {
+        "file": "server/supportPerformanceRoutes.test.ts",
+        "beforeTests": 6,
+        "afterTests": 6,
+        "status": "passed",
+        "sha256": "f10782ce1832bb734c4b781fc0b2aed991d3fbec9c449c2d2d85a3e4d0fb154e"
+      },
+      {
+        "file": "server/supportReplyEmail.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "d4a82a5a57cfbf899f04b42cb3726b8a8f6c93acde435b5f3c8c7d3b34d7a6a8"
+      },
+      {
+        "file": "server/supportSenderLabel.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "cc53de7e90390b4b9e833aa78106f2c619cc9ed8ed99c832c35e333122fe668e"
+      },
+      {
+        "file": "server/termsStatusShortCircuit.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "aeee691bf25d079b089a0c86059d894d29b70e7337b37087bb3ad2f4a04638be"
+      },
+      {
+        "file": "server/timedServiceAccessSummary.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "579791946b61f0e6c1ec434636a27850318875b444a05cb900a73b13243ad9c6"
+      },
+      {
+        "file": "server/timedServiceActivation.test.ts",
+        "beforeTests": 12,
+        "afterTests": 12,
+        "status": "passed",
+        "sha256": "4787b9c7f206f41fe4fae11508580aaf8655300aad4191b9db9724cc0a994de4"
+      },
+      {
+        "file": "server/timedServiceNotifications.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "c3c94024bb60deab3dabbde9b52bc30d371071798868a9b1ac22ccb33f135236"
+      },
+      {
+        "file": "server/timedServiceRepairRetry.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "d672bd013b5511bd2396f83e60f173abd439df2b33f5c44eebbe142dece98af3"
+      },
+      {
+        "file": "server/timestampDefaultsMigration.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "03ea42629a1bce738f9739a4b7066238a8509ca3a1ce91563b899e1bf906186e"
+      },
+      {
+        "file": "server/userActivityTouchThrottle.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "397059b26c52676580564b5b4e44cfc1923b0fc62b6c0b860e816955cd14337b"
+      },
+      {
+        "file": "server/userNotificationHistoryIndexMigration.test.ts",
+        "beforeTests": 1,
+        "afterTests": 1,
+        "status": "passed",
+        "sha256": "16e92bdb94700ba875eb9c744977af3a161047da1e4148174f1b2bee33eb651f"
+      },
+      {
+        "file": "server/userQuizProgress.test.ts",
+        "beforeTests": 3,
+        "afterTests": 3,
+        "status": "passed",
+        "sha256": "6f8206838abc149dfeac0e1a2cae7d33568543260f5b6200c13de2c93c00a097"
+      },
+      {
+        "file": "server/userQuizSubmitAccess.test.ts",
+        "beforeTests": 2,
+        "afterTests": 2,
+        "status": "passed",
+        "sha256": "a8210189cb1afd4ee9be2b0c36fee3553d947fd6f5513284cc9cf0a666552fd9"
+      },
+      {
+        "file": "server/viteMiddlewarePolicy.test.ts",
+        "beforeTests": 1,
+        "afterTests": 1,
+        "status": "passed",
+        "sha256": "f85c000fcae2e2774d22a40fac56d1647d96f48619ef11402a539c9cfc67893c"
+      },
+      {
+        "file": "server/zeptoMailWebhookLookupQuery.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "8c7ea2834731ed32bba581de0774e6b345a8dff121da6a906eabee7fb0ad26ac"
+      },
+      {
+        "file": "server/zodRequestValidation.test.ts",
+        "beforeTests": 13,
+        "afterTests": 13,
+        "status": "passed",
+        "sha256": "b9ec9e785c446a054ac69819d71d1c0519123777865f91c8bbfe090d59c951db"
+      },
+      {
+        "file": "backend/_core/email.suppression.test.ts",
+        "beforeTests": 4,
+        "afterTests": 4,
+        "status": "passed",
+        "sha256": "d0fd1632ea90925a1e500b376e9a3abe2f576e15fc3998edb0dc130bb87df482"
+      },
+      {
+        "file": "backend/_core/zeptoMailWebhook.test.ts",
+        "beforeTests": 10,
+        "afterTests": 10,
+        "status": "passed",
+        "sha256": "5179f4200519a8da60b8c75b547b38fe51472d2d038a7396deb0597efa7392b4"
+      }
+    ]
+  },
+  "validation": {
+    "frozenInstall": "passed, lifecycle scripts disabled",
+    "configuredTypecheck": "passed",
+    "frontendAndStandaloneBuild": "passed with external article fetching disabled",
+    "workerBuild": "passed",
+    "seo": "36 static pages, 6 curated article pages and middleware checks passed",
+    "serverBundles": [
+      {
+        "file": "dist/worker.js",
+        "beforeSha256": "55ae801f896038c676bcabe29c1241d15943d4c5d264d363bf3d036a3d52ea71",
+        "afterSha256": "55ae801f896038c676bcabe29c1241d15943d4c5d264d363bf3d036a3d52ea71",
+        "identical": true
+      },
+      {
+        "file": "dist/index.js",
+        "beforeSha256": "65524cca9a96c8986dee1320c90353690b9bd3fe3f6880db81504e857e41acb1",
+        "afterSha256": "65524cca9a96c8986dee1320c90353690b9bd3fe3f6880db81504e857e41acb1",
+        "identical": true
+      }
+    ],
+    "browserNetwork": "Loopback fixture only; all other page requests blocked; no application authentication or provider call"
+  },
+  "registryAudit": {
+    "file": "security_content_registry_audit_2026-10-24.json",
+    "before": {
+      "info": 0,
+      "low": 12,
+      "moderate": 43,
+      "high": 31,
+      "critical": 0
+    },
+    "after": {
+      "info": 0,
+      "low": 6,
+      "moderate": 18,
+      "high": 28,
+      "critical": 0
+    },
+    "scopedAdvisoryEntries": 0,
+    "scope": "Package-manager classifications include tooling/transitives and do not prove production exploitability"
+  },
+  "limitations": [
+    "Browser checks cover an isolated content fixture using actual packages/component, not authenticated Admin Jobs/LexAI journeys",
+    "String/strict Mermaid rendering was exercised; no IN_PLACE hook, prototype-pollution or denial-of-service exploit replay",
+    "Unrelated optional libsql updates were excluded; an intermediate lock cleanup failure was caught and corrected before the successful frozen install and validation",
+    "Other dependencies, package-manager alignment, staging isolation, provider/runtime verification, existing UI failures and business integration checks remain open"
+  ],
+  "nextPhase": "Nano ID dependency usage and compatible remediation",
+  "deployed": false
+}

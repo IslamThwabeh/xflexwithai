@@ -4,6 +4,7 @@ import react from "@vitejs/plugin-react";
 import fs from "node:fs";
 import path from "path";
 import { defineConfig } from "vite";
+import { getDevServerHost } from "./shared/devServerHost";
 
 
 const plugins = [react(), tailwindcss(), jsxLocPlugin()];
@@ -25,7 +26,7 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
-    host: true,
+    host: getDevServerHost(process.env.XFLEX_DEV_HOST),
     allowedHosts: [
       ".manuspre.computer",
       ".manus.computer",

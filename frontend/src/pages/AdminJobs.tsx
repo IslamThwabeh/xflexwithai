@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { AiScreeningContent } from '@/components/admin/AiScreeningContent';
 import {
   Briefcase, Plus, Edit2, Save, X, Eye, EyeOff, Users,
   FileText, Download, ChevronDown, ChevronUp, Search,
@@ -429,9 +430,7 @@ function ApplicationCard({
             )}
             {aiResult && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-4" dir="rtl">
-                <div className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed prose prose-sm max-w-none"
-                  dangerouslySetInnerHTML={{ __html: aiResult.replace(/### /g, '<strong>').replace(/\n(?=\S)/g, '</strong>\n').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br/>') }}
-                />
+                <AiScreeningContent content={aiResult} />
               </div>
             )}
           </div>

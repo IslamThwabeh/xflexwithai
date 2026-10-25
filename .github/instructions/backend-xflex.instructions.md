@@ -30,3 +30,4 @@ applyTo: "backend/**,database/**"
 - AI onboarding thresholds: `saveOnboardingAiResult()` auto-approves at >=90%, auto-rejects at <50%, and queues 50-89% for admin review.
 - On large audit tables, normalize full email searches and use equality against the indexed stored email column. Keep wildcard name/partial-email searches explicit and date-bounded.
 - Do not retain aggregate queries whose results have no consumer; each extra aggregation can cause another full D1 scan.
+- ORM dependency updates must run `pnpm test:security-drizzle` plus the critical/financial/access regression coverage. Keep disposable SQLite fixture checks separate from live D1 verification; an ORM package update does not imply a schema migration.

@@ -1,0 +1,141 @@
+{
+  "checkedAtUtc": "2026-10-24T18:24:32.947Z",
+  "scope": "Local proxy-addr dependency remediation; not a production deployment attestation or clearance of all Express dependencies",
+  "runtime": "v24.22.1",
+  "advisory": {
+    "id": "GHSA-jqcg-44mw-7w3h",
+    "cve": "CVE-2026-90711",
+    "url": "https://github.com/jshttp/proxy-addr/security/advisories/GHSA-jqcg-44mw-7w3h",
+    "prerequisite": "Specific IPv6 trusted-subnet configurations may incorrectly trust unrelated IPv4 socket peers",
+    "sourceApplicability": "No application trust-proxy setting or req.ip/req.ips use found in searched source; deployed standalone ingress remains unverified"
+  },
+  "removed": [
+    "proxy-addr@2.0.7"
+  ],
+  "added": [
+    "proxy-addr@2.0.8"
+  ],
+  "express": "4.22.1",
+  "expressProxyRange": "~2.0.7",
+  "installedProxyAddr": "2.0.8",
+  "otherLockEntriesUnchanged": true,
+  "manifestUnchanged": true,
+  "manifestChange": "Added test:security-proxy only; dependency declarations and overrides unchanged",
+  "resolvedProxyDependencies": {
+    "proxy-addr": "2.0.8",
+    "forwarded": "0.2.0",
+    "ipaddr.js": "1.9.1"
+  },
+  "hashComparisons": [
+    {
+      "file": "dist/worker.js",
+      "beforeSha256": "55ae801f896038c676bcabe29c1241d15943d4c5d264d363bf3d036a3d52ea71",
+      "afterSha256": "55ae801f896038c676bcabe29c1241d15943d4c5d264d363bf3d036a3d52ea71",
+      "identical": true
+    },
+    {
+      "file": "dist/index.js",
+      "beforeSha256": "65524cca9a96c8986dee1320c90353690b9bd3fe3f6880db81504e857e41acb1",
+      "afterSha256": "65524cca9a96c8986dee1320c90353690b9bd3fe3f6880db81504e857e41acb1",
+      "identical": true
+    },
+    {
+      "file": "backend/_core/index.ts",
+      "beforeSha256": "1522aa9f0758763c4120cc82e70c8c5a6ca2e5b3446ed1757ec54b4faca3cb2c",
+      "afterSha256": "1522aa9f0758763c4120cc82e70c8c5a6ca2e5b3446ed1757ec54b4faca3cb2c",
+      "identical": true
+    },
+    {
+      "file": "backend/_core/worker.ts",
+      "beforeSha256": "542c3ccfb710c880569becade8f543ee88c9408e0934f3b0a0ac0a5a82e086f0",
+      "afterSha256": "542c3ccfb710c880569becade8f543ee88c9408e0934f3b0a0ac0a5a82e086f0",
+      "identical": true
+    },
+    {
+      "file": "backend/routers.ts",
+      "beforeSha256": "767752bcfcb5c23032f4b1d4b865e63377e90d448bafa7039b5bef647dd2a2cf",
+      "afterSha256": "767752bcfcb5c23032f4b1d4b865e63377e90d448bafa7039b5bef647dd2a2cf",
+      "identical": true
+    },
+    {
+      "file": "backend/_core/cookies.ts",
+      "beforeSha256": "c2080f6922e0f0b385addde991b6532c082afd0fa762587c0f1e47537bd00a71",
+      "afterSha256": "c2080f6922e0f0b385addde991b6532c082afd0fa762587c0f1e47537bd00a71",
+      "identical": true
+    },
+    {
+      "file": "backend/_core/context.ts",
+      "beforeSha256": "d064b69ac166d1d8f6e87b31fae7f3e934a3f18fe5811f65f460c13f911fbd63",
+      "afterSha256": "d064b69ac166d1d8f6e87b31fae7f3e934a3f18fe5811f65f460c13f911fbd63",
+      "identical": true
+    },
+    {
+      "file": "wrangler-worker.toml",
+      "beforeSha256": "ff818153bde529ae622922ffcaa585a76179e485c34624e423dfa6cf0c75643e",
+      "afterSha256": "ff818153bde529ae622922ffcaa585a76179e485c34624e423dfa6cf0c75643e",
+      "identical": true
+    }
+  ],
+  "workerBundle": {
+    "inputFiles": 371,
+    "expressOrProxyAddrInputs": 0,
+    "expressOrProxyAddrExternalImports": 0
+  },
+  "validation": {
+    "baselineProxyTests": {
+      "compatibilityPassed": 10,
+      "securityFailed": 5,
+      "total": 15
+    },
+    "patchedProxyTests": {
+      "passed": 15,
+      "total": 15
+    },
+    "focusedSuite": {
+      "passed": 29,
+      "files": 5
+    },
+    "frozenInstall": "passed, lifecycle scripts disabled",
+    "typescript": "configured pnpm check passed",
+    "frontendAndStandaloneBuild": "passed, external article fetching disabled",
+    "workerBuild": "passed",
+    "seo": "36 static pages, 6 curated article pages and middleware checks passed",
+    "fullSuite": {
+      "passed": 1011,
+      "failed": 3,
+      "total": 1014,
+      "files": 193,
+      "criticalCycleFilesPassed": 33,
+      "existingFailures": [
+        "server/adminSubscribersReportUi.test.ts",
+        "server/clientKeyActivationNavigation.test.ts",
+        "server/financialAuthorizationUi.test.ts"
+      ]
+    }
+  },
+  "registryAudit": {
+    "file": "security_proxy_registry_audit_2026-10-24.json",
+    "proxyAddrAdvisoryEntries": 0,
+    "severityMetadataBefore": {
+      "info": 0,
+      "low": 14,
+      "moderate": 57,
+      "high": 37,
+      "critical": 4
+    },
+    "severityMetadataAfter": {
+      "info": 0,
+      "low": 14,
+      "moderate": 57,
+      "high": 37,
+      "critical": 3
+    },
+    "scope": "Entire repository dependency tree, including tooling; audit classifications are not proof of production exploitability"
+  },
+  "remainingFollowups": [
+    "Vitest/Tinypool tooling findings and other dependency advisories",
+    "Verify direct Cloudflare/forwarded IP headers and forwarded protocol provenance for deployed ingress, independently of proxy-addr",
+    "Isolated staging, provider/runtime verification, existing UI-contract failures and representative business integration checks"
+  ],
+  "deployed": false
+}

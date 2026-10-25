@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { parse } from "smol-toml";
 
 vi.mock("../backend/db", () => ({
   hasEmailOutboxAnomaly: vi.fn(),
@@ -167,15 +168,16 @@ describe("scheduled email outbox health monitor", () => {
     expect(repairSource).not.toContain("for (const userId");
   });
 
-  it("configures independent minute, timed-repair, and daily schedules", () => {
+  it("configures independent delivery, timed-repair, retention, and daily schedules", () => {
     const configSource = readFileSync(
       fileURLToPath(new URL("../wrangler-worker.toml", import.meta.url)),
       "utf8",
     );
 
-    expect(configSource).toContain(
-      'crons = ["* * * * *", "*/5 * * * *", "0 5 * * *"]',
-    );
+    const config = parse(configSource) as { env: { production: { triggers: { crons: string[] } } } };
+    expect(config.env.production.triggers.crons).toEqual([
+      "* * * * *", "*/5 * * * *", "30 23 * * *", "0 5 * * *",
+    ]);
   });
 });
 
