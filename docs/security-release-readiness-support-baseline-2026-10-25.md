@@ -2,6 +2,8 @@
 
 Current release preparation, **25 October 2026, Asia/Amman**. Supersedes the older archived candidate in `security-release-readiness-2026-10-25.md`.
 
+**Published:** application commit `a7e1ad9`, Worker `cab4809f-3f70-4d42-9edd-50d9a6e7fd60`, Pages `950ecd6b-cd16-49c2-a847-bb6c0aa206aa`. See [production release and post-deployment verification](security-production-release-2026-10-25.md). The preparation/rollback evidence below is retained for recovery.
+
 ## Authorization and scope
 
 The owner authorized production deployment after backups and explicitly waived the earlier 90% provider-delivery verification condition after the owner/team received the maintenance notice. This is a release decision, not measured 90% delivery. The latest measured notice counts were 163 provider-accepted addresses and eight provider-confirmed unique deliveries out of 174 valid selected addresses. No accepted email was resent. See [notice record](security-release-notice-2026-10-25.md).

@@ -1,0 +1,105 @@
+{
+  "recordedAtUtc": "2026-10-25T18:25:50.363Z",
+  "applicationCommit": "a7e1ad9c3659f83195c7e12115d4ad155824d153",
+  "workerVersion": "cab4809f-3f70-4d42-9edd-50d9a6e7fd60",
+  "pagesDeployment": "950ecd6b-cd16-49c2-a847-bb6c0aa206aa",
+  "workerModuleSha256": "83b8c648ee6513e7ddc008ea4ecb787225146446b0013028dc37e1a464ba38f1",
+  "liveAssets": [
+    {
+      "path": "assets/AdminClientProfileSheet-CrO2a3_0.js",
+      "sha256": "c54424be18d6237f006487d27090cce35b8d846819c3ff882a859a224d894dfe"
+    },
+    {
+      "path": "assets/AdminJobs-CbNYt4UI.js",
+      "sha256": "690a260baf5346f5b6994c9a279dd5e812577e97c1485ca1a69b4ab81cc6a9ed"
+    },
+    {
+      "path": "assets/AdminLexaiSubscriptions-CWiDsMGc.js",
+      "sha256": "38dc928e0c54a78f4e6fbbfd6f6e5a78e811ad5bc650299aba7a0512b4d9ca83"
+    },
+    {
+      "path": "assets/AdminRecommendations-CNFmvpcX.js",
+      "sha256": "5c1f915740d2ed31c11b01e78dcbfde741ea13a393b0887e0746ea78040a7147"
+    },
+    {
+      "path": "assets/LexAI-TwNmlDf0.js",
+      "sha256": "a6194035cfb5ed6cb14d1b91112411c779382bfe47bbf66f441f1bb8f45ac271"
+    },
+    {
+      "path": "assets/index-BdQq_4o_.js",
+      "sha256": "302541c92aa7e2402be57fa8241a0d67e3b17496cdf3645c716ff3b239f03e28"
+    },
+    {
+      "path": "assets/index-CcHKG9bP.css",
+      "sha256": "9a5688cab8cb1d0ac740ef68382908c71b596929f509e14bb3fcfa7bc07d6704"
+    },
+    {
+      "path": "assets/index-Ci1m89xM.js",
+      "sha256": "2f2020d3a857d988179988a8b06d46f22554d839cbfd4817d9773d950d6582ec"
+    },
+    {
+      "path": "assets/index-Dc69MrBu.js",
+      "sha256": "374704a88062f1d987894864c215cee8ca4c1e7280440f8eb365f3831892fbd9"
+    },
+    {
+      "path": "assets/index-DoM_ZGux.js",
+      "sha256": "21558c1adf00d9bca3a31edbb68ae230828783f4a1b49d36bb80e1364c3551c9"
+    }
+  ],
+  "sourceCandidate": "434e425c44305f12a90b8875b7620c3893213dfa10abf1624d868c6664a73109",
+  "artifactSet": "93c82c3371ac9be32b3f81bac12758b92564ba3936eb68e22aaf047a9d7dcebe",
+  "backups": {
+    "file": "recovery-snapshot.zip",
+    "bytes": 40078450,
+    "sha256": "a7c028f3b3fe1f7f60100428e728e0b15c82a419a7494ae321c01dff78eddaea",
+    "verifiedEntries": 766
+  },
+  "databaseRecovery": {
+    "checkedAtUtc": "2026-10-25T18:12:08.291Z",
+    "bookmark": "00001801-00000002-0000510f-de08fc001a0032ba1219d2ec6fb42dd4",
+    "bookmarkReadable": true,
+    "method": "Cloudflare D1 automatic Time Travel recovery point; no blocking export or restore invoked",
+    "refreshImmediatelyBeforeRelease": true
+  },
+  "notice90VerificationOwnerOverride": true,
+  "observedProviderConfirmations": 8,
+  "noticeSelectedAddresses": 174,
+  "pushed": true,
+  "deployed": true,
+  "rollbackExecuted": false,
+  "dailyCycleComplete": false,
+  "evidence": [
+    {
+      "path": ".tools/security-release-readiness/candidate-ba4216c/source-commit.json",
+      "sha256": "b36cde9e46540746876d95be35b1b63b8fc28baca1ef273b41a536c761d45fe0"
+    },
+    {
+      "path": ".tools/security-release-readiness/candidate-ba4216c/publication-preparation.json",
+      "sha256": "6a7c90972163f0e50b94e680a12e23cd124e37f000f9dfa6a48706d801b80f95"
+    },
+    {
+      "path": ".tools/security-release-readiness/candidate-ba4216c/immediate-preworker.json",
+      "sha256": "3cbcf35b26122ac801490dba34503cba1ca66470b39de9c7bc2ac1f40dfec17d"
+    },
+    {
+      "path": ".tools/security-release-readiness/candidate-ba4216c/verify-worker.json",
+      "sha256": "5eef384cdc818c74153ddf7be05c64baf715bfcf70ed22cd30d31a0cfbbdf9cd"
+    },
+    {
+      "path": ".tools/security-release-readiness/candidate-ba4216c/verify-pages.json",
+      "sha256": "c75c6787a1088a810ac6bd0a66e638e58db6efc25d4cbc2ced3eb28c44c86793"
+    },
+    {
+      "path": ".tools/security-release-readiness/candidate-ba4216c/analytics-predeploy.json",
+      "sha256": "7ce7eda1548e810d0c67b5bda72bf63375e96c9fa3e437144297cc60ce81c0c4"
+    },
+    {
+      "path": ".tools/security-release-readiness/candidate-ba4216c/analytics-postpages.json",
+      "sha256": "3cd2978a41f1d200021628898c0e29f85fa599d952455b7c122a038c7bee21f3"
+    },
+    {
+      "path": ".tools/security-release-readiness/candidate-ba4216c/archives.json",
+      "sha256": "4be259b20baa8010c5442506977197fc7fb2b057f8bbf508c39deb1385bb74de"
+    }
+  ]
+}

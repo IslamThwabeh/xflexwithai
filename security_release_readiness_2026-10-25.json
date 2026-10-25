@@ -386,10 +386,484 @@
       }
     ]
   },
-  "pushed": false,
-  "deployed": false,
+  "pushed": true,
+  "deployed": true,
   "rollbackExecuted": false,
   "rollbackRehearsed": false,
   "runbook": "docs/security-release-readiness-support-baseline-2026-10-25.md",
-  "evidenceDirectory": ".tools/security-release-readiness/candidate-ba4216c/"
+  "evidenceDirectory": ".tools/security-release-readiness/candidate-ba4216c/",
+  "status": "Deployed and initial verification passed; daily-cycle observation pending",
+  "applicationCommit": "a7e1ad9c3659f83195c7e12115d4ad155824d153",
+  "releaseBranch": "codex/security-release-20261025-434e425c",
+  "deployedWorker": {
+    "versionId": "cab4809f-3f70-4d42-9edd-50d9a6e7fd60",
+    "deploymentId": "883024f7-82ad-459e-ba49-92e1d38533f2",
+    "createdAt": "2026-10-25T18:12:23.591927Z",
+    "percentage": 100,
+    "modules": [
+      {
+        "name": "worker.js",
+        "sha256": "83b8c648ee6513e7ddc008ea4ecb787225146446b0013028dc37e1a464ba38f1"
+      }
+    ],
+    "packagedModuleSha256": "83b8c648ee6513e7ddc008ea4ecb787225146446b0013028dc37e1a464ba38f1"
+  },
+  "deployedPages": {
+    "deploymentId": "950ecd6b-cd16-49c2-a847-bb6c0aa206aa",
+    "environment": "production",
+    "status": "success",
+    "commit": "a7e1ad9c3659f83195c7e12115d4ad155824d153",
+    "url": "https://950ecd6b.xflexwithai.pages.dev"
+  },
+  "postdeploymentVerification": {
+    "checkedAtUtc": "2026-10-25T18:17:37.604Z",
+    "phase": "pages",
+    "checks": [
+      "Active Worker is the published security version at 100%",
+      "Production binding identities, plain variables, secret names and compatibility match support baseline",
+      "All four production schedules preserved",
+      "Exact-version live Worker module matches verified artifact SHA-256",
+      "Production API health",
+      "Production D1 connectivity via fixed SELECT 1",
+      "Anonymous session remains null",
+      "Protected API denies anonymous access",
+      "Production credentialed CORS",
+      "Untrusted CORS origin not granted",
+      "Canonical Pages deployment is successful production at security source commit",
+      "Arabic and English canonical public pages",
+      "Canonical www redirect",
+      "Live security/support/entry asset hashes match verified build"
+    ],
+    "productionCustomerMutationTests": 0,
+    "worker": {
+      "versionId": "cab4809f-3f70-4d42-9edd-50d9a6e7fd60",
+      "deploymentId": "883024f7-82ad-459e-ba49-92e1d38533f2",
+      "createdAt": "2026-10-25T18:12:23.591927Z",
+      "percentage": 100,
+      "modules": [
+        {
+          "name": "worker.js",
+          "sha256": "83b8c648ee6513e7ddc008ea4ecb787225146446b0013028dc37e1a464ba38f1"
+        }
+      ],
+      "packagedModuleSha256": "83b8c648ee6513e7ddc008ea4ecb787225146446b0013028dc37e1a464ba38f1"
+    },
+    "schedules": [
+      "* * * * *",
+      "*/5 * * * *",
+      "0 5 * * *",
+      "30 23 * * *"
+    ],
+    "publicRequests": [
+      {
+        "url": "https://api.xflexacademy.com/health",
+        "status": 200,
+        "elapsedMs": 83
+      },
+      {
+        "url": "https://api.xflexacademy.com/api/test/db",
+        "status": 200,
+        "elapsedMs": 153
+      },
+      {
+        "url": "https://api.xflexacademy.com/api/trpc/auth.me?batch=1&input=%7B%220%22%3A%7B%22json%22%3Anull%7D%7D",
+        "status": 200,
+        "elapsedMs": 14
+      },
+      {
+        "url": "https://api.xflexacademy.com/api/trpc/enrollments.myEnrollments?batch=1&input=%7B%220%22%3A%7B%22json%22%3Anull%7D%7D",
+        "status": 401,
+        "elapsedMs": 59
+      },
+      {
+        "url": "https://api.xflexacademy.com/api/trpc/auth.me",
+        "status": 204,
+        "elapsedMs": 12
+      },
+      {
+        "url": "https://api.xflexacademy.com/api/trpc/auth.me",
+        "status": 204,
+        "elapsedMs": 25
+      },
+      {
+        "url": "https://xflexacademy.com/en",
+        "status": 200,
+        "elapsedMs": 529
+      },
+      {
+        "url": "https://xflexacademy.com/ar",
+        "status": 200,
+        "elapsedMs": 112
+      },
+      {
+        "url": "https://www.xflexacademy.com/",
+        "status": 301,
+        "elapsedMs": 238
+      },
+      {
+        "url": "https://xflexacademy.com/assets/AdminClientProfileSheet-CrO2a3_0.js",
+        "status": 200,
+        "elapsedMs": 106
+      },
+      {
+        "url": "https://xflexacademy.com/assets/AdminJobs-CbNYt4UI.js",
+        "status": 200,
+        "elapsedMs": 107
+      },
+      {
+        "url": "https://xflexacademy.com/assets/AdminLexaiSubscriptions-CWiDsMGc.js",
+        "status": 200,
+        "elapsedMs": 120
+      },
+      {
+        "url": "https://xflexacademy.com/assets/AdminRecommendations-CNFmvpcX.js",
+        "status": 200,
+        "elapsedMs": 120
+      },
+      {
+        "url": "https://xflexacademy.com/assets/LexAI-TwNmlDf0.js",
+        "status": 200,
+        "elapsedMs": 114
+      },
+      {
+        "url": "https://xflexacademy.com/assets/index-BdQq_4o_.js",
+        "status": 200,
+        "elapsedMs": 91
+      },
+      {
+        "url": "https://xflexacademy.com/assets/index-CcHKG9bP.css",
+        "status": 200,
+        "elapsedMs": 38
+      },
+      {
+        "url": "https://xflexacademy.com/assets/index-Ci1m89xM.js",
+        "status": 200,
+        "elapsedMs": 118
+      },
+      {
+        "url": "https://xflexacademy.com/assets/index-Dc69MrBu.js",
+        "status": 200,
+        "elapsedMs": 136
+      },
+      {
+        "url": "https://xflexacademy.com/assets/index-DoM_ZGux.js",
+        "status": 200,
+        "elapsedMs": 114
+      }
+    ],
+    "pages": {
+      "deploymentId": "950ecd6b-cd16-49c2-a847-bb6c0aa206aa",
+      "environment": "production",
+      "status": "success",
+      "commit": "a7e1ad9c3659f83195c7e12115d4ad155824d153",
+      "url": "https://950ecd6b.xflexwithai.pages.dev"
+    },
+    "liveAssets": [
+      {
+        "path": "assets/AdminClientProfileSheet-CrO2a3_0.js",
+        "sha256": "c54424be18d6237f006487d27090cce35b8d846819c3ff882a859a224d894dfe"
+      },
+      {
+        "path": "assets/AdminJobs-CbNYt4UI.js",
+        "sha256": "690a260baf5346f5b6994c9a279dd5e812577e97c1485ca1a69b4ab81cc6a9ed"
+      },
+      {
+        "path": "assets/AdminLexaiSubscriptions-CWiDsMGc.js",
+        "sha256": "38dc928e0c54a78f4e6fbbfd6f6e5a78e811ad5bc650299aba7a0512b4d9ca83"
+      },
+      {
+        "path": "assets/AdminRecommendations-CNFmvpcX.js",
+        "sha256": "5c1f915740d2ed31c11b01e78dcbfde741ea13a393b0887e0746ea78040a7147"
+      },
+      {
+        "path": "assets/LexAI-TwNmlDf0.js",
+        "sha256": "a6194035cfb5ed6cb14d1b91112411c779382bfe47bbf66f441f1bb8f45ac271"
+      },
+      {
+        "path": "assets/index-BdQq_4o_.js",
+        "sha256": "302541c92aa7e2402be57fa8241a0d67e3b17496cdf3645c716ff3b239f03e28"
+      },
+      {
+        "path": "assets/index-CcHKG9bP.css",
+        "sha256": "9a5688cab8cb1d0ac740ef68382908c71b596929f509e14bb3fcfa7bc07d6704"
+      },
+      {
+        "path": "assets/index-Ci1m89xM.js",
+        "sha256": "2f2020d3a857d988179988a8b06d46f22554d839cbfd4817d9773d950d6582ec"
+      },
+      {
+        "path": "assets/index-Dc69MrBu.js",
+        "sha256": "374704a88062f1d987894864c215cee8ca4c1e7280440f8eb365f3831892fbd9"
+      },
+      {
+        "path": "assets/index-DoM_ZGux.js",
+        "sha256": "21558c1adf00d9bca3a31edbb68ae230828783f4a1b49d36bb80e1364c3551c9"
+      }
+    ],
+    "passed": true
+  },
+  "preWorkerVerification": {
+    "checkedAtUtc": "2026-10-25T18:14:47.144Z",
+    "phase": "worker",
+    "checks": [
+      "Active Worker is the published security version at 100%",
+      "Production binding identities, plain variables, secret names and compatibility match support baseline",
+      "All four production schedules preserved",
+      "Exact-version live Worker module matches verified artifact SHA-256",
+      "Production API health",
+      "Production D1 connectivity via fixed SELECT 1",
+      "Anonymous session remains null",
+      "Protected API denies anonymous access",
+      "Production credentialed CORS",
+      "Untrusted CORS origin not granted",
+      "Support Pages baseline remains active before frontend promotion"
+    ],
+    "productionCustomerMutationTests": 0,
+    "worker": {
+      "versionId": "cab4809f-3f70-4d42-9edd-50d9a6e7fd60",
+      "deploymentId": "883024f7-82ad-459e-ba49-92e1d38533f2",
+      "createdAt": "2026-10-25T18:12:23.591927Z",
+      "percentage": 100,
+      "modules": [
+        {
+          "name": "worker.js",
+          "sha256": "83b8c648ee6513e7ddc008ea4ecb787225146446b0013028dc37e1a464ba38f1"
+        }
+      ],
+      "packagedModuleSha256": "83b8c648ee6513e7ddc008ea4ecb787225146446b0013028dc37e1a464ba38f1"
+    },
+    "schedules": [
+      "* * * * *",
+      "*/5 * * * *",
+      "0 5 * * *",
+      "30 23 * * *"
+    ],
+    "publicRequests": [
+      {
+        "url": "https://api.xflexacademy.com/health",
+        "status": 200,
+        "elapsedMs": 74
+      },
+      {
+        "url": "https://api.xflexacademy.com/api/test/db",
+        "status": 200,
+        "elapsedMs": 84
+      },
+      {
+        "url": "https://api.xflexacademy.com/api/trpc/auth.me?batch=1&input=%7B%220%22%3A%7B%22json%22%3Anull%7D%7D",
+        "status": 200,
+        "elapsedMs": 9
+      },
+      {
+        "url": "https://api.xflexacademy.com/api/trpc/enrollments.myEnrollments?batch=1&input=%7B%220%22%3A%7B%22json%22%3Anull%7D%7D",
+        "status": 401,
+        "elapsedMs": 56
+      },
+      {
+        "url": "https://api.xflexacademy.com/api/trpc/auth.me",
+        "status": 204,
+        "elapsedMs": 11
+      },
+      {
+        "url": "https://api.xflexacademy.com/api/trpc/auth.me",
+        "status": 204,
+        "elapsedMs": 13
+      }
+    ],
+    "pages": {
+      "deploymentId": "875d6ef3-0e42-4c28-99bf-9d11fc626905",
+      "environment": "production",
+      "status": "success",
+      "commit": "1e8a7f41abd330be210361ff0fa529549f11ab1e",
+      "url": "https://875d6ef3.xflexwithai.pages.dev"
+    },
+    "passed": true
+  },
+  "postdeploymentAnalytics": {
+    "checkedAtUtc": "2026-10-25T18:23:47.978Z",
+    "label": "postpages",
+    "windowStart": "2026-10-25T18:12:23.591Z",
+    "windowEnd": "2026-10-25T18:21:47.977Z",
+    "lagAllowanceSeconds": 120,
+    "httpStatus": 200,
+    "groups": [
+      {
+        "dimensions": {
+          "status": "success"
+        },
+        "quantiles": {
+          "cpuTimeP50": 340,
+          "cpuTimeP99": 42885
+        },
+        "sum": {
+          "errors": 0,
+          "requests": 508,
+          "subrequests": 7
+        }
+      }
+    ],
+    "requests": 508,
+    "errors": 0,
+    "errorRate": 0,
+    "sampled": true
+  },
+  "immediatePreDeploymentRecovery": {
+    "checkedAtUtc": "2026-10-25T18:12:08.291Z",
+    "bookmark": "00001801-00000002-0000510f-de08fc001a0032ba1219d2ec6fb42dd4",
+    "bookmarkReadable": true,
+    "method": "Cloudflare D1 automatic Time Travel recovery point; no blocking export or restore invoked",
+    "refreshImmediatelyBeforeRelease": true
+  },
+  "monitor": {
+    "process": {
+      "externalAlerts": false,
+      "startedAtUtc": "2026-10-25T18:21:26.9633359Z",
+      "publicHealthIntervalSeconds": 60,
+      "processId": 29208,
+      "readOnlyAnalyticsIntervalMinutes": 5,
+      "automaticRollback": false,
+      "durationMinutes": 60
+    },
+    "snapshot": {
+      "startedAtUtc": "2026-10-25T18:21:27.184Z",
+      "lastCheckedAtUtc": "2026-10-25T18:25:32.121Z",
+      "durationMinutes": 60,
+      "samples": 5,
+      "publicCheckFailures": 0,
+      "observedWorkerErrors": false,
+      "attentionRequired": false,
+      "automaticRollback": false,
+      "externalAlerts": false,
+      "temporaryLocalProcess": true,
+      "complete": false,
+      "history": [
+        {
+          "checkedAtUtc": "2026-10-25T18:21:27.184Z",
+          "checks": [
+            {
+              "url": "https://api.xflexacademy.com/health",
+              "status": 200,
+              "elapsedMs": 439,
+              "passed": true
+            },
+            {
+              "url": "https://xflexacademy.com/en",
+              "status": 200,
+              "elapsedMs": 60,
+              "passed": true
+            },
+            {
+              "url": "https://xflexacademy.com/ar",
+              "status": 200,
+              "elapsedMs": 65,
+              "passed": true
+            }
+          ],
+          "analytics": {
+            "requests": 439,
+            "errors": 0,
+            "errorRate": 0,
+            "windowStart": "2026-10-25T18:12:23.591Z",
+            "windowEnd": "2026-10-25T18:19:27.923Z"
+          }
+        },
+        {
+          "checkedAtUtc": "2026-10-25T18:22:31.352Z",
+          "checks": [
+            {
+              "url": "https://api.xflexacademy.com/health",
+              "status": 200,
+              "elapsedMs": 66,
+              "passed": true
+            },
+            {
+              "url": "https://xflexacademy.com/en",
+              "status": 200,
+              "elapsedMs": 51,
+              "passed": true
+            },
+            {
+              "url": "https://xflexacademy.com/ar",
+              "status": 200,
+              "elapsedMs": 81,
+              "passed": true
+            }
+          ]
+        },
+        {
+          "checkedAtUtc": "2026-10-25T18:23:31.562Z",
+          "checks": [
+            {
+              "url": "https://api.xflexacademy.com/health",
+              "status": 200,
+              "elapsedMs": 41,
+              "passed": true
+            },
+            {
+              "url": "https://xflexacademy.com/en",
+              "status": 200,
+              "elapsedMs": 241,
+              "passed": true
+            },
+            {
+              "url": "https://xflexacademy.com/ar",
+              "status": 200,
+              "elapsedMs": 57,
+              "passed": true
+            }
+          ]
+        },
+        {
+          "checkedAtUtc": "2026-10-25T18:24:31.916Z",
+          "checks": [
+            {
+              "url": "https://api.xflexacademy.com/health",
+              "status": 200,
+              "elapsedMs": 85,
+              "passed": true
+            },
+            {
+              "url": "https://xflexacademy.com/en",
+              "status": 200,
+              "elapsedMs": 54,
+              "passed": true
+            },
+            {
+              "url": "https://xflexacademy.com/ar",
+              "status": 200,
+              "elapsedMs": 53,
+              "passed": true
+            }
+          ]
+        },
+        {
+          "checkedAtUtc": "2026-10-25T18:25:32.121Z",
+          "checks": [
+            {
+              "url": "https://api.xflexacademy.com/health",
+              "status": 200,
+              "elapsedMs": 39,
+              "passed": true
+            },
+            {
+              "url": "https://xflexacademy.com/en",
+              "status": 200,
+              "elapsedMs": 58,
+              "passed": true
+            },
+            {
+              "url": "https://xflexacademy.com/ar",
+              "status": 200,
+              "elapsedMs": 46,
+              "passed": true
+            }
+          ]
+        }
+      ]
+    },
+    "dailyCycleComplete": false
+  },
+  "productionRecord": "docs/security-production-release-2026-10-25.md",
+  "signedInProductionBrowserRecheck": "Not completed: browser-control connection detached",
+  "recordedAtUtc": "2026-10-25T18:25:50.348Z"
 }

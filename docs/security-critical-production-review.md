@@ -1,5 +1,7 @@
 # Critical-only production review — 24 October 2026
 
+> Historical pre-release checkpoint. The user subsequently deferred the provider item and authorized a rebuilt security release preserving support commit `1e8a7f4`. Use [the 25 October production record](security-production-release-2026-10-25.md) for current deployment and rollback identities. The original read-only assessment below is retained as evidence.
+
 ## Decision
 
 **No critical dependency redeployment is indicated by the evidence collected.** The original critical package names, known symbols and external imports were not found in the exact active API Worker source. The fresh local dependency audit also reports zero critical entries. This is a scoped result, not overall website security clearance.
