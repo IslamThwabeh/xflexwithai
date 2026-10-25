@@ -9742,6 +9742,7 @@ export async function getComprehensivePackageHolders() {
     packageId: registrationKeys.packageId,
     activatedAt: registrationKeys.activatedAt,
     userName: users.name,
+    loginBlockedAt: users.loginBlockedAt,
     userId: users.id,
   })
   .from(registrationKeys)
@@ -9759,13 +9760,20 @@ export async function getComprehensivePackageHolders() {
     if (!holder.userId) {
       return {
         ...holder,
+        lexaiSubscription: null, recommendationSubscription: null,
         lexaiSubId: null, lexaiIsPaused: null as boolean | null, lexaiEndDate: null, lexaiPausedRemainingDays: null,
         recSubId: null, recIsPaused: null as boolean | null, recEndDate: null, recPausedRemainingDays: null,
       };
     }
     const [lexaiSub] = await db.select({
       id: lexaiSubscriptions.id,
+      isActive: lexaiSubscriptions.isActive,
       isPaused: lexaiSubscriptions.isPaused,
+      isPendingActivation: lexaiSubscriptions.isPendingActivation,
+      maxActivationDate: lexaiSubscriptions.maxActivationDate,
+      pausedAt: lexaiSubscriptions.pausedAt,
+      pausedReason: lexaiSubscriptions.pausedReason,
+      frozenUntil: lexaiSubscriptions.frozenUntil,
       endDate: lexaiSubscriptions.endDate,
       pausedRemainingDays: lexaiSubscriptions.pausedRemainingDays,
     })
@@ -9776,7 +9784,13 @@ export async function getComprehensivePackageHolders() {
 
     const [recSub] = await db.select({
       id: recommendationSubscriptions.id,
+      isActive: recommendationSubscriptions.isActive,
       isPaused: recommendationSubscriptions.isPaused,
+      isPendingActivation: recommendationSubscriptions.isPendingActivation,
+      maxActivationDate: recommendationSubscriptions.maxActivationDate,
+      pausedAt: recommendationSubscriptions.pausedAt,
+      pausedReason: recommendationSubscriptions.pausedReason,
+      frozenUntil: recommendationSubscriptions.frozenUntil,
       endDate: recommendationSubscriptions.endDate,
       pausedRemainingDays: recommendationSubscriptions.pausedRemainingDays,
     })
@@ -9787,6 +9801,8 @@ export async function getComprehensivePackageHolders() {
 
     return {
       ...holder,
+      lexaiSubscription: lexaiSub ?? null,
+      recommendationSubscription: recSub ?? null,
       lexaiSubId: lexaiSub?.id ?? null,
       lexaiIsPaused: lexaiSub?.isPaused ?? null,
       lexaiEndDate: lexaiSub?.endDate ?? null,
@@ -13063,6 +13079,7 @@ export async function getAdminClientProfile(userId: number, options?: { includeT
       lastSignedIn: user?.lastSignedIn ?? null,
       emailVerified: !!user?.emailVerified,
       brokerOnboardingComplete: !!user?.brokerOnboardingComplete,
+      firstPackageActivatedAt: user?.firstPackageActivatedAt ?? null,
       loginSecurityMode: user?.loginSecurityMode ?? null,
       userType: user?.user_type ?? null,
       isStaff: !!user?.isStaff,
@@ -19304,6 +19321,9 @@ export async function getRecommendationSubscriptionsWithUsers() {
       registrationKeyId: recommendationSubscriptions.registrationKeyId,
       isActive: recommendationSubscriptions.isActive,
       isPaused: recommendationSubscriptions.isPaused,
+      isPendingActivation: recommendationSubscriptions.isPendingActivation,
+      maxActivationDate: recommendationSubscriptions.maxActivationDate,
+      frozenUntil: recommendationSubscriptions.frozenUntil,
       startDate: recommendationSubscriptions.startDate,
       endDate: recommendationSubscriptions.endDate,
       paymentStatus: recommendationSubscriptions.paymentStatus,
@@ -19316,6 +19336,7 @@ export async function getRecommendationSubscriptionsWithUsers() {
       updatedAt: recommendationSubscriptions.updatedAt,
       userEmail: users.email,
       userName: users.name,
+      loginBlockedAt: users.loginBlockedAt,
       packageId: registrationKeys.packageId,
       packageNameEn: packages.nameEn,
       packageNameAr: packages.nameAr,

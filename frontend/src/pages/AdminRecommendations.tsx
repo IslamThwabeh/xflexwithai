@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { ResponsiveTable } from "@/components/ui/responsive-table";
+import { TimedServiceStatus } from "@/components/admin/TimedServiceStatus";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -2366,16 +2367,6 @@ function AdminView() {
                   // resumed even if its original end date has passed. Hiding the
                   // action in that state left admins unable to unfreeze it.
                   const canToggleFreeze = subscription.isPaused || (!isInactive && !isExpired);
-                  const statusVariant: "default" | "secondary" | "outline" = subscription.isPaused
-                    ? "secondary"
-                    : (isInactive || isExpired ? "outline" : "default");
-                  const statusLabel = subscription.isPaused
-                    ? (isRTL ? "مجمّد" : "Frozen")
-                    : isInactive
-                      ? (isRTL ? "غير نشط" : "Inactive")
-                      : isExpired
-                        ? (isRTL ? "منتهي" : "Expired")
-                        : (isRTL ? "نشط" : "Active");
                   const packageName = isRTL
                     ? (subscription.packageNameAr || subscription.packageNameEn || "-")
                     : (subscription.packageNameEn || subscription.packageNameAr || "-");
@@ -2386,12 +2377,10 @@ function AdminView() {
                       <TableCell>{subscription.userEmail || '-'}</TableCell>
                       <TableCell>{packageName}</TableCell>
                       <TableCell>
-                        <Badge variant={statusVariant}>
-                          {statusLabel}
-                        </Badge>
+                        <TimedServiceStatus subscription={subscription} isRtl={isRTL} loginBlocked={!!subscription.loginBlockedAt || !subscription.userEmail} compact />
                       </TableCell>
-                      <TableCell>{subscription.endDate ? formatLocalizedDate(subscription.endDate, language) : '-'}</TableCell>
-                      <TableCell>{subscription.pausedRemainingDays ? `${subscription.pausedRemainingDays}d` : '-'}</TableCell>
+                      <TableCell>{subscription.isPendingActivation ? (isRTL ? 'لم تبدأ مدة الخدمة' : 'Service not started') : subscription.endDate ? formatLocalizedDate(subscription.endDate, language) : '-'}</TableCell>
+                      <TableCell>{subscription.isPendingActivation ? '—' : subscription.pausedRemainingDays ? `${subscription.pausedRemainingDays}d` : '-'}</TableCell>
                       <TableCell>
                         {canToggleFreeze ? (
                           subscription.isPaused ? (

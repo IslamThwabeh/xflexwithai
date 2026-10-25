@@ -23,7 +23,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
+import { TimedServiceStatus } from "@/components/admin/TimedServiceStatus";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { toast } from "sonner";
 import { PauseCircle, PlayCircle, Search } from "lucide-react";
@@ -122,7 +122,7 @@ export default function AdminLexaiSubscriptions() {
                       <TableHead>{language === 'ar' ? 'المستخدم' : 'User'}</TableHead>
                       <TableHead>LexAI</TableHead>
                       <TableHead>{language === 'ar' ? 'التوصيات' : 'Recommendations'}</TableHead>
-                      <TableHead>{language === 'ar' ? 'تجميد الكل' : 'Freeze All'}</TableHead>
+                      <TableHead>{language === 'ar' ? 'تجميد الخدمات' : 'Service freezes'}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -131,7 +131,7 @@ export default function AdminLexaiSubscriptions() {
                       const recPaused = !!h.recIsPaused;
                       const hasLexai = !!h.lexaiSubId;
                       const hasRec = !!h.recSubId;
-                      const bothPaused = lexaiPaused && recPaused;
+                      const hasFrozenService = lexaiPaused || recPaused;
 
                       return (
                         <TableRow key={h.keyId}>
@@ -145,30 +145,16 @@ export default function AdminLexaiSubscriptions() {
                           {/* LexAI column: status + individual toggle */}
                           <TableCell>
                             {hasLexai ? (
-                              <div className="flex items-center gap-2">
-                                <div>
-                                  <Badge className={lexaiPaused
-                                    ? "bg-orange-100 text-orange-800 hover:bg-orange-100 text-xs"
-                                    : "bg-emerald-100 text-emerald-800 hover:bg-emerald-100 text-xs"}>
-                                    {lexaiPaused
-                                      ? (language === 'ar' ? 'مجمّد' : 'Frozen')
-                                      : (language === 'ar' ? 'نشط' : 'Active')}
-                                  </Badge>
-                                  {h.lexaiEndDate && (
-                                    <div className="text-xs text-muted-foreground mt-0.5">
-                                      {new Date(h.lexaiEndDate).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US')}
-                                    </div>
-                                  )}
-                                  {lexaiPaused && h.lexaiPausedRemainingDays ? (
-                                    <div className="text-xs text-emerald-600">{h.lexaiPausedRemainingDays}d {language === 'ar' ? 'متبقية' : 'left'}</div>
-                                  ) : null}
-                                </div>
+                              <div className="flex items-start gap-2">
+                                <TimedServiceStatus subscription={h.lexaiSubscription} isRtl={language === 'ar'} loginBlocked={!!h.loginBlockedAt || !h.userId} compact />
                                 {h.lexaiSubId && (
                                   lexaiPaused ? (
                                     <Button variant="ghost" size="sm" className="h-7 px-2 text-emerald-600 hover:bg-emerald-50"
                                       onClick={() => resumeLexai.mutate({ subscriptionId: h.lexaiSubId! })}
                                       disabled={resumeLexai.isPending}
-                                      title={language === 'ar' ? 'فك تجميد LexAI فقط' : 'Unfreeze LexAI only'}>
+                                      title={h.lexaiSubscription?.isPendingActivation
+                                        ? (language === 'ar' ? 'إزالة تجميد LexAI؛ سيبقى بانتظار التفعيل' : 'Remove LexAI freeze; activation will still be pending')
+                                        : (language === 'ar' ? 'فك تجميد LexAI فقط' : 'Unfreeze LexAI only')}>
                                       <PlayCircle className="w-3.5 h-3.5" />
                                     </Button>
                                   ) : (
@@ -189,30 +175,16 @@ export default function AdminLexaiSubscriptions() {
                           {/* Rec column: status + individual toggle */}
                           <TableCell>
                             {hasRec ? (
-                              <div className="flex items-center gap-2">
-                                <div>
-                                  <Badge className={recPaused
-                                    ? "bg-orange-100 text-orange-800 hover:bg-orange-100 text-xs"
-                                    : "bg-emerald-100 text-emerald-800 hover:bg-emerald-100 text-xs"}>
-                                    {recPaused
-                                      ? (language === 'ar' ? 'مجمّد' : 'Frozen')
-                                      : (language === 'ar' ? 'نشط' : 'Active')}
-                                  </Badge>
-                                  {h.recEndDate && (
-                                    <div className="text-xs text-muted-foreground mt-0.5">
-                                      {new Date(h.recEndDate).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US')}
-                                    </div>
-                                  )}
-                                  {recPaused && h.recPausedRemainingDays ? (
-                                    <div className="text-xs text-emerald-600">{h.recPausedRemainingDays}d {language === 'ar' ? 'متبقية' : 'left'}</div>
-                                  ) : null}
-                                </div>
+                              <div className="flex items-start gap-2">
+                                <TimedServiceStatus subscription={h.recommendationSubscription} isRtl={language === 'ar'} loginBlocked={!!h.loginBlockedAt || !h.userId} compact />
                                 {h.recSubId && (
                                   recPaused ? (
                                     <Button variant="ghost" size="sm" className="h-7 px-2 text-emerald-600 hover:bg-emerald-50"
                                       onClick={() => resumeRec.mutate({ subscriptionId: h.recSubId! })}
                                       disabled={resumeRec.isPending}
-                                      title={language === 'ar' ? 'فك تجميد التوصيات فقط' : 'Unfreeze recommendations only'}>
+                                      title={h.recommendationSubscription?.isPendingActivation
+                                        ? (language === 'ar' ? 'إزالة تجميد التوصيات؛ ستبقى بانتظار التفعيل' : 'Remove recommendation freeze; activation will still be pending')
+                                        : (language === 'ar' ? 'فك تجميد التوصيات فقط' : 'Unfreeze recommendations only')}>
                                       <PlayCircle className="w-3.5 h-3.5" />
                                     </Button>
                                   ) : (
@@ -233,7 +205,7 @@ export default function AdminLexaiSubscriptions() {
                           {/* Freeze All / Unfreeze All */}
                           <TableCell>
                             {h.userId && (
-                              bothPaused ? (
+                              hasFrozenService ? (
                                 <Button variant="ghost" size="sm"
                                   className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
                                   onClick={() => unfreezeAll.mutate({ userId: h.userId! })}

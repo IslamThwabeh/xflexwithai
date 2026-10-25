@@ -12,7 +12,8 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { formatAdminCurrencyFromIls } from "@/lib/adminCurrency";
 import { getLegalVersionLinks } from "@/lib/legalVersions";
 import { trpc } from "@/lib/trpc";
-import { useState, type ReactNode } from "react";
+import { TimedServiceStatus, type ServiceStatusSnapshot } from "./TimedServiceStatus";
+import { useRef, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 import {
@@ -67,38 +68,6 @@ function formatDate(value: string | null | undefined, locale: string, includeTim
           day: "numeric",
         },
   );
-}
-
-function getServiceBadgeClass(state: string | null | undefined) {
-  switch (state) {
-    case "active":
-      return "bg-emerald-100 text-emerald-800";
-    case "paused":
-      return "bg-amber-100 text-amber-800";
-    case "pending_activation":
-      return "bg-teal-100 text-teal-800";
-    case "expired":
-      return "bg-rose-100 text-rose-800";
-    default:
-      return "bg-slate-100 text-slate-700";
-  }
-}
-
-function getServiceLabel(state: string | null | undefined, isRtl: boolean) {
-  switch (state) {
-    case "active":
-      return isRtl ? "نشط" : "Active";
-    case "paused":
-      return isRtl ? "مجمّد" : "Frozen";
-    case "pending_activation":
-      return isRtl ? "بانتظار التفعيل" : "Pending Activation";
-    case "expired":
-      return isRtl ? "منتهي" : "Expired";
-    case "inactive":
-      return isRtl ? "غير نشط" : "Inactive";
-    default:
-      return isRtl ? "لا يوجد اشتراك" : "No Subscription";
-  }
 }
 
 function getDisplayName(profile: any, isRtl: boolean) {
@@ -161,6 +130,7 @@ export default function AdminClientProfileSheet({
   const isRtl = language === "ar";
   const locale = isRtl ? "ar-EG" : "en-US";
   const utils = trpc.useUtils();
+  const sheetTitleRef = useRef<HTMLHeadingElement>(null);
   const [blockDialogOpen, setBlockDialogOpen] = useState(false);
   const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
   const [notificationDialogOpen, setNotificationDialogOpen] = useState(false);
@@ -245,6 +215,13 @@ export default function AdminClientProfileSheet({
   const hasPendingService = lexaiState === "pending_activation" || recommendationState === "pending_activation";
   const hasActiveService = lexaiState === "active" || recommendationState === "active";
   const hasServiceRecord = !!profile?.lexaiSubscription || !!profile?.recommendationSubscription;
+  const frozenServiceNames = [
+    profile?.lexaiSubscription?.isPaused ? "LexAI" : null,
+    profile?.recommendationSubscription?.isPaused ? (isRtl ? "التوصيات" : "Recommendations") : null,
+  ].filter((name): name is string => !!name);
+  const serviceHandoff = isRtl
+    ? `يرجى من المسؤول أو مدير الاشتراكات إزالة التجميد اليدوي عن ${frozenServiceNames.join(" و ")} للعميل ${displayName} (#${userId}، ${profile?.user.email ?? ""}). أبقوا متطلبات التفعيل كما هي، وتحققوا من حالة كل خدمة بعد فك التجميد. الخدمات المعلّقة ستبقى بانتظار التفعيل. هذا طلب لفك تجميد الخدمات فقط.`
+    : `Admin/subscription manager: please remove the manual freeze on ${frozenServiceNames.join(" and ")} for ${displayName} (#${userId}, ${profile?.user.email ?? ""}). Keep activation requirements in place and verify each service's status afterward. Pending services will still await activation. This request is for service unfreezing only.`;
   const migrationChecks: Array<{ title: string; detail: string; tone: "healthy" | "attention" | "risk" }> = [];
 
   if (profile?.user?.adminEmailCollision) {
@@ -437,12 +414,16 @@ export default function AdminClientProfileSheet({
     <>
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          sheetTitleRef.current?.focus();
+        }}
         side={isRtl ? "left" : "right"}
         dir={isRtl ? "rtl" : "ltr"}
         className="w-full gap-0 overflow-hidden border-slate-200 bg-[var(--color-xf-cream)] p-0 sm:max-w-2xl"
       >
         <SheetHeader className="shrink-0 border-b border-emerald-100 bg-white/90">
-          <SheetTitle className="flex items-center gap-2 text-xl">
+          <SheetTitle ref={sheetTitleRef} tabIndex={-1} className="flex items-center gap-2 text-xl outline-none">
             <UserRound className="h-5 w-5 text-emerald-600" />
             {isRtl ? "ملف العميل" : "Client Profile"}
           </SheetTitle>
@@ -540,6 +521,39 @@ export default function AdminClientProfileSheet({
                       </div>
                     )}
                   </div>
+                </CardContent>
+              </Card>
+
+              <Card className="border-teal-100 bg-white/95">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">{isRtl ? "الوصول والخطوة التالية" : "Access & next steps"}</CardTitle>
+                  <CardDescription>
+                    {isRtl ? "تجميد الخدمة وانتظار التفعيل وتقييد الدخول حالات منفصلة." : "Service freezes, pending activation, and sign-in restrictions are separate states."}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <InfoLine label={isRtl ? "الدخول إلى الحساب" : "Account sign-in"} value={profile.user.isDeleted
+                    ? (isRtl ? "الحساب محذوف" : "Account deleted")
+                    : profile.user.loginBlockedAt ? (isRtl ? "مقيّد — راجع قسم إدارة الحساب" : "Restricted — review Account Management")
+                      : (isRtl ? "مسموح؛ تجميد الخدمة لا يمنع الدخول أو التعلم" : "Allowed; a service freeze does not block sign-in or learning")} />
+                  <InfoLine label={isRtl ? "أول تفعيل للباقة" : "First package activation"} value={formatDate(profile.user.firstPackageActivatedAt, locale)} />
+                  <p className="text-xs text-muted-foreground">{isRtl ? "مهلة التفعيل تبدأ من تفعيل الباقة، وليس من تاريخ إنشاء الطلب. فك التجميد لا يتجاوز متطلبات التفعيل." : "The activation window starts at package activation, not order creation. Unfreezing does not bypass activation requirements."}</p>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <ServiceCard icon={<Bot className="h-5 w-5 text-emerald-600" />} title="LexAI" subscription={profile.lexaiSubscription} isRtl={isRtl} loginBlocked={!!profile.user.loginBlockedAt || profile.user.isDeleted} />
+                    <ServiceCard icon={<TrendingUp className="h-5 w-5 text-teal-600" />} title={isRtl ? "التوصيات" : "Recommendations"} subscription={profile.recommendationSubscription} isRtl={isRtl} loginBlocked={!!profile.user.loginBlockedAt || profile.user.isDeleted} />
+                  </div>
+                  {frozenServiceNames.length > 0 && <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                    <Label htmlFor="service-handoff">{isRtl ? "تعليمات جاهزة للفريق" : "Team handoff"}</Label>
+                    <Textarea id="service-handoff" readOnly value={serviceHandoff} className="min-h-32 bg-white text-sm" />
+                    <Button variant="outline" size="sm" onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(serviceHandoff);
+                        toast.success(isRtl ? "تم نسخ التعليمات" : "Handoff copied");
+                      } catch {
+                        toast.error(isRtl ? "حدّد النص أعلاه وانسخه يدوياً" : "Select the note above and copy it manually");
+                      }
+                    }}>{isRtl ? "نسخ التعليمات" : "Copy handoff"}</Button>
+                  </div>}
                 </CardContent>
               </Card>
 
@@ -665,11 +679,16 @@ export default function AdminClientProfileSheet({
                       <Badge className={profile.recommendationNotifications.isDisabled ? "bg-amber-100 text-amber-900" : "bg-emerald-100 text-emerald-800"}>
                         {profile.recommendationNotifications.isDisabled
                           ? (isRtl ? "متوقفة لهذا العميل" : "Disabled for Client")
-                          : (isRtl ? "مفعّلة" : "Enabled")}
+                          : (isRtl ? "مسموحة عند تفعيل الخدمة" : "Allowed when service is active")}
                       </Badge>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-3 text-sm">
+                    <p className="text-xs leading-5 text-muted-foreground">
+                      {isRtl
+                        ? "السماح بالإشعارات لا يفعّل الاشتراك ولا يفك تجميده. لن تصل تنبيهات جديدة ما دامت الخدمة مجمّدة أو بانتظار التفعيل. راجع حالة الخدمة أعلاه."
+                        : "Allowing notifications does not activate or unfreeze the subscription. New alerts remain blocked while the service is frozen or awaiting activation. Check the service status above."}
+                    </p>
                     {profile.recommendationNotifications.control && (
                       <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
                         <p className="font-medium text-slate-900" dir="auto">{profile.recommendationNotifications.control.reason}</p>
@@ -847,47 +866,6 @@ export default function AdminClientProfileSheet({
                   </div>
                 </CardContent>
               </Card>
-
-              <div className="grid gap-4 lg:grid-cols-2">
-                <ServiceCard
-                  icon={<Bot className="h-5 w-5 text-emerald-600" />}
-                  title={isRtl ? "LexAI" : "LexAI"}
-                  description={isRtl ? "الحالة الحالية والوصول وسياق المتابعة." : "Current access state and follow-up context."}
-                  state={profile.lexaiSubscription?.subscriptionState ?? "no_subscription"}
-                  stateLabel={getServiceLabel(profile.lexaiSubscription?.subscriptionState, isRtl)}
-                  badgeClass={getServiceBadgeClass(profile.lexaiSubscription?.subscriptionState)}
-                  rows={profile.lexaiSubscription?.subscriptionState === "pending_activation"
-                    ? [
-                        { label: isRtl ? "أيام الخدمة المستهلكة" : "Service Days Consumed", value: "0" },
-                        { label: isRtl ? "المتبقي من مهلة الحماية" : "Protection Window Remaining", value: String(profile.lexaiSubscription?.activationDeadlineDays ?? 0) },
-                        { label: isRtl ? "آخر موعد للحماية" : "Protection Deadline", value: formatDate(profile.lexaiSubscription?.maxActivationDate ?? null, locale, false) },
-                      ]
-                    : [
-                        { label: isRtl ? "الأيام المتبقية" : "Remaining Days", value: String(profile.lexaiSubscription?.remainingDays ?? 0) },
-                        { label: isRtl ? "سبب التجميد" : "Freeze Reason", value: profile.lexaiSubscription?.pausedReason || "-" },
-                      ]}
-                />
-
-                <ServiceCard
-                  icon={<TrendingUp className="h-5 w-5 text-teal-600" />}
-                  title={isRtl ? "التوصيات" : "Recommendations"}
-                  description={isRtl ? "وضع الاشتراك والتجميد والانتهاء." : "Subscription, freeze, and expiry state."}
-                  state={profile.recommendationSubscription?.subscriptionState ?? "no_subscription"}
-                  stateLabel={getServiceLabel(profile.recommendationSubscription?.subscriptionState, isRtl)}
-                  badgeClass={getServiceBadgeClass(profile.recommendationSubscription?.subscriptionState)}
-                  rows={profile.recommendationSubscription?.subscriptionState === "pending_activation"
-                    ? [
-                        { label: isRtl ? "أيام الخدمة المستهلكة" : "Service Days Consumed", value: "0" },
-                        { label: isRtl ? "المتبقي من مهلة الحماية" : "Protection Window Remaining", value: String(profile.recommendationSubscription?.activationDeadlineDays ?? 0) },
-                        { label: isRtl ? "آخر موعد للحماية" : "Protection Deadline", value: formatDate(profile.recommendationSubscription?.maxActivationDate ?? null, locale, false) },
-                      ]
-                    : [
-                        { label: isRtl ? "الأيام المتبقية" : "Remaining Days", value: String(profile.recommendationSubscription?.remainingDays ?? 0) },
-                        { label: isRtl ? "سبب التجميد" : "Freeze Reason", value: profile.recommendationSubscription?.pausedReason || "-" },
-                        { label: isRtl ? "تاريخ الانتهاء" : "End Date", value: formatDate(profile.recommendationSubscription?.endDate ?? null, locale, false) },
-                      ]}
-                />
-              </div>
 
               <Card className="border-teal-100 bg-white/95">
                 <CardHeader className="pb-3">
@@ -1215,44 +1193,20 @@ function InfoLine({
   );
 }
 
-function ServiceCard({
-  icon,
-  title,
-  description,
-  state,
-  stateLabel,
-  badgeClass,
-  rows,
-}: {
+function ServiceCard({ icon, title, subscription, isRtl, loginBlocked }: {
   icon: ReactNode;
   title: string;
-  description: string;
-  state: string;
-  stateLabel: string;
-  badgeClass: string;
-  rows: Array<{ label: string; value: string }>;
+  subscription?: ServiceStatusSnapshot | null;
+  isRtl: boolean;
+  loginBlocked: boolean;
 }) {
   return (
-    <Card className="border-emerald-100 bg-white/95">
+    <Card className="min-w-0 border-emerald-100 bg-white/95">
       <CardHeader className="pb-3">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <CardTitle className="flex items-center gap-2 text-base">
-              {icon}
-              {title}
-            </CardTitle>
-            <CardDescription className="mt-1">{description}</CardDescription>
-          </div>
-          <Badge className={badgeClass}>{stateLabel}</Badge>
-        </div>
+        <CardTitle className="flex items-center gap-2 text-base">{icon}{title}</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-2 text-sm">
-        {rows.map((row) => (
-          <div key={`${state}-${row.label}`} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-[var(--color-xf-cream)] px-3 py-2">
-            <span className="text-xs text-muted-foreground">{row.label}</span>
-            <span className="text-sm font-medium text-slate-800">{row.value}</span>
-          </div>
-        ))}
+      <CardContent>
+        <TimedServiceStatus subscription={subscription} isRtl={isRtl} loginBlocked={loginBlocked} />
       </CardContent>
     </Card>
   );
