@@ -20,7 +20,7 @@ The API was deployed first using the verified Wrangler-packaged module, `--no-bu
 
 Dependency/runtime/development safeguards and escaped AI-screening rendering were released. The support freeze/pending-service distinctions and team handoff remain present. No activation policy, staff/customer permission, database schema, key/session rotation or R2 object mutation was introduced. All existing plain variables, binding identities, secret binding names, compatibility settings and four schedules matched the preceding support version.
 
-The release was prepared and committed in an isolated worktree. The original shared workspace remains on `ba4216c` with its pre-existing security working files preserved; it was not reset or switched to the release branch. Future chats must consult this release record rather than infer live status from that dirty shared HEAD. The older security source/artifact candidate is superseded and was **not deployed**.
+The release was prepared and committed in an isolated worktree, initially preserving the shared workspace on `ba4216c`. The owner then requested that everything be pushed. All 67 outstanding shared-workspace files were verified equivalent to published commit `959aa0e`; the current `codex/live-package-phase-a` branch was advanced to that history and pushed without changing working file bytes or resetting the workspace. Later record commits do not change the deployed application source `a7e1ad9`. Future chats must inspect current HEAD and this release record. The older security source/artifact candidate is superseded and was **not deployed**.
 
 ## Backups and recovery
 
@@ -39,11 +39,13 @@ The release was prepared and committed in an isolated worktree. The original sha
 - Live API checkpoint: **11/11** before Pages. After Pages: **14/14** checks passed. These covered active deployment IDs, exact Worker module SHA-256, variables/bindings/compatibility/schedules, API health, D1 fixed `SELECT 1`, anonymous session and protected-access rejection, allowed/untrusted CORS, canonical Pages source metadata, Arabic/English pages and www redirect.
 - **Ten live frontend asset hashes** matched the verified build, including Admin Jobs, LexAI, the client profile, subscription holders, recommendations, entry scripts and stylesheet. Worker module SHA-256: `83b8c648ee6513e7ddc008ea4ecb787225146446b0013028dc37e1a464ba38f1`.
 - Pre-release sampled analytics: **134 requests / zero Worker errors**. Early post-Worker window, 18:12–18:15 UTC: **55 requests / zero Worker errors**. The later 18:12–18:21 UTC post-release window recorded **508 requests / zero Worker errors**. CPU quantiles are not customer latency percentiles.
-- No production checkout, payment, entitlement, customer-data mutation or cron invocation was performed as a test. The post-release signed-in browser recheck could not be completed because browser control detached; public/API and live-asset checks succeeded. No authentication fix is claimed for the earlier slow browser connection.
+- No production checkout, payment, entitlement, customer-data mutation or cron invocation was performed as a test. The first post-release signed-in recheck was limited by a detached browser connection. After Chrome reconnected, the authenticated admin dashboard and announcement workflow worked, including the owner-authorized completion notice. No authentication code fix is claimed for the earlier slow browser connection.
 
 ## Notice and observation
 
 The bilingual notice went from `support@xflexacademy.com`, with refresh/cache guidance and dashboard Support chat. **163 valid addresses were provider-accepted**; eight had recipient-specific delivery confirmation in the last measured snapshot. Eleven existing permanent suppressions and one invalid account placeholder were preserved. [Notice and owner override](security-release-notice-2026-10-25.md).
+
+The owner subsequently authorized a separate bilingual completion email to the same audience. See [completion notice and workspace push record](security-completion-notice-2026-10-25.md) for its distinct campaign and final aggregate status.
 
 A temporary hidden **one-hour local read-only monitor** was started at 18:21 UTC. It records public health about once per minute and Worker analytics about every five minutes in `.tools/security-release-readiness/candidate-ba4216c/monitor-status.json`. It depends on this computer remaining running, records locally, and does not send external alerts or perform automatic rollback. The process identity is in `monitor-process.json`.
 
