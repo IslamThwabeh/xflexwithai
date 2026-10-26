@@ -13,7 +13,10 @@ export default function LiveExpertMessages() {
   const { language } = useLanguage();
   const isAr = language === 'ar';
   const visible = usePageVisible();
-  const [cohortKey, setCohortKey] = useState<string>();
+  const [cohortKey, setCohortKey] = useState<string | undefined>(() => {
+    const requested = new URLSearchParams(window.location.search).get('cohortKey')?.trim();
+    return requested && requested.length <= 100 ? requested : undefined;
+  });
   const workspace = trpc.liveExpert.myWorkspace.useQuery({ cohortKey }, { retry: false, refetchInterval: visible ? 30000 : false, refetchIntervalInBackground: false });
   const open = trpc.liveExpert.openConversation.useMutation({ onSuccess: () => { void workspace.refetch(); }, onError: error => toast.error(error.message) });
   const data = workspace.data;

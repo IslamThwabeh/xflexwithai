@@ -110,6 +110,7 @@ export function getStaffLandingPage(roles: string[]): string {
 
 // ── Staff Notification Events ────────────────────────────────────────
 export const STAFF_NOTIFICATION_EVENTS = {
+  live_expert_question: { labelEn: "Live Expert Questions", labelAr: "أسئلة خبير لايف", roles: ["live_expert"], actionUrl: "/admin/live-expert" },
   new_support_message:  { labelEn: "New Support Message",       labelAr: "رسالة دعم جديدة",          roles: ["support"],      actionUrl: "/admin/support" },
   human_escalation:     { labelEn: "Human Escalation",          labelAr: "طلب تحويل لموظف",          roles: ["support"],      actionUrl: "/admin/support" },
   lexai_case_assigned:  { labelEn: "LexAI Case Assigned",       labelAr: "تم تعيين حالة LexAI",      roles: ["lexai_support"], actionUrl: "/admin/lexai" },

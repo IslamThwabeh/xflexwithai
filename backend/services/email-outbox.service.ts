@@ -1,5 +1,6 @@
 import { sendAdminNotificationEmail, sendEmail } from "../_core/email";
 import * as db from "../db";
+import { getLiveExpertAlertBlockReason } from './live-expert-alerts.service';
 import type { EmailDeliveryClass } from "../../shared/emailDeliveryClasses";
 
 export const SUPPORT_REPLY_EMAIL_DRAIN_LIMIT = 5;
@@ -42,7 +43,7 @@ export async function drainGenericEmailOutbox(input: {
 
   for (const row of rows) {
     try {
-      const accountBlockReason = await db.getEmailOutboxRecipientBlockReason(row);
+      const accountBlockReason = await db.getEmailOutboxRecipientBlockReason(row) ?? await getLiveExpertAlertBlockReason(row);
       if (accountBlockReason) {
         await db.markEmailOutboxSkipped(row.id, accountBlockReason, "skipped_suppressed");
         result.skipped += 1;

@@ -137,6 +137,7 @@ function UserProfile({ isStaff, dashboardPath }: { isStaff: boolean; dashboardPa
     try { return JSON.parse((user as any)?.notificationPrefs || '{}'); } catch { return {}; }
   })();
   const [notifPrefs, setNotifPrefs] = useState({
+    live_expert_replies: parsedPrefs.live_expert_replies !== false,
     support_replies: parsedPrefs.support_replies !== false,
     recommendations: parsedPrefs.recommendations !== false,
     course_updates: parsedPrefs.course_updates !== false,
@@ -415,6 +416,7 @@ function UserProfile({ isStaff, dashboardPath }: { isStaff: boolean; dashboardPa
               )}
               <div className="space-y-4">
                 {([
+                  { key: "live_expert_replies" as const, labelAr: "ردود خبير لايف", labelEn: "Live Expert Replies", descAr: "عند وصول رد في محادثتك الخاصة مع خبير لايف", descEn: "When your private Live Expert conversation receives a reply" },
                   { key: "support_replies" as const, labelAr: "ردود الدعم الفني", labelEn: "Support Replies", descAr: "عند الرد على طلبات الدعم الخاصة بك", descEn: "When your support tickets receive a reply" },
                   { key: "recommendations" as const, labelAr: "التوصيات", labelEn: "Recommendations", descAr: "توصيات التداول والتنبيهات", descEn: "Trading recommendations and alerts" },
                   { key: "course_updates" as const, labelAr: "تحديثات الدورات", labelEn: "Course Updates", descAr: "حلقات أو محتوى جديد في دوراتك", descEn: "New episodes or content in your courses" },
@@ -436,8 +438,8 @@ function UserProfile({ isStaff, dashboardPath }: { isStaff: boolean; dashboardPa
               </div>
               <div className="mt-4 pt-3 border-t text-xs text-gray-500 dark:text-gray-400">
                 {language === "ar"
-                  ? "ملاحظة: لن يتم إرسال إشعارات عبر البريد أثناء تواجدك على المنصة"
-                  : "Note: Email notifications are suppressed while you're active on the platform"}
+                  ? "يخضع البريد لتفضيلاتك. يتم تخطي بريد خبير لايف إذا كنت قد قرأت المحادثة بالفعل."
+                  : "Email follows your preferences. Live Expert emails are skipped if you have already read the conversation."}
               </div>
               <Button
                 className="mt-4 gap-2"

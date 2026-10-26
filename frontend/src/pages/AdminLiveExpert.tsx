@@ -12,6 +12,24 @@ import { usePageVisible } from '@/hooks/usePageVisible';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 
+function ExpertEmailPreference() {
+  const { language } = useLanguage();
+  const isAr = language === 'ar';
+  const utils = trpc.useUtils();
+  const prefs = trpc.adminSettings.getNotificationPrefs.useQuery(undefined, { retry: false });
+  const [emailEnabled, setEmailEnabled] = useState(true);
+  useEffect(() => { if (prefs.data) setEmailEnabled(prefs.data.live_expert_question !== false); }, [prefs.data]);
+  const save = trpc.adminSettings.updateNotificationPrefs.useMutation({
+    onSuccess: () => { void utils.adminSettings.getNotificationPrefs.invalidate(); toast.success(isAr ? 'تم حفظ تفضيلات البريد.' : 'Email preference saved.'); },
+    onError: error => { setEmailEnabled(prefs.data?.live_expert_question !== false); toast.error(error.message); },
+  });
+  return <div className="rounded-xl border bg-white p-4 text-slate-950">
+    <label className="flex items-center gap-3 text-sm"><input type="checkbox" disabled={prefs.isLoading || !!prefs.error || save.isPending} checked={emailEnabled} onChange={event => { const next = event.target.checked; setEmailEnabled(next); save.mutate({ prefs: { ...prefs.data, live_expert_question: next } }); }} />{isAr ? 'أرسل لي بريداً عند وصول أسئلة جديدة من العملاء' : 'Email me when clients send new questions'}</label>
+    <p className="mt-2 text-xs text-slate-500">{isAr ? 'تبقى إشعارات الموقع متاحة عند إيقاف البريد. لا يُرسل البريد للمحادثات التي قرأتها بالفعل.' : 'Website notifications remain available when email is off. Already-read conversations do not trigger an email.'}</p>
+    {prefs.error ? <p role="alert" className="mt-2 text-sm text-red-700">{prefs.error.message}</p> : null}
+  </div>;
+}
+
 function ExpertSettings({ conversationId }: { conversationId?: number }) {
   const { language } = useLanguage();
   const isAr = language === 'ar';
@@ -57,6 +75,7 @@ export default function AdminLiveExpert() {
   return <DashboardLayout><main className="space-y-5 p-4 md:p-6" dir={isAr ? 'rtl' : 'ltr'}>
     <header><h1 className="flex items-center gap-2 text-2xl font-bold"><MessageSquare />{isAr ? 'رسائل خبير لايف' : 'Live Expert Inbox'}</h1><p className="mt-2 text-sm text-muted-foreground">{isAr ? 'محادثة مستقلة لكل عميل وفوج، والأسئلة التي تنتظر إجابة تظهر أولاً.' : 'Separate conversations for each client and cohort. Unanswered questions appear first.'}</p></header>
     {inbox.data?.isAdmin ? <ExpertSettings conversationId={selected} /> : null}
+    {inbox.data && !inbox.data.isAdmin ? <ExpertEmailPreference /> : null}
     <form className="flex flex-wrap items-center gap-3" onSubmit={event => { event.preventDefault(); setSearch(draftSearch.trim()); setOffset(0); }}>
       <label className="sr-only" htmlFor="expert-inbox-search">{isAr ? 'بحث بالاسم أو الفوج' : 'Search name or cohort'}</label><Input className="w-full sm:max-w-xs" id="expert-inbox-search" value={draftSearch} onChange={event => setDraftSearch(event.target.value)} placeholder={isAr ? 'بحث بالاسم أو الفوج' : 'Search name or cohort'} maxLength={100} /><Button type="submit" variant="outline"><Search className="me-2 h-4 w-4" />{isAr ? 'بحث' : 'Search'}</Button>
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={unansweredOnly} onChange={event => { setUnansweredOnly(event.target.checked); setOffset(0); }} />{isAr ? 'بانتظار إجابة فقط' : 'Unanswered only'}</label>

@@ -28,6 +28,8 @@ describe("email delivery feature categories", () => {
     ["job_eligibility_review_requested", "jobs"],
     ["staff_performance_submitted", "staff_performance"],
     ["lexai_case_assigned", "support"],
+    ["live_expert_question", "support"],
+    ["live_expert_reply", "support"],
     ["lexai_expiry_soon", "lifecycle"],
     ["timed_service_activation", "lifecycle"],
     ["timed_service_activation_reminder", "lifecycle"],

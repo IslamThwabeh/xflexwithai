@@ -13,7 +13,12 @@ Clients enter through **Live Package → Message your Live Expert**, at `/live-p
 - Every thread, message-history, read-cursor, upload, and screenshot request checks the authenticated participant or admin. General support staff cannot browse expert messages. Admin oversight does not consume the expert's unread cursor and is disclosed in the client interface.
 - Screenshots are PNG/JPEG/WebP, at most 2 MB, checked by signature and size, and stored under randomized keys in a dedicated private R2 bucket. There are no public attachment URLs. The app fetches the image after authorization, using private/no-store API responses.
 - Unsent screenshots expire after 24 hours. The existing daily maintenance invocation removes up to 100 expired pending uploads with an indexed query. Sent images are preserved.
-- Message retries use a unique client nonce and an atomic D1 batch. History is paginated in 50-message pages; delta polling and inbox refresh pause while the page is hidden. Polling is 15 seconds for open conversations and 30 seconds for inbox/workspace summaries. This version uses website unread counts and does not send email alerts.
+- Message retries use a unique client nonce and an atomic D1 batch. History is paginated in 50-message pages; delta polling and inbox refresh pause while the page is hidden. Polling is 15 seconds for open conversations and 30 seconds for inbox/workspace summaries.
+- New client messages create a bell notification and an urgent queued email for the assigned expert only. Expert/admin replies notify that conversation's client only. One bell entry is maintained per conversation and recipient; opening/reading the incoming messages clears it. Admin oversight does not clear the expert's unread state.
+- Email alerts contain a sign-in link, with no message text or screenshots. Messages in the same clock minute share one email per conversation, direction, and recipient. Delivery uses the existing minute scheduler and normal retries; provider acceptance is not a guarantee of inbox delivery.
+- Before dispatch, email delivery rechecks current recipient email, account access, assigned expert role, email preference, and whether incoming messages are already read. A read conversation or changed/reassigned/blocked recipient is skipped. Bell alerts remain available when email is off.
+- Clients control **Live Expert Replies** in `/profile`. Experts control **Email me when clients send new questions** in `/admin/live-expert`. Both default on. Customer reply links include `cohortKey`, so historical or multi-cohort clients land in the relevant conversation.
+- Migration 131 adds `alerts_enqueued` with default 1 for existing messages. Only newly inserted messages explicitly start at 0. Message storage, bell updates, email enqueue, and the handled flag commit atomically, preventing a historical backlog or duplicate alerts on retries.
 
 ## Local verification
 
@@ -48,6 +53,8 @@ The implemented verification passed 12 real SQLite/D1 messaging tests, the five 
 For rollback, restore the preceding Worker/Pages releases; leave the additive tables and private bucket in place to preserve conversations. Do not drop tables, delete messages, or remove pre-existing staff roles as a rollback shortcut.
 
 ## Deployed release
+
+The email-alert follow-up passed 68 focused tests, the 33-file / 204-test critical suite, TypeScript, production builds, and two rehearsals using production's partial notification indexes. Local browser checks confirmed both queue directions, notification counters, client cohort links, and saved client/expert email preferences. Migration 131 preserves historical messages as handled and adds no notification catch-up.
 
 - Application source: `2452529`, following feature commit `94c6432`.
 - Worker version: `b7113a63-f6b9-4247-a3f8-267a1c4ed8e2`, deployed at 100%, preserving D1, the existing R2 bindings, and all four cron schedules.

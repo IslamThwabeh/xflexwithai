@@ -1066,7 +1066,7 @@ const adminOrRoleProcedure = (roles: string[]) => protectedProcedure.use(async (
 const supportModeratorProcedure = adminOrRoleProcedure(["support"]);
 // Personal notification inboxes are available to every granular staff role.
 // This does not grant access to general support conversations.
-const notificationStaffProcedure = adminOrRoleProcedure([...ALL_STAFF_ROLES]);
+const notificationStaffProcedure = adminOrRoleProcedure([...ALL_STAFF_ROLES, 'analyst_duplicate_guard']);
 
 const requireFinanceOwnerAdmin = async (adminId: number) => {
   if (!await db.isFinanceOwnerAdmin(adminId)) {
@@ -3325,6 +3325,7 @@ export const appRouter = router({
     // User: Update notification preferences
     updateNotificationPrefs: protectedProcedure
       .input(z.object({
+        live_expert_replies: z.boolean().optional(),
         support_replies: z.boolean().optional(),
         recommendations: z.boolean().optional(),
         course_updates: z.boolean().optional(),

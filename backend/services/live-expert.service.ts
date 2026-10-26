@@ -3,6 +3,7 @@ import { sql } from 'drizzle-orm';
 import { SQLiteSyncDialect } from 'drizzle-orm/sqlite-core';
 import type { R2Bucket } from '@cloudflare/workers-types';
 import * as db from '../db';
+import { buildLiveExpertAlertStatements } from './live-expert-alerts.service';
 import { getLiveExpertMessagingWindow, LIVE_EXPERT_IMAGE_MAX_BYTES, LIVE_EXPERT_ROLE } from '../../shared/liveExpert';
 
 export type ExpertActor = { id: number; name: string; isAdmin: boolean; isExpert: boolean };
@@ -115,7 +116,16 @@ export async function markExpertRead(actor: ExpertActor, conversationId: number,
   // Admin oversight must not consume the assigned expert's unread messages.
   if (actor.isAdmin) return;
   const cursor = actor.id === thread.user_id ? sql`client_read_id` : sql`expert_read_id`;
-  await connection.run(sql`UPDATE live_expert_conversations SET ${cursor} = max(${cursor}, min(${throughId}, max(last_client_message_id, last_expert_message_id))) WHERE id = ${thread.id} AND ${cursor} < ${throughId}`);
+  const isClient = actor.id === thread.user_id;
+  const key = `live_expert_thread:${thread.id}`;
+  const queries = [
+    sql`UPDATE live_expert_conversations SET ${cursor} = max(${cursor}, min(${throughId}, max(last_client_message_id, last_expert_message_id))) WHERE id = ${thread.id} AND ${cursor} < ${throughId}`,
+    isClient
+      ? sql`UPDATE user_notifications SET is_read = 1 WHERE user_id = ${actor.id} AND dedupe_key = ${key} AND EXISTS (SELECT 1 FROM live_expert_conversations WHERE id = ${thread.id} AND client_read_id >= last_expert_message_id)`
+      : sql`UPDATE staff_notifications SET isRead = 1 WHERE userId = ${actor.id} AND dedupe_key = ${key} AND EXISTS (SELECT 1 FROM live_expert_conversations WHERE id = ${thread.id} AND expert_read_id >= last_client_message_id)`,
+  ];
+  const dialect = new SQLiteSyncDialect();
+  await connection.$client.batch(queries.map(statement => { const query = dialect.sqlToQuery(statement); return connection.$client.prepare(query.sql).bind(...query.params); }));
 }
 
 export async function sendExpertMessage(actor: ExpertActor, input: { conversationId: number; content: string; nonce: string; attachmentId?: string }) {
@@ -139,10 +149,11 @@ export async function sendExpertMessage(actor: ExpertActor, input: { conversatio
   const now = new Date().toISOString();
   // A batch is an atomic transaction on D1 and the local D1 adapter.
   const batchQueries = [
-    sql`INSERT INTO live_expert_messages (conversation_id, sender_id, sender_role, sender_name, content, client_nonce, created_at) SELECT ${thread.id}, ${actor.id}, ${role}, ${actor.name}, ${input.content}, ${input.nonce}, ${now} WHERE ${input.attachmentId ?? ''} = '' OR EXISTS (SELECT 1 FROM live_expert_attachments WHERE id = ${input.attachmentId ?? ''} AND conversation_id = ${thread.id} AND uploader_id = ${actor.id} AND message_id IS NULL AND created_at > ${uploadCutoff}) ON CONFLICT(conversation_id, client_nonce) DO NOTHING`,
+    sql`INSERT INTO live_expert_messages (conversation_id, sender_id, sender_role, sender_name, content, client_nonce, created_at, alerts_enqueued) SELECT ${thread.id}, ${actor.id}, ${role}, ${actor.name}, ${input.content}, ${input.nonce}, ${now}, 0 WHERE ${input.attachmentId ?? ''} = '' OR EXISTS (SELECT 1 FROM live_expert_attachments WHERE id = ${input.attachmentId ?? ''} AND conversation_id = ${thread.id} AND uploader_id = ${actor.id} AND message_id IS NULL AND created_at > ${uploadCutoff}) ON CONFLICT(conversation_id, client_nonce) DO NOTHING`,
     sql`UPDATE live_expert_attachments SET message_id = (SELECT id FROM live_expert_messages WHERE conversation_id = ${thread.id} AND client_nonce = ${input.nonce} AND sender_id = ${actor.id}) WHERE id = ${input.attachmentId ?? ''} AND conversation_id = ${thread.id} AND uploader_id = ${actor.id} AND message_id IS NULL`,
     sql`UPDATE live_expert_conversations SET ${isClient ? sql`last_client_message_id` : sql`last_expert_message_id`} = max(${isClient ? sql`last_client_message_id` : sql`last_expert_message_id`}, (SELECT id FROM live_expert_messages WHERE conversation_id = ${thread.id} AND client_nonce = ${input.nonce})), last_message_at = max(last_message_at, ${now}) WHERE id = ${thread.id} AND EXISTS (SELECT 1 FROM live_expert_messages WHERE conversation_id = ${thread.id} AND client_nonce = ${input.nonce})`,
   ];
+  batchQueries.push(...buildLiveExpertAlertStatements({ conversationId: thread.id, cohortKey: thread.cohort_key, senderId: actor.id, nonce: input.nonce, isQuestion: isClient, now }));
   const dialect = new SQLiteSyncDialect();
   await connection.$client.batch(batchQueries.map(statement => {
     const query = dialect.sqlToQuery(statement);

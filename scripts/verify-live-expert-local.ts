@@ -17,6 +17,13 @@ if (!(fixture.prepare('PRAGMA table_info(live_package_sessions)').all() as { nam
 }
 fixture.exec('CREATE TABLE IF NOT EXISTS schema_migrations (id INTEGER PRIMARY KEY AUTOINCREMENT, migration_name TEXT UNIQUE NOT NULL, source TEXT NOT NULL, notes TEXT, applied_at TEXT DEFAULT CURRENT_TIMESTAMP)');
 fixture.exec(readFileSync(resolve('database/migrations/130_live_expert_messaging.sql'), 'utf8'));
+fixture.exec(readFileSync(resolve('database/migrations/131_live_expert_alerts.sql'), 'utf8'));
+if (!(fixture.prepare('PRAGMA table_info(staff_notifications)').all() as { name: string }[]).some(column => column.name === 'dedupe_key')) {
+  fixture.exec(readFileSync(resolve('database/migrations/085_timed_service_activation_reminders.sql'), 'utf8'));
+}
+if (!(fixture.prepare('PRAGMA table_info(email_outbox)').all() as { name: string }[]).some(column => column.name === 'deliveryClass')) {
+  fixture.exec(readFileSync(resolve('database/migrations/119_email_delivery_class_lanes.sql'), 'utf8'));
+}
 if (!(fixture.prepare('PRAGMA table_info(staff_notifications)').all() as { name: string }[]).some(column => column.name === 'archivedAt')) {
   fixture.exec(readFileSync(resolve('database/migrations/115_staff_notification_archiving.sql'), 'utf8'));
 }
@@ -41,6 +48,7 @@ process.env.NODE_ENV = 'development';
 process.env.DATABASE_URL = filename;
 process.env.JWT_SECRET = randomBytes(48).toString('base64url');
 process.env.PORT = '3410';
+process.env.SITE_URL = 'http://127.0.0.1:3410';
 process.env.VITE_API_URL = '';
 process.env.PACKAGE_LIVE_DEPLOYMENT_ENABLED = 'true';
 process.env.EMAIL_PROVIDER = 'disabled';

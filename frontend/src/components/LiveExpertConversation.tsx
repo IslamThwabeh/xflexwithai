@@ -50,6 +50,8 @@ export default function LiveExpertConversation({ conversationId, viewer, title, 
   const read = trpc.liveExpert.markRead.useMutation({ onSuccess: () => {
     void utils.liveExpert.myWorkspace.invalidate();
     void utils.liveExpert.inbox.invalidate();
+    if (viewer === 'client') void utils.notifications.unreadCount.invalidate();
+    else void utils.staffNotifications.badgeCounts.invalidate();
     onRead?.();
   } });
   const merge = (rows: Message[]) => setMessages(current => {

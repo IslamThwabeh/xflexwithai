@@ -52,6 +52,7 @@ export function getEmailDeliveryEventCategory(eventType: string): EmailDeliveryE
   if (eventType.startsWith("staff_performance")) return "staff_performance";
   if (eventType.startsWith("recommendation") || eventType === "trade_result") return "recommendations";
   if (
+    eventType.startsWith("live_expert_") ||
     eventType.includes("support") ||
     (eventType.startsWith("lexai") && !eventType.startsWith("lexai_expiry")) ||
     eventType === "human_escalation"

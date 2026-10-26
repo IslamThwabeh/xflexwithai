@@ -871,6 +871,7 @@ export const liveExpertMessages = sqliteTable('live_expert_messages', {
   id: integer('id').primaryKey({ autoIncrement: true }), conversationId: integer('conversation_id').notNull().references(() => liveExpertConversations.id),
   senderId: integer('sender_id').notNull(), senderRole: text('sender_role').notNull(), senderName: text('sender_name').notNull(),
   content: text('content').notNull(), clientNonce: text('client_nonce').notNull(), createdAt: text('created_at').notNull(),
+  alertsEnqueued: integer('alerts_enqueued').notNull().default(1),
 }, table => ({ nonce: unique().on(table.conversationId, table.clientNonce), thread: index('idx_live_expert_messages_thread').on(table.conversationId, table.id) }));
 export const liveExpertAttachments = sqliteTable('live_expert_attachments', {
   id: text('id').primaryKey(), conversationId: integer('conversation_id').notNull().references(() => liveExpertConversations.id),
