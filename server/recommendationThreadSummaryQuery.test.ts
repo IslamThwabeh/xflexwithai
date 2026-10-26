@@ -86,6 +86,33 @@ function explain(
 }
 
 describe("recommendation thread summary SQL contract", () => {
+  it("isolates analyst totals and counts admin replies only on their own threads", async () => {
+    const database = new Database(":memory:");
+    try {
+      database.exec(PRODUCTION_SHAPED_DDL);
+      database.exec(`
+        INSERT INTO recommendationMessages (id, userId, type, content, parentId, threadStatus, createdAt)
+        VALUES
+          (1, 10, 'recommendation', 'Mine', NULL, 'open', '2026-10-01'),
+          (2, -1, 'result', 'Admin reply on mine', 1, NULL, '2026-10-02'),
+          (3, 20, 'recommendation', 'Other analyst', NULL, 'closed', '2026-10-03'),
+          (4, 20, 'result', 'Other result', 3, NULL, '2026-10-04'),
+          (5, 10, 'update', 'Legacy reply on other thread', 3, NULL, '2026-10-05');
+      `);
+      expect(await readRecommendationThreadSummary(drizzle(database), 10)).toEqual({
+        total: 1, open: 1, closed: 0, needsResult: 0,
+        resultMessages: 1, updateMessages: 0,
+        oldestRecommendationAt: "2026-10-01", newestRecommendationAt: "2026-10-01",
+      });
+      expect(await readRecommendationThreadSummary(drizzle(database), 30)).toMatchObject({
+        total: 0, resultMessages: 0, updateMessages: 0,
+      });
+      expect(await readRecommendationThreadSummary(drizzle(database))).toMatchObject({ total: 2, resultMessages: 2 });
+    } finally {
+      database.close();
+    }
+  });
+
   it("matches the legacy summary for rich and empty production-shaped data", async () => {
     const database = new Database(":memory:");
     try {

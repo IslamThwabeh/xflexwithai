@@ -38,6 +38,7 @@ import { z } from "zod";
 import { logger } from "./_core/logger";
 import * as db from "./db";
 import { filterRecipientsByMutedThreads } from "./services/recommendation-thread.service";
+import { protectRecommendationAuthors } from "./services/recommendation-privacy.service";
 import { parseRecommendationDraft } from "./services/recommendation-parser.service";
 import {
   PACKAGE_KEY_ISSUANCE_PURPOSES,
@@ -4654,13 +4655,15 @@ export const appRouter = router({
     feed: protectedProcedure
       .input(z.object({ limit: z.number().min(20).max(500).optional() }).optional())
       .query(async ({ ctx, input }) => {
-        await ensureRecommendationReadAccess(ctx);
-        return await db.getRecommendationMessagesFeed(ctx.user.id, input?.limit ?? 200);
+        const access = await ensureRecommendationReadAccess(ctx);
+        const analystUserId = access.canPublish && !access.isAdmin ? ctx.user.id : undefined;
+        const messages = await db.getRecommendationMessagesFeed(ctx.user.id, input?.limit ?? 200, analystUserId);
+        return protectRecommendationAuthors(messages, ctx.user.id, access.isAdmin);
       }),
 
     threadSummary: protectedProcedure.query(async ({ ctx }) => {
-      await ensureRecommendationPublishAccess(ctx);
-      return await db.getRecommendationThreadSummary();
+      const access = await ensureRecommendationPublishAccess(ctx);
+      return await db.getRecommendationThreadSummary(access.isAdmin ? undefined : ctx.user.id);
     }),
 
     threadMessages: protectedProcedure
@@ -4674,13 +4677,15 @@ export const appRouter = router({
       .query(async ({ ctx, input }) => {
         const access = await ensureRecommendationReadAccess(ctx);
         const analystUserId = access.canPublish && !access.isAdmin ? ctx.user.id : undefined;
-        return await db.getRecommendationThreadMessagesFeed(ctx.user.id, { ...input, analystUserId });
+        const feed = await db.getRecommendationThreadMessagesFeed(ctx.user.id, { ...input, analystUserId });
+        return { ...feed, messages: protectRecommendationAuthors(feed.messages, ctx.user.id, access.isAdmin) };
       }),
 
     openThreads: protectedProcedure.query(async ({ ctx }) => {
       const access = await ensureRecommendationReadAccess(ctx);
       const analystUserId = access.canPublish && !access.isAdmin ? ctx.user.id : undefined;
-      return await db.getOpenRecommendationMessagesFeed(ctx.user.id, analystUserId);
+      const messages = await db.getOpenRecommendationMessagesFeed(ctx.user.id, analystUserId);
+      return protectRecommendationAuthors(messages, ctx.user.id, access.isAdmin);
     }),
 
     muteThread: protectedProcedure
@@ -7030,7 +7035,10 @@ export const appRouter = router({
           const canView = await db.hasAnyRole(ctx.user.id, ['view_recommendations']);
           if (!canView) throw new TRPCError({ code: 'FORBIDDEN', message: 'View recommendations permission required' });
         }
-        return db.getRecommendationMessagesFeed(0, 100);
+        const access = await db.getUserRecommendationsAccess(ctx.user.id);
+        const analystUserId = access.canPublish && !isAdmin ? ctx.user.id : undefined;
+        const messages = await db.getRecommendationMessagesFeed(ctx.user.id, 100, analystUserId);
+        return protectRecommendationAuthors(messages, ctx.user.id, isAdmin);
       }),
 
     // Get my staff permissions (support + analyst)

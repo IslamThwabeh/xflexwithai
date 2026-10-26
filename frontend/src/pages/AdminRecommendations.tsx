@@ -992,6 +992,15 @@ function AnalystView() {
                           )}
                         </div>
 
+                        {!!adminCheck?.isAdmin && (
+                          <p className="text-xs text-muted-foreground break-words">
+                            {isRTL ? "نشر بواسطة:" : "Posted by:"}{" "}
+                            <span className="font-medium text-foreground">{message.authorName}</span>
+                            {message.authorEmail && message.authorEmail !== message.authorName && ` · ${message.authorEmail}`}
+                            {` · ${isRTL ? "حساب" : "Account"} #${message.userId}`}
+                          </p>
+                        )}
+
                         {children.length > 0 && thread.latestActivityAt !== message.createdAt && (
                           <p className="text-xs text-muted-foreground">
                             {isRTL
@@ -1109,6 +1118,14 @@ function AnalystView() {
                               )}
                             </div>
                           </div>
+                          {!!adminCheck?.isAdmin && (
+                            <p className="text-xs text-muted-foreground break-words">
+                              {isRTL ? "نشر بواسطة:" : "Posted by:"}{" "}
+                              <span className="font-medium text-foreground">{child.authorName}</span>
+                              {child.authorEmail && child.authorEmail !== child.authorName && ` · ${child.authorEmail}`}
+                              {` · ${isRTL ? "حساب" : "Account"} #${child.userId}`}
+                            </p>
+                          )}
                           <p className="text-sm whitespace-pre-wrap">{child.content}</p>
                         </div>
                       ))}

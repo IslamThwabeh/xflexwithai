@@ -56,6 +56,8 @@ vi.mock("../backend/db", async () => {
     clearUserInteraction: vi.fn().mockResolvedValue(undefined),
     listActiveRecommendationAlerts: vi.fn(),
     getOpenRecommendationMessagesFeed: vi.fn(),
+    getRecommendationMessagesFeed: vi.fn().mockResolvedValue([]),
+    getRecommendationThreadSummary: vi.fn().mockResolvedValue({ total: 0 }),
     getRecommendationThreadMessagesFeed: vi.fn(),
     getRecommendationMonthlyTradeReport: vi.fn(),
     getRecommendationAnalystComparisonReport: vi.fn(),
@@ -234,6 +236,8 @@ describe("recommendations workflow", () => {
     await caller.recommendations.activeAlerts();
     await caller.recommendations.openThreads();
     await caller.recommendations.threadMessages({ status: "closed", limit: 20, offset: 0 });
+    await caller.recommendations.feed({ limit: 20 });
+    await caller.recommendations.threadSummary();
 
     expect(listActiveRecommendationAlerts).toHaveBeenCalledWith(123);
     expect(getOpenRecommendationMessagesFeed).toHaveBeenCalledWith(123, 123);
@@ -241,6 +245,51 @@ describe("recommendations workflow", () => {
       status: "closed",
       analystUserId: 123,
     }));
+    expect(db.getRecommendationMessagesFeed).toHaveBeenCalledWith(123, 20, 123);
+    expect(db.getRecommendationThreadSummary).toHaveBeenCalledWith(123);
+  });
+
+  const attributedMessage = {
+    id: 1, userId: 456, authorName: "Other Analyst", authorEmail: "other@example.com",
+    isAnalyst: true, closedByUserId: -1, deliveryDiagnosticsJson: '{"staffExcluded":2}',
+    content: "Recommendation text", parentId: null, type: "recommendation",
+  };
+
+  it.each(["analyst", "subscriber"])("keeps author details out of all %s feed responses", async (viewer) => {
+    getUserRecommendationsAccess.mockResolvedValue({ hasSubscription: true, canPublish: viewer === "analyst" } as any);
+    vi.mocked(db.getRecommendationMessagesFeed).mockResolvedValue([attributedMessage] as any);
+    getOpenRecommendationMessagesFeed.mockResolvedValue([attributedMessage] as any);
+    getRecommendationThreadMessagesFeed.mockResolvedValue({ messages: [attributedMessage], total: 1 } as any);
+    const caller = createAuthedCaller();
+    const feeds = [
+      await caller.recommendations.feed(),
+      await caller.recommendations.openThreads(),
+      (await caller.recommendations.threadMessages()).messages,
+    ];
+    for (const messages of feeds) {
+      expect(messages[0]).toMatchObject({
+        userId: 0, authorName: "XFlex", authorEmail: null, isAnalyst: false,
+        closedByUserId: null, deliveryDiagnosticsJson: null, content: "Recommendation text",
+      });
+    }
+  });
+
+  it("returns per-post author attribution to full admins", async () => {
+    vi.mocked(db.getAdminByEmail).mockResolvedValueOnce({ id: 1 } as any)
+      .mockResolvedValueOnce({ id: 1 } as any).mockResolvedValueOnce({ id: 1 } as any);
+    vi.mocked(db.getRecommendationMessagesFeed).mockResolvedValue([attributedMessage] as any);
+    getOpenRecommendationMessagesFeed.mockResolvedValue([attributedMessage] as any);
+    getRecommendationThreadMessagesFeed.mockResolvedValue({ messages: [attributedMessage], total: 1 } as any);
+    const caller = createAuthedCaller();
+    expect((await caller.recommendations.feed())[0]).toEqual(attributedMessage);
+    expect((await caller.recommendations.openThreads())[0]).toEqual(attributedMessage);
+    expect((await caller.recommendations.threadMessages()).messages[0]).toEqual(attributedMessage);
+  });
+
+  it("blocks analysts from the admin analyst directory and comparison", async () => {
+    const caller = createAuthedCaller();
+    await expect(caller.recommendationAdmin.listAnalysts()).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(caller.recommendationAdmin.analystComparisonReport()).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("allows analyst staff to read staff notification badge counts", async () => {

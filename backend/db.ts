@@ -9121,6 +9121,19 @@ async function hydrateRecommendationFeedMessages(userId: number, orderedMessages
         .where(inArray(users.id, chunk)))
     : [];
 
+  // Admin sessions use negative IDs; resolve their authors against admins.
+  const adminAuthorIds = authorIds.filter((id) => id < 0).map((id) => -id);
+  const adminAuthors = adminAuthorIds.length
+    ? await collectChunkedRows(adminAuthorIds, (chunk) => db
+        .select({ id: admins.id, name: admins.name, email: admins.email })
+        .from(admins)
+        .where(inArray(admins.id, chunk)))
+    : [];
+  const authorsById = new Map([
+    ...authors.map((author) => [author.id, author] as const),
+    ...adminAuthors.map((author) => [-author.id, author] as const),
+  ]);
+
   // Check which authors have the analyst role
   const analystRoles = authorIds.length
     ? await collectChunkedRows(authorIds, (chunk) => db.select({ userId: userRoles.userId })
@@ -9143,7 +9156,7 @@ async function hydrateRecommendationFeedMessages(userId: number, orderedMessages
   );
 
   return orderedMessages.map((message) => {
-    const author = authors.find((item) => item.id === message.userId);
+    const author = authorsById.get(message.userId);
     const messageReactions = reactions.filter((reaction) => reaction.messageId === message.id);
     const isRootRecommendation = !message.parentId && message.type === "recommendation";
     const rootThreadId = getRecommendationThreadRootId({
@@ -9177,7 +9190,7 @@ async function hydrateRecommendationFeedMessages(userId: number, orderedMessages
   });
 }
 
-export async function getRecommendationMessagesFeed(userId: number, limit: number = 200) {
+export async function getRecommendationMessagesFeed(userId: number, limit: number = 200, analystUserId?: number) {
   const db = await getDb();
   if (!db) return [];
 
@@ -9188,6 +9201,7 @@ export async function getRecommendationMessagesFeed(userId: number, limit: numbe
     .where(and(
       isNull(recommendationMessages.parentId),
       eq(recommendationMessages.type, "recommendation"),
+      analystUserId !== undefined ? eq(recommendationMessages.userId, analystUserId) : undefined,
     ))
     .orderBy(desc(recommendationMessages.createdAt), desc(recommendationMessages.id))
     .limit(rootLimit);
@@ -9295,6 +9309,7 @@ export async function submitLivePackageOwnerReview(adminId: number) {
  */
 export function buildRecommendationThreadSummaryQueries(
   database: RecommendationThreadSummaryQueryDatabase,
+  analystUserId?: number,
 ) {
   const roots = database
     .select({
@@ -9309,6 +9324,7 @@ export function buildRecommendationThreadSummaryQueries(
     .where(and(
       isNull(recommendationMessages.parentId),
       eq(recommendationMessages.type, "recommendation"),
+      analystUserId !== undefined ? eq(recommendationMessages.userId, analystUserId) : undefined,
     ));
 
   const children = database
@@ -9320,6 +9336,13 @@ export function buildRecommendationThreadSummaryQueries(
     .where(and(
       isNotNull(recommendationMessages.parentId),
       inArray(recommendationMessages.type, ["result", "update"]),
+      // Count replies on this analyst's threads, including full-admin follow-ups.
+      analystUserId !== undefined ? sql`EXISTS (
+        SELECT 1 FROM recommendationMessages root
+        WHERE root.id = ${recommendationMessages.parentId}
+          AND root.parentId IS NULL AND root.type = 'recommendation'
+          AND root.userId = ${analystUserId}
+      )` : undefined,
     ));
 
   return { roots, children };
@@ -9327,8 +9350,9 @@ export function buildRecommendationThreadSummaryQueries(
 
 export async function readRecommendationThreadSummary(
   database: RecommendationThreadSummaryQueryDatabase,
+  analystUserId?: number,
 ): Promise<RecommendationThreadSummary> {
-  const queries = buildRecommendationThreadSummaryQueries(database);
+  const queries = buildRecommendationThreadSummaryQueries(database, analystUserId);
   const [rootRows, childRows] = await Promise.all([
     queries.roots,
     queries.children,
@@ -9348,10 +9372,10 @@ export async function readRecommendationThreadSummary(
   };
 }
 
-export async function getRecommendationThreadSummary(): Promise<RecommendationThreadSummary> {
+export async function getRecommendationThreadSummary(analystUserId?: number): Promise<RecommendationThreadSummary> {
   const db = await getDb();
   if (!db) return createEmptyRecommendationThreadSummary();
-  return readRecommendationThreadSummary(db);
+  return readRecommendationThreadSummary(db, analystUserId);
 }
 
 function buildRecommendationThreadRootConditions(input?: {
