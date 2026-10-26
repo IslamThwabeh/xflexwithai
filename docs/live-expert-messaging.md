@@ -52,9 +52,19 @@ The implemented verification passed 12 real SQLite/D1 messaging tests, the five 
 
 For rollback, restore the preceding Worker/Pages releases; leave the additive tables and private bucket in place to preserve conversations. Do not drop tables, delete messages, or remove pre-existing staff roles as a rollback shortcut.
 
-## Deployed release
+## Release history
+
+### Email and bell alerts — 2026-10-26
 
 The email-alert follow-up passed 68 focused tests, the 33-file / 204-test critical suite, TypeScript, production builds, and two rehearsals using production's partial notification indexes. Local browser checks confirmed both queue directions, notification counters, client cohort links, and saved client/expert email preferences. Migration 131 preserves historical messages as handled and adds no notification catch-up.
+
+- Application source: `5b729bc`. Worker version: `f3c00d04-2ebc-45d3-a494-4b84a2efadd9`, serving 100%. Pages production deployment: `dcf4f5dc-6688-4f80-9d09-1600f95ae51a`, source `5b729bc`, preview `https://dcf4f5dc.xflexwithai.pages.dev`.
+- Migration 131 used 611 reads and five writes. All five existing production messages retained `alerts_enqueued = 1`; no historical email alerts were generated. Recovery bookmarks: before `00001883-00000c8c-00005110-52bef69753097e3a392721ee839a9f7b`, after `00001883-00000cb0-00005110-1b3030e4e2e3603e68743fea10fabdbf`.
+- API and database health returned 200; anonymous expert endpoints returned 401. The profile, expert inbox, and cohort-specific client route returned private/no-store and noindex headers. Entry, Profile, AdminLiveExpert, LiveExpertMessages, and LiveExpertConversation bundle hashes matched the tested build.
+- No synthetic production email or customer message was sent. Provider handoff and suppression/retry behavior were verified locally with a test provider; actual inbox receipt remains dependent on the configured mail provider and recipient mailbox.
+- Rollback references: preceding Worker `b7113a63-f6b9-4247-a3f8-267a1c4ed8e2`, preceding Pages `0cdbecca-9732-483f-b40f-b8669094e90e`. Leave the additive migration column in place if rolling back.
+
+### Initial private conversations — 2026-10-26
 
 - Application source: `2452529`, following feature commit `94c6432`.
 - Worker version: `b7113a63-f6b9-4247-a3f8-267a1c4ed8e2`, deployed at 100%, preserving D1, the existing R2 bindings, and all four cron schedules.
