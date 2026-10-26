@@ -29,6 +29,8 @@ const AdminLexaiSubscriptions = lazy(() => import("./pages/AdminLexaiSubscriptio
 const AdminLexaiConversations = lazy(() => import("./pages/AdminLexaiConversations"));
 const AdminRecommendations = lazy(() => import("./pages/AdminRecommendations"));
 const AdminSupport = lazy(() => import("./pages/AdminSupport"));
+const AdminLiveExpert = lazy(() => import("./pages/AdminLiveExpert"));
+const LiveExpertMessages = lazy(() => import("./pages/LiveExpertMessages"));
 const AdminRoles = lazy(() => import("./pages/AdminRoles"));
 const AdminStaffReview = lazy(() => import("./pages/AdminStaffReview"));
 const AdminMyPerformance = lazy(() => import("./pages/AdminMyPerformance"));
@@ -376,6 +378,9 @@ function Router() {
           <AdminLivePackage />
         </AdminRoute>
       </Route>
+      <Route path={"/admin/live-expert"}>
+        <AdminRoute><AdminLiveExpert /></AdminRoute>
+      </Route>
       <Route path={"/admin/copier"}>
         <AdminRoute>
           <AdminTradeCopier />
@@ -475,6 +480,9 @@ function Router() {
         <ProtectedRoute>
           <LivePackageWorkspace />
         </ProtectedRoute>
+      </Route>
+      <Route path={"/live-package/messages"}>
+        <ProtectedRoute><LiveExpertMessages /></ProtectedRoute>
       </Route>
       <Route path={"/support"}>
         <ProtectedRoute>

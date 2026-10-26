@@ -208,6 +208,12 @@ const menuSectionsDef: MenuSection[] = [
         path: "/admin/live-package",
       },
       {
+        icon: MessageSquare,
+        labelKey: "admin.sidebar.liveExpert",
+        label: { en: "Live Expert Inbox", ar: "رسائل خبير لايف" },
+        path: "/admin/live-expert",
+      },
+      {
         icon: TrendingUp,
         labelKey: "admin.sidebar.tradeCopier",
         label: { en: "Trade Copier", ar: "الناسخ" },

@@ -25,6 +25,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 const ROLE_LABELS: Record<string, { labelKey: string; color: string; group: string }> = {
+  live_expert: { labelKey: "admin.roles.liveExpert", color: "bg-emerald-100 text-emerald-800", group: "Live Package Roles" },
   analyst: { labelKey: "admin.roles.analyst", color: "bg-amber-100 text-amber-800", group: "Core Roles" },
   analyst_duplicate_guard: { labelKey: "admin.roles.analystDuplicateGuard", color: "bg-orange-100 text-orange-800", group: "Core Roles" },
   support: { labelKey: "admin.roles.support", color: "bg-emerald-100 text-emerald-800", group: "Core Roles" },
@@ -51,7 +52,7 @@ const ROLE_LABELS: Record<string, { labelKey: string; color: string; group: stri
   live_recording_publisher: { labelKey: "admin.roles.liveRecordingPublisher", color: "bg-violet-100 text-violet-800", group: "Live Package Roles" },
 };
 
-type RoleKey = "analyst" | "analyst_duplicate_guard" | "support" | "lexai_support" | "key_manager" | "plan_manager" | "view_progress" | "view_recommendations" | "view_subscriptions" | "view_quizzes" | "client_lookup" | "manage_client_notifications" | "staff_performance_employee" | "staff_performance_manager" | "student_surveys_manager" | "loyalty_rewards_manager" | "student_community_moderator" | "student_job_eligibility_manager" | "email_logs_viewer" | "finance_manager" | "finance_clerk" | "finance_viewer" | "live_recording_uploader" | "live_recording_publisher";
+type RoleKey = "live_expert" | "analyst" | "analyst_duplicate_guard" | "support" | "lexai_support" | "key_manager" | "plan_manager" | "view_progress" | "view_recommendations" | "view_subscriptions" | "view_quizzes" | "client_lookup" | "manage_client_notifications" | "staff_performance_employee" | "staff_performance_manager" | "student_surveys_manager" | "loyalty_rewards_manager" | "student_community_moderator" | "student_job_eligibility_manager" | "email_logs_viewer" | "finance_manager" | "finance_clerk" | "finance_viewer" | "live_recording_uploader" | "live_recording_publisher";
 
 const FINANCE_ROLE_KEYS = new Set<RoleKey>(['finance_manager', 'finance_clerk', 'finance_viewer']);
 

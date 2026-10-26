@@ -1,4 +1,6 @@
+import { liveExpertRouter } from './live-expert.router';
 import {
+  ALL_STAFF_ROLES,
   BUG_REPORT_RISK_LEVELS,
   BUG_REPORT_STATUSES,
   COOKIE_NAME,
@@ -208,6 +210,7 @@ const ASSIGNABLE_STAFF_ROLES = [
   'finance_viewer',
   'live_recording_uploader',
   'live_recording_publisher',
+  'live_expert',
 ] as const;
 const staffPerformanceStatusSchema = z.enum(STAFF_PERFORMANCE_STATUSES);
 const performanceMonthSchema = z.string().refine(isValidPerformanceMonth, "Month must use YYYY-MM");
@@ -1061,6 +1064,9 @@ const adminOrRoleProcedure = (roles: string[]) => protectedProcedure.use(async (
   return next({ ctx: { ...ctx, admin: null } });
 }).use(staffActivityTrackingMiddleware);
 const supportModeratorProcedure = adminOrRoleProcedure(["support"]);
+// Personal notification inboxes are available to every granular staff role.
+// This does not grant access to general support conversations.
+const notificationStaffProcedure = adminOrRoleProcedure([...ALL_STAFF_ROLES]);
 
 const requireFinanceOwnerAdmin = async (adminId: number) => {
   if (!await db.isFinanceOwnerAdmin(adminId)) {
@@ -2411,6 +2417,7 @@ function attachOrderDisplayPricing<
 }
 
 export const appRouter = router({
+  liveExpert: liveExpertRouter,
   system: systemRouter,
   emailPreferences: router({
     unsubscribe: publicProcedure
@@ -6882,6 +6889,7 @@ export const appRouter = router({
           finance_viewer: 'Finance Viewer / مشاهد المالية',
           live_recording_uploader: 'Live Recording Uploader / رافع تسجيلات لايف',
           live_recording_publisher: 'Live Recording Publisher / ناشر تسجيلات لايف',
+          live_expert: 'Live Expert / خبير لايف',
         };
         try {
           await sendStaffWelcomeEmail(input.email, {
@@ -12235,11 +12243,11 @@ ${qaText}`;
   // Staff Notifications (Admin/Staff inbox)
   // ============================================================================
   staffNotifications: router({
-    list: supportStaffProcedure.query(async ({ ctx }) => {
+    list: notificationStaffProcedure.query(async ({ ctx }) => {
       return db.getStaffNotifications(ctx.user.id);
     }),
 
-    archive: supportStaffProcedure
+    archive: notificationStaffProcedure
       .input(z.object({
         limit: z.number().int().min(1).max(50).default(25),
         offset: z.number().int().min(0).max(100_000).default(0),
@@ -12248,33 +12256,33 @@ ${qaText}`;
         return db.getArchivedStaffNotifications(ctx.user.id, input.limit, input.offset);
       }),
 
-    unreadCount: supportStaffProcedure.query(async ({ ctx }) => {
+    unreadCount: notificationStaffProcedure.query(async ({ ctx }) => {
       return { count: await db.getUnreadStaffNotificationCount(ctx.user.id) };
     }),
 
-    countByRoute: supportStaffProcedure.query(async ({ ctx }) => {
+    countByRoute: notificationStaffProcedure.query(async ({ ctx }) => {
       return db.getUnreadStaffNotificationCountByRoute(ctx.user.id);
     }),
 
-    badgeCounts: supportStaffProcedure.query(async ({ ctx }) => {
+    badgeCounts: notificationStaffProcedure.query(async ({ ctx }) => {
       return db.getUnreadStaffNotificationBadges(ctx.user.id);
     }),
 
-    markRead: supportStaffProcedure
+    markRead: notificationStaffProcedure
       .input(z.object({ notificationId: z.number() }))
       .mutation(async ({ ctx, input }) => {
         await db.markStaffNotificationRead(input.notificationId, ctx.user.id);
         return { success: true };
       }),
 
-    markReadByRoute: supportStaffProcedure
+    markReadByRoute: notificationStaffProcedure
       .input(z.object({ actionUrl: z.string() }))
       .mutation(async ({ ctx, input }) => {
         await db.markStaffNotificationsReadByRoute(ctx.user.id, input.actionUrl);
         return { success: true };
       }),
 
-    markAllRead: supportStaffProcedure.mutation(async ({ ctx }) => {
+    markAllRead: notificationStaffProcedure.mutation(async ({ ctx }) => {
       await db.markAllStaffNotificationsRead(ctx.user.id);
       return { success: true };
     }),
@@ -13710,14 +13718,14 @@ ${qaText}`;
       }),
 
     // Per-staff or admin: update own notification email preferences
-    updateNotificationPrefs: supportStaffProcedure
+    updateNotificationPrefs: notificationStaffProcedure
       .input(z.object({ prefs: z.record(z.string(), z.boolean()) }))
       .mutation(async ({ ctx, input }) => {
         await db.updateStaffNotificationPrefs(ctx.user.id, input.prefs);
         return { success: true };
       }),
 
-    getNotificationPrefs: supportStaffProcedure.query(async ({ ctx }) => {
+    getNotificationPrefs: notificationStaffProcedure.query(async ({ ctx }) => {
       return db.getStaffNotificationPrefs(ctx.user.id);
     }),
   }),

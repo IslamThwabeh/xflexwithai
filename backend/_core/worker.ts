@@ -1,5 +1,6 @@
 import type { D1Database, ExecutionContext, KVNamespace, R2Bucket, ScheduledController } from "@cloudflare/workers-types";
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
+import { cleanupPendingExpertImages } from '../services/live-expert.service';
 import { appRouter } from "../routers";
 import { createWorkerContext } from "./context-worker";
 import * as db from "../db";
@@ -279,6 +280,7 @@ function parseRangeHeader(rangeHeader: string, totalSize: number) {
 }
 
 export interface Env {
+  LIVE_EXPERT_ATTACHMENTS_BUCKET?: R2Bucket;
   DB: D1Database;
   VIDEOS_BUCKET: R2Bucket;
   // Dedicated private bucket. Intentionally optional until infrastructure is
@@ -1040,6 +1042,7 @@ export default {
           createContext: async () => createWorkerContext({ req: request, env, executionCtx: ctx }),
           responseMeta({ ctx }) {
             const headers = new Headers();
+            headers.set('Cache-Control', 'private, no-store');
             const cookieHeaders = (ctx as any)?.cookieHeaders as string[] | undefined;
 
             corsHeaders.forEach((value, key) => {
@@ -1493,6 +1496,11 @@ export default {
         cron: controller.cron,
       });
       return;
+    }
+
+    if (env.LIVE_EXPERT_ATTACHMENTS_BUCKET) {
+      try { await cleanupPendingExpertImages(env.LIVE_EXPERT_ATTACHMENTS_BUCKET); }
+      catch (error) { logger.error('[CRON] Pending expert screenshot cleanup failed', { error: error instanceof Error ? error.message : String(error) }); }
     }
 
     try {

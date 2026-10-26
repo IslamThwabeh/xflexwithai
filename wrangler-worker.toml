@@ -47,6 +47,10 @@ bucket_name = "xflexwithai-videos"
 binding = "FINANCE_RECEIPTS_BUCKET"
 bucket_name = "xflexacademy-finance-receipts"
 
+[[env.production.r2_buckets]]
+binding = "LIVE_EXPERT_ATTACHMENTS_BUCKET"
+bucket_name = "xflexacademy-live-expert-attachments"
+
 [env.production.triggers]
 # Daily lifecycle/reminder jobs run at 08:00 Asia/Amman (05:00 UTC).
 # Raw data retention has a separate low-traffic slot at 02:30 Asia/Amman

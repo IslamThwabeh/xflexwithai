@@ -852,6 +852,36 @@ export const userRoles = sqliteTable("userRoles", {
 export type UserRole = typeof userRoles.$inferSelect;
 export type InsertUserRole = typeof userRoles.$inferInsert;
 
+export const liveExpertSettings = sqliteTable('live_expert_settings', {
+  id: integer('id').primaryKey(), expertUserId: integer('expert_user_id').references(() => users.id),
+  graceDays: integer('grace_days').notNull().default(7),
+  availabilityEn: text('availability_en').notNull().default('Leave your question here. Your expert will reply when available.'),
+  availabilityAr: text('availability_ar').notNull().default('اترك سؤالك هنا، وسيرد خبيرك عند توفره.'),
+});
+export const liveExpertConversations = sqliteTable('live_expert_conversations', {
+  id: integer('id').primaryKey({ autoIncrement: true }), userId: integer('user_id').notNull().references(() => users.id),
+  entitlementId: integer('entitlement_id').notNull().references(() => livePackageEntitlements.id),
+  cohortKey: text('cohort_key').notNull(), expertUserId: integer('expert_user_id').notNull().references(() => users.id),
+  lastClientMessageId: integer('last_client_message_id').notNull().default(0),
+  lastExpertMessageId: integer('last_expert_message_id').notNull().default(0),
+  clientReadId: integer('client_read_id').notNull().default(0), expertReadId: integer('expert_read_id').notNull().default(0),
+  lastMessageAt: text('last_message_at').notNull(),
+}, table => ({ userCohort: unique().on(table.userId, table.cohortKey), inbox: index('idx_live_expert_inbox').on(table.expertUserId, table.lastMessageAt, table.id) }));
+export const liveExpertMessages = sqliteTable('live_expert_messages', {
+  id: integer('id').primaryKey({ autoIncrement: true }), conversationId: integer('conversation_id').notNull().references(() => liveExpertConversations.id),
+  senderId: integer('sender_id').notNull(), senderRole: text('sender_role').notNull(), senderName: text('sender_name').notNull(),
+  content: text('content').notNull(), clientNonce: text('client_nonce').notNull(), createdAt: text('created_at').notNull(),
+}, table => ({ nonce: unique().on(table.conversationId, table.clientNonce), thread: index('idx_live_expert_messages_thread').on(table.conversationId, table.id) }));
+export const liveExpertAttachments = sqliteTable('live_expert_attachments', {
+  id: text('id').primaryKey(), conversationId: integer('conversation_id').notNull().references(() => liveExpertConversations.id),
+  uploaderId: integer('uploader_id').notNull(), messageId: integer('message_id').unique().references(() => liveExpertMessages.id),
+  objectKey: text('object_key').notNull().unique(), fileName: text('file_name').notNull(),
+  contentType: text('content_type').notNull(), sizeBytes: integer('size_bytes').notNull(), createdAt: text('created_at').notNull(),
+}, table => ({
+  thread: index('idx_live_expert_attachments_thread').on(table.conversationId, table.messageId),
+  pending: index('idx_live_expert_attachments_pending').on(table.createdAt, table.id).where(sql`${table.messageId} IS NULL`),
+}));
+
 // ============================================================================
 // Support Chat – private 1-on-1 client↔support conversations
 // ============================================================================

@@ -65,6 +65,12 @@ describe("staff notification badge route", () => {
     expect(db.getUnreadStaffNotificationBadges).not.toHaveBeenCalled();
   });
 
+  it('allows the expert to read personal badges without granting general support access', async () => {
+    vi.mocked(db.hasAnyRole).mockImplementation(async (_id, roles) => roles.includes('live_expert'));
+    await expect(createCaller().staffNotifications.badgeCounts()).resolves.toMatchObject({ total: 5 });
+    await expect(createCaller().supportChat.listAll()).rejects.toMatchObject({ code: 'FORBIDDEN' });
+  });
+
   it("returns bounded archive history for authorized staff", async () => {
     await expect(createCaller().staffNotifications.archive({ limit: 25, offset: 50 }))
       .resolves.toEqual({ items: [], total: 0, limit: 25, offset: 0 });

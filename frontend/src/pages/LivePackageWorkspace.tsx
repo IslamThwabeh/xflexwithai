@@ -1,5 +1,6 @@
 import { CalendarDays, Clock, ExternalLink, PlayCircle, Radio } from 'lucide-react';
 import ClientLayout from '@/components/ClientLayout';
+import LiveExpertEntry from '@/components/LiveExpertEntry';
 import ProtectedLiveRecording from '@/components/ProtectedLiveRecording';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -39,6 +40,7 @@ export default function LivePackageWorkspace() {
             <p className="mt-2 text-sm text-slate-500">{isAr ? 'يظهر المحتوى هنا بعد تفعيل وصول الفوج.' : 'Cohort content appears here after your access is activated.'}</p>
           </section>
         ) : <>
+          <LiveExpertEntry />
           {data.cohortStatus === 'not_started' ? (
             <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-amber-950">
               <h2 className="font-semibold">{isAr ? 'سيُعلن الجدول قريباً' : 'Schedule will be announced'}</h2>

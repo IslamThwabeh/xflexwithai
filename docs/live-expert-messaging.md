@@ -1,0 +1,48 @@
+# Live Expert messaging
+
+Verified locally on 2026-10-26. Production rollout is pending a refreshed Cloudflare login (`wrangler whoami` reports an expired token / not logged in). No production migration, bucket creation, role assignment, or deployment has been performed.
+
+Clients enter through **Live Package → Message your Live Expert**, at `/live-package/messages`. The expert uses `/admin/live-expert`. Conversations are separate from general support, with one thread per client/cohort, text, private screenshots, unread counts, and unanswered-first ordering. Arabic, English, and mobile layouts are supported.
+
+## Access and operations
+
+- Assign the `live_expert` role to the intended staff account in `/admin/roles`. This role does not grant general support, finance, or student-list access.
+- A full admin chooses the expert for **new** conversations, availability copy, and grace days in the inbox's **Messaging settings**. The default grace period is seven days after the cohort ends; the maximum is 90. Copy does not promise a response time until the admin configures one.
+- Existing conversations keep their assigned expert. Admins can explicitly reassign a selected thread; the former expert immediately loses access unless independently authorized as a full admin.
+- Clients can start messaging after their enrollment is activated, including before classes begin. Revoked enrollment or an expired messaging period disables new messages and uploads for both participants. Historical threads and sent screenshots remain readable by their authorized participants and admins. Permanent recording access does not extend messaging access.
+- Every thread, message-history, read-cursor, upload, and screenshot request checks the authenticated participant or admin. General support staff cannot browse expert messages. Admin oversight does not consume the expert's unread cursor and is disclosed in the client interface.
+- Screenshots are PNG/JPEG/WebP, at most 2 MB, checked by signature and size, and stored under randomized keys in a dedicated private R2 bucket. There are no public attachment URLs. The app fetches the image after authorization, using private/no-store API responses.
+- Unsent screenshots expire after 24 hours. The existing daily maintenance invocation removes up to 100 expired pending uploads with an indexed query. Sent images are preserved.
+- Message retries use a unique client nonce and an atomic D1 batch. History is paginated in 50-message pages; delta polling and inbox refresh pause while the page is hidden. Polling is 15 seconds for open conversations and 30 seconds for inbox/workspace summaries. This version uses website unread counts and does not send email alerts.
+
+## Local verification
+
+Use the project Node runtime:
+
+```powershell
+. ./scripts/use-project-node.ps1
+npx --no-install vitest run server/liveExpertMessaging.test.ts server/staffNotificationBadgeRoutes.test.ts
+npm run check
+npm run test:critical-cycle
+npm run build
+npm run build:worker
+node --import tsx scripts/verify-live-expert-local.ts
+```
+
+The local browser fixture copies **schema only** from `xflexwithai.dev.db`, adds required migrations, and creates synthetic clients, experts, support, and admin accounts in a new ignored `tmp/live-expert-qa-*` directory. It prints paths to browser storage-state files and serves `http://127.0.0.1:3410`. Screenshots use an in-memory private-storage stand-in. It does not copy customer rows or send external notifications. Keep storage states and database files out of Git.
+
+Verify two clients cannot see each other's threads; the assigned expert can reply/open screenshots; an unassigned expert and support-only staff are denied; admins can configure/reassign; expired/revoked clients retain read-only history; and Arabic/mobile layouts remain usable.
+
+The implemented verification passed 12 real SQLite/D1 messaging tests, the five notification-route tests (including expert access without general-support access), TypeScript, frontend and Worker builds, and diff hygiene. The existing critical suite passed all 33 files / 203 tests before the additional expert notification test was added; the affected notification tests were rerun afterward. Browser QA exercised client questions, expert replies, private screenshots, client separation, admin settings, revoked read-only history, Arabic/mobile layouts, and fresh client/expert pages without console errors after completing the local fixture schema. Images are under ignored `output/playwright/live-expert-*.png`.
+
+## Production rollout
+
+1. Verify `wrangler whoami`. Capture the current Worker/Pages deployment IDs and a D1 Time Travel bookmark. Export schema only if a rehearsal of the latest production schema is needed.
+2. Rehearse `database/migrations/130_live_expert_messaging.sql` locally against the schema. The migration is additive and idempotent, includes its migration-ledger entry, and does not modify existing customer/support/package data.
+3. Create the R2 bucket `xflexacademy-live-expert-attachments` **with public access disabled**. `wrangler-worker.toml` binds it as `LIVE_EXPERT_ATTACHMENTS_BUCKET` in production only.
+4. Apply migration 130 once to production D1 using the production Worker config. Confirm all four new tables, the partial pending-upload index, and exactly one ledger entry.
+5. Resolve the intended **live** account by its existing identity and confirm it is unambiguous. Grant only the additional `live_expert` role, preserving existing roles and credentials. Set `live_expert_settings.expert_user_id` to that account's ID (or select it in the admin UI after deployment). Do not infer identity if multiple accounts match.
+6. Deploy the verified Worker first, then Pages to the production project `xflexacademy`/branch `main`. Check both health endpoints, private route headers, anonymous API denial, and served bundle hashes.
+7. Use authenticated production access for a read-only configuration check. Do not create synthetic customer conversations or send messages to real customers as a smoke test.
+
+For rollback, restore the preceding Worker/Pages releases; leave the additive tables and private bucket in place to preserve conversations. Do not drop tables, delete messages, or remove pre-existing staff roles as a rollback shortcut.

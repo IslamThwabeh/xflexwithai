@@ -52,6 +52,7 @@ export const ROLE_PAGE_ACCESS: Record<string, string[]> = {
   live_notifications_manager: ["/admin/live-package"],
   live_recording_uploader: ["/admin/live-package"],
   live_recording_publisher: ["/admin/live-package"],
+  live_expert: ["/admin/live-expert", "/admin/notifications"],
 };
 
 // All available staff roles
@@ -64,6 +65,7 @@ export const ALL_STAFF_ROLES = [
   "email_logs_viewer",
   "finance_manager", "finance_clerk", "finance_viewer",
   "live_sessions_manager", "live_notifications_manager", "live_recording_uploader", "live_recording_publisher",
+  "live_expert",
 ] as const;
 export type StaffRole = typeof ALL_STAFF_ROLES[number];
 
