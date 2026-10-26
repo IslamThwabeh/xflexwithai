@@ -185,6 +185,9 @@ describe('Live Expert messaging with real SQLite/D1 transactions', () => {
     expect(images.size).toBe(1);
     expect((await caller(10).image({ id: sent.id })).data).toBe(png);
     expect(sqlite.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+    const plan = sqlite.prepare("EXPLAIN QUERY PLAN SELECT id,object_key FROM live_expert_attachments INDEXED BY idx_live_expert_attachments_pending WHERE message_id IS NULL AND created_at < ? ORDER BY created_at,id LIMIT 100").all('2026-10-25T00:00:00.000Z');
+    expect(JSON.stringify(plan)).toContain('idx_live_expert_attachments_pending');
+    expect(JSON.stringify(plan)).not.toContain('TEMP B-TREE');
   });
   it('only allows admins to configure eligible experts, and keeps existing assignments', async () => {
     const thread = await open();

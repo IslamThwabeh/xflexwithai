@@ -211,7 +211,7 @@ export async function deletePendingExpertImage(actor: ExpertActor, id: string) {
 export async function cleanupPendingExpertImages(bucket: R2Bucket) {
   const connection = await expertDatabase();
   const cutoff = new Date(Date.now() - 86400000).toISOString();
-  const expired = await connection.all<{ id: string; object_key: string }>(sql`SELECT id, object_key FROM live_expert_attachments WHERE message_id IS NULL AND created_at < ${cutoff} ORDER BY created_at, id LIMIT 100`);
+  const expired = await connection.all<{ id: string; object_key: string }>(sql`SELECT id, object_key FROM live_expert_attachments INDEXED BY idx_live_expert_attachments_pending WHERE message_id IS NULL AND created_at < ${cutoff} ORDER BY created_at, id LIMIT 100`);
   for (const attachment of expired) {
     // Expired pending images cannot be attached to a new message.
     await bucket.delete(attachment.object_key);
