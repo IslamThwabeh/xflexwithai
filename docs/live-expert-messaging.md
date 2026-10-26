@@ -1,6 +1,6 @@
 # Live Expert messaging
 
-Verified locally on 2026-10-26. Production rollout is pending a refreshed Cloudflare login (`wrangler whoami` reports an expired token / not logged in). No production migration, bucket creation, role assignment, or deployment has been performed.
+Verified locally and deployed to production on 2026-10-26. Production serves the exact verified messaging bundles; health, private-route headers, and anonymous API denial checks passed.
 
 Clients enter through **Live Package → Message your Live Expert**, at `/live-package/messages`. The expert uses `/admin/live-expert`. Conversations are separate from general support, with one thread per client/cohort, text, private screenshots, unread counts, and unanswered-first ordering. Arabic, English, and mobile layouts are supported.
 
@@ -46,3 +46,15 @@ The implemented verification passed 12 real SQLite/D1 messaging tests, the five 
 7. Use authenticated production access for a read-only configuration check. Do not create synthetic customer conversations or send messages to real customers as a smoke test.
 
 For rollback, restore the preceding Worker/Pages releases; leave the additive tables and private bucket in place to preserve conversations. Do not drop tables, delete messages, or remove pre-existing staff roles as a rollback shortcut.
+
+## Deployed release
+
+- Application source: `2452529`, following feature commit `94c6432`.
+- Worker version: `b7113a63-f6b9-4247-a3f8-267a1c4ed8e2`, deployed at 100%, preserving D1, the existing R2 bindings, and all four cron schedules.
+- Pages production deployment: `0cdbecca-9732-483f-b40f-b8669094e90e`, source `2452529`, preview `https://0cdbecca.xflexwithai.pages.dev`.
+- Migration 130 applied once. Two rehearsals on the production schema passed integrity and foreign-key checks. Production migration used 22 row writes; account setup used seven. Recovery bookmarks: before `00001883-00000968-00005110-ac3ddcbcbf7ae0d1f5f4df2ffcc61258`, after `00001883-00000978-00005110-3f1a110c3b66e1665f8153bf42dcae58`.
+- Existing staff account **Live**, ID 153, is the configured expert. Its `live_recording_uploader` role is preserved, with only `live_expert` added. Default grace is seven days. All ten current Live enrollments have an unscheduled `not_started` cohort and can ask pre-class questions.
+- `xflexacademy-live-expert-attachments` was provisioned with its public development URL disabled and no custom domains. No screenshot is publicly accessible through that bucket.
+- Production `/ar`, `/live-package/messages`, and `/admin/live-expert` returned 200. Both private routes return `noindex, nofollow` and `private, no-store`. Worker health and database health returned 200; anonymous expert workspace/inbox requests returned 401 with `private, no-store`.
+- SHA-256 hashes of the production entry bundle and all four Live messaging/workspace chunks matched the local build. No synthetic customer conversation, expert reply, or external email was created in production; authenticated message round trips were verified locally.
+- Rollback references: previous Worker version `cab4809f-3f70-4d42-9edd-50d9a6e7fd60`; previous Pages deployment `950ecd6b-cd16-49c2-a847-bb6c0aa206aa`.
