@@ -25,6 +25,7 @@ import { APP_LOGO, APP_TITLE } from "@/const";
 import { getLanguageSwitchLabel } from "@/lib/languageToggle";
 import { trpc } from "@/lib/trpc";
 import { getStaffLandingPage } from "@shared/const";
+import { LIVE_EXPERT_ROLE } from "@shared/liveExpert";
 import {
   GraduationCap,
   Sparkles,
@@ -88,6 +89,8 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
     communityAvailability?.enabled === true
     && communityAvailability.access === "allowed";
   const showJobEligibilityNav = jobEligibilityAvailability?.enabled === true;
+  const showLiveExpertInbox = adminCheck?.isAdmin === true
+    || (adminCheck?.isStaff === true && adminCheck.staffRoles?.some(role => role === LIVE_EXPERT_ROLE));
   const staffWorkspacePath = adminCheck?.isStaff && !adminCheck?.isAdmin
     ? getStaffLandingPage(adminCheck.staffRoles ?? [])
     : null;
@@ -179,6 +182,12 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
       icon: <LayoutDashboard className="h-4 w-4" />,
       match: "/courses",
     },
+    ...(showLiveExpertInbox ? [{
+      href: "/admin/live-expert",
+      label: language === "ar" ? "رسائل خبير لايف" : "Live Expert Inbox",
+      icon: <MessageSquare className="h-4 w-4" />,
+      match: "/admin/live-expert",
+    }] : []),
     {
       href: "/lexai",
       label: "LexAI",

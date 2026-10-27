@@ -4,6 +4,8 @@ Verified locally and deployed to production on 2026-10-26. Production serves the
 
 Clients enter through **Live Package → Message your Live Expert**, at `/live-package/messages`. The expert uses `/admin/live-expert`. Conversations are separate from general support, with one thread per client/cohort, text, private screenshots, unread counts, and unanswered-first ordering. Arabic, English, and mobile layouts are supported.
 
+Authorized Live Experts and full admins also have a direct **Live Expert Inbox / رسائل خبير لايف** entry in the regular website navigation, including the mobile hamburger menu. This entry does not require a client Live Package enrollment. The staff sidebar retains its inbox entry under **Sales**. Ordinary clients and staff without `live_expert` do not receive the instructor entry; server authorization remains unchanged.
+
 ## Access and operations
 
 - Assign the `live_expert` role to the intended staff account in `/admin/roles`. This role does not grant general support, finance, or student-list access.
