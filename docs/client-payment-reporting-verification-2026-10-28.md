@@ -1,6 +1,6 @@
 # Client payment reporting implementation and verification
 
-28 October 2026, Asia/Amman. Candidate implementation; production deployment remains a separate release step under the [rollout plan](client-payment-reporting-plan-2026-10-28.md).
+28 October 2026, Asia/Amman. The verified candidate was subsequently pushed and deployed with explicit owner approval. See the [production release record](client-payment-reporting-production-release-2026-10-28.md) for live identities, checks and remaining verification limits. The candidate evidence below is retained as collected.
 
 ## Result
 
@@ -70,4 +70,4 @@ Rollback should disable the corrected monetary display or restore compatible cod
 
 ## Final gates
 
-Final frontend/standalone and Worker builds passed, including SEO generation (36 public pages and six article pages). Final TypeScript passed. The frontend retains the existing large-chunk advisory; no new build failure was introduced. `git diff --check` passed. Local source and artifacts are ready for release review. Deployment and authenticated post-deployment checks are not recorded as completed in this document.
+Final frontend/standalone and Worker builds passed, including SEO generation (36 public pages and six article pages). Final TypeScript passed. The frontend retains the existing large-chunk advisory; no new build failure was introduced. `git diff --check` passed. The candidate was approved and published as recorded in the separate production release note. A genuine signed-in production screen check remains unverified.

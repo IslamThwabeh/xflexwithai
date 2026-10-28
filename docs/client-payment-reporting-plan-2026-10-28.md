@@ -1,6 +1,6 @@
 # Client payment reporting correction and production rollout plan
 
-Date: 28 October 2026, Asia/Amman. This records the approved rollout design and initial baseline. Implementation and local/read-only production verification are now complete; see [candidate verification](client-payment-reporting-verification-2026-10-28.md). Production deployment and individual record repairs remain separate release steps.
+Date: 28 October 2026, Asia/Amman. This records the approved rollout design and initial baseline. Implementation and local/read-only production verification are complete; see [candidate verification](client-payment-reporting-verification-2026-10-28.md). The owner subsequently approved push and deployment; see the [production release record](client-payment-reporting-production-release-2026-10-28.md). Individual record repairs remain separate operations.
 
 ## Outcome and scope
 
