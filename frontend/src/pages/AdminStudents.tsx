@@ -1,3 +1,5 @@
+import ClientPaymentSummary from "@/components/admin/ClientPaymentSummary";
+import { CLIENT_PAYMENT_EXPORT_HEADERS, clientPaymentExportFields, isAvailableClientPaymentSummary } from "../../../shared/clientPaymentSummary";
 import { useState, useMemo } from "react";
 import AdminClientProfileSheet from "@/components/admin/AdminClientProfileSheet";
 import StudentActivityBreakdown, { ActivityHelp } from "@/components/admin/StudentActivityBreakdown";
@@ -81,7 +83,7 @@ const studentSortFns: Record<string, (a: any, b: any) => number> = {
     ),
   package: (a, b) =>
     (a.activePackages || []).length - (b.activePackages || []).length,
-  spent: (a, b) => (a.totalSpentIls || 0) - (b.totalSpentIls || 0),
+  spent: (a, b) => (a.paymentSummary?.netPaidMinor ?? 0) - (b.paymentSummary?.netPaidMinor ?? 0),
   renewals: (a, b) => (a.renewalCount || 0) - (b.renewalCount || 0),
   registered: (a, b) =>
     new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime(),
@@ -98,9 +100,9 @@ export default function AdminStudents() {
   const staffRoles = adminCheck?.staffRoles ?? [];
   const canManageCourseSkip = isAdmin || staffRoles.includes("key_manager");
   const canManageBrokerSkip = isAdmin;
-  const canViewFinancials = isAdmin || staffRoles.includes("key_manager");
 
   const { data: students, isLoading } = trpc.reports.subscribers.useQuery();
+  const canViewFinancials = students?.some((s: any) => s.canViewClientPayments === true) ?? false;
   const utils = trpc.useUtils();
   const [search, setSearch] = useState("");
   const [countryFilter, setCountryFilter] = useState("all");
@@ -168,7 +170,7 @@ export default function AdminStudents() {
     { key: 'phone', en: 'Phone', ar: 'الهاتف' },
     { key: 'location', en: 'Location', ar: 'الموقع' },
     { key: 'package', en: 'Package', ar: 'الباقة' },
-    { key: 'spent', en: 'Net Paid', ar: 'صافي المدفوع' },
+    { key: 'spent', en: 'Net confirmed paid', ar: 'صافي المدفوع الموثق' },
     { key: 'renewals', en: 'Renewals', ar: 'التجديدات' },
     { key: 'registered', en: 'Registered', ar: 'التسجيل' },
     { key: 'lastSignIn', en: 'Last Sign In', ar: 'آخر دخول' },
@@ -243,10 +245,9 @@ export default function AdminStudents() {
     (s: any) => (s.activePackages || []).length > 0
   ).length || 0;
   const inactiveStudents = totalStudents - activeStudents;
-  const totalRevenue = canViewFinancials ? (students?.reduce(
-    (sum: number, s: any) => sum + (s.totalSpentIls || 0),
-    0
-  ) || 0) : 0;
+  const allPaymentsAvailable = filtered.every((s: any) => isAvailableClientPaymentSummary(s.paymentSummary));
+  const totalConfirmedPaidMinor = canViewFinancials && allPaymentsAvailable
+    ? filtered.reduce((sum: number, s: any) => sum + s.paymentSummary.netPaidMinor, 0) : null;
 
   const copyEmail = (email: string) => {
     navigator.clipboard.writeText(email);
@@ -264,7 +265,7 @@ export default function AdminStudents() {
       "Registered",
       "Last Sign In",
       "Active Packages",
-      ...(canViewFinancials ? ["Net Paid (₪)", "Refunded (₪)"] : []),
+      ...(canViewFinancials ? CLIENT_PAYMENT_EXPORT_HEADERS : []),
       "Renewals",
     ];
     const rows = filtered.map((s: any) => [
@@ -278,10 +279,7 @@ export default function AdminStudents() {
         ? new Date(s.lastSignedIn).toLocaleDateString("en-US")
         : "",
       (s.activePackages || []).join("; "),
-      ...(canViewFinancials ? [
-        formatAdminCurrencyFromIls(s.totalSpentIls || 0, language),
-        formatAdminCurrencyFromIls(s.refundedIls || 0, language),
-      ] : []),
+      ...(canViewFinancials ? clientPaymentExportFields(s.paymentSummary) : []),
       s.renewalCount || 0,
     ]);
     const csv = [
@@ -390,8 +388,8 @@ export default function AdminStudents() {
             <p className="text-[11px] text-gray-500 leading-tight">{isRtl ? "بدون باقة" : "No Package"}</p>
           </button>
           {canViewFinancials && <div className="rounded-lg border px-3 py-2 text-center bg-white">
-            <p className="text-lg font-bold text-emerald-600">{formatAdminCurrencyFromIls(totalRevenue, language)}</p>
-            <p className="text-[11px] text-gray-500 leading-tight">{isRtl ? "إجمالي الإيرادات" : "Total Revenue"}</p>
+            <p className="text-lg font-bold text-emerald-600">{totalConfirmedPaidMinor == null ? (isRtl ? "غير متاح" : "Unavailable") : formatAdminCurrencyFromIls(totalConfirmedPaidMinor / 100, language)}</p>
+            <p className="text-[11px] text-gray-500 leading-tight">{isRtl ? "صافي موثق للعملاء المعروضين · السجل التاريخي قد يكون ناقصاً" : "Net confirmed for listed clients · historical coverage may be incomplete"}</p>
           </div>}
         </div>
 
@@ -572,17 +570,8 @@ export default function AdminStudents() {
                           </div>
                         )}
                         {canViewFinancials && <div>
-                          <span className="text-gray-400 block">
-                            {isRtl ? "صافي المدفوع" : "Net Paid"}
-                          </span>
-                          <span className="font-medium text-emerald-600">
-                            {s.totalSpentIls > 0 ? formatAdminCurrencyFromIls(s.totalSpentIls, language) : "—"}
-                          </span>
-                          {s.refundedIls > 0 && (
-                            <span className="mt-1 block text-xs text-rose-600">
-                              {isRtl ? "مسترد" : "Refunded"}: {formatAdminCurrencyFromIls(s.refundedIls, language)}
-                            </span>
-                          )}
+                          <span className="text-gray-400 block">{isRtl ? "المدفوعات الموثقة" : "Recorded payments"}</span>
+                          <ClientPaymentSummary summary={s.paymentSummary} language={language} />
                         </div>}
                         <div>
                           <span className="text-gray-400 block">
@@ -693,7 +682,7 @@ export default function AdminStudents() {
                     <DropdownMenuContent align={isRtl ? 'start' : 'end'} className="w-48">
                       <DropdownMenuLabel>{isRtl ? 'إظهار / إخفاء الأعمدة' : 'Toggle Columns'}</DropdownMenuLabel>
                       <DropdownMenuSeparator />
-                      {allColumns.map(col => (
+                      {allColumns.filter(col => col.key !== 'spent' || canViewFinancials).map(col => (
                         <DropdownMenuCheckboxItem
                           key={col.key}
                           checked={visibleCols.has(col.key)}
@@ -728,7 +717,7 @@ export default function AdminStudents() {
                           <SortableHeader label={isRtl ? "الباقة" : "Package"} sortKey="package" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
                         </TableHead>}
                         {canViewFinancials && visibleCols.has('spent') && <TableHead>
-                          <SortableHeader label={isRtl ? "صافي المدفوع" : "Net Paid"} sortKey="spent" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
+                          <SortableHeader label={isRtl ? "صافي المدفوع الموثق" : "Net confirmed paid"} sortKey="spent" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
                         </TableHead>}
                         {visibleCols.has('renewals') && <TableHead>
                           <SortableHeader label={isRtl ? "التجديدات" : "Renewals"} sortKey="renewals" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
@@ -802,13 +791,8 @@ export default function AdminStudents() {
                                 </span>
                               )}
                             </TableCell>}
-                            {canViewFinancials && visibleCols.has('spent') && <TableCell className="text-sm font-medium text-emerald-600">
-                              <div>{s.totalSpentIls > 0 ? formatAdminCurrencyFromIls(s.totalSpentIls, language) : "—"}</div>
-                              {s.refundedIls > 0 && (
-                                <div className="text-xs font-normal text-rose-600">
-                                  {isRtl ? "مسترد" : "Refunded"}: {formatAdminCurrencyFromIls(s.refundedIls, language)}
-                                </div>
-                              )}
+                            {canViewFinancials && visibleCols.has('spent') && <TableCell>
+                              <ClientPaymentSummary summary={s.paymentSummary} language={language} />
                             </TableCell>}
                             {visibleCols.has('renewals') && <TableCell className="text-center">
                               {s.renewalCount > 0 ? (

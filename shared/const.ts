@@ -26,16 +26,16 @@ export const SESSION_HEARTBEAT_RETRY_MS = 10 * 1000;
 // Used by the "Staff Review" feature to preview what each employee sees.
 export const ROLE_PAGE_ACCESS: Record<string, string[]> = {
   // Core roles
-  support: ["/admin/support", "/admin/bug-reports", "/admin/students", "/admin/orders", "/admin/copier", "/admin/notifications"],
+  support: ["/admin/support", "/admin/bug-reports", "/admin/students", "/admin/orders", "/admin/copier", "/admin/notifications", "/admin/reports/subscribers"],
   lexai_support: ["/admin/lexai", "/admin/notifications"],
-  key_manager: ["/admin/package-keys", "/admin/students", "/admin/orders", "/admin/copier", "/admin/notifications"],
-  finance_manager: ["/admin/orders", "/admin/copier", "/admin/finance", "/admin/finance/expenses", "/admin/finance/controls", "/admin/finance/reconciliation"],
+  key_manager: ["/admin/package-keys", "/admin/students", "/admin/orders", "/admin/copier", "/admin/notifications", "/admin/reports/subscribers"],
+  finance_manager: ["/admin/orders", "/admin/copier", "/admin/finance", "/admin/finance/expenses", "/admin/finance/controls", "/admin/finance/reconciliation", "/admin/students", "/admin/reports/subscribers"],
   finance_clerk: ["/admin/finance/expenses"],
-  finance_viewer: ["/admin/finance"],
+  finance_viewer: ["/admin/finance", "/admin/students", "/admin/reports/subscribers"],
   analyst: ["/admin/recommendations", "/admin/notifications"], // analyst only posts recommendations
 
   // Support permissions (view-only, grant read access to specific data)
-  client_lookup: ["/admin/students", "/admin/notifications"],
+  client_lookup: ["/admin/students", "/admin/notifications", "/admin/reports/subscribers"],
   view_progress: ["/admin/students", "/admin/notifications"],
   view_recommendations: ["/admin/students", "/admin/notifications"],
   view_subscriptions: ["/admin/students", "/admin/notifications"],

@@ -1,3 +1,4 @@
+import { CLIENT_PAYMENT_SUMMARY_ROLES, CLIENT_REPORT_ROLES } from '../shared/clientPaymentSummary';
 import { liveExpertRouter } from './live-expert.router';
 import {
   ALL_STAFF_ROLES,
@@ -9784,6 +9785,8 @@ export const appRouter = router({
     getProfile: adminOrRoleProcedure([
       'support',
       'lexai_support',
+      'finance_manager',
+      'finance_viewer',
       'key_manager',
       'plan_manager',
       'client_lookup',
@@ -9804,11 +9807,21 @@ export const appRouter = router({
         const canManageClientNotifications = !!ctx.admin || await db.hasAnyRole(ctx.user.id, ['manage_client_notifications']);
         const financeActor = await db.resolveFinanceActor({ adminId: ctx.admin?.id ?? null, userId: ctx.user.id });
         const canRecordFinancialRefund = financeActor?.access === 'owner' || financeActor?.access === 'manager';
-        const profile = await db.getAdminClientProfile(input.userId, { includeTimeline: canViewTimeline });
+        const canViewClientPayments = !!ctx.admin || await db.hasAnyRole(ctx.user.id, CLIENT_PAYMENT_SUMMARY_ROLES);
+        const profile = await db.getAdminClientProfile(input.userId, {
+          includeTimeline: canViewTimeline, includePayments: canViewClientPayments,
+        });
 
         return {
           ...profile,
+          // Limited lookup roles retain access context but receive no monetary
+          // evidence or legacy key-price totals in the payload.
+          ...(!canViewClientPayments ? {
+            paymentSummary: undefined,
+            accountManagement: { ...profile.accountManagement, sales: [], refunds: [] },
+          } : {}),
           permissions: {
+            canViewClientPayments,
             canViewTimeline,
             canManageAccountAccess,
             canManageClientNotifications,
@@ -9930,8 +9943,16 @@ export const appRouter = router({
   // Admin Reports
   // ============================================================================
   reports: router({
-    subscribers: supportStaffProcedure.query(async () => {
-      return db.getSubscribersReport();
+    subscribers: adminOrRoleProcedure(CLIENT_REPORT_ROLES).query(async ({ ctx }) => {
+      const canViewClientPayments = !!ctx.admin || await db.hasAnyRole(ctx.user.id, CLIENT_PAYMENT_SUMMARY_ROLES);
+      const rows = await db.getSubscribersReport({ includePayments: canViewClientPayments });
+      // Legacy monetary fields remain available only to authorized client
+      // support/admin readers; the corrected UI never treats them as cash.
+      return rows.map(row => {
+        if (canViewClientPayments) return { ...row, canViewClientPayments: true };
+        const { paymentSummary, totalSpentIls, grossSpentIls, refundedIls, ...operational } = row;
+        return { ...operational, canViewClientPayments: false };
+      });
     }),
 
     recommendationAudience: supportStaffProcedure.query(async () => {

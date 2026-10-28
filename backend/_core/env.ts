@@ -10,6 +10,11 @@ const getEnvVar = (name: string, fallback = "") =>
   process.env[name] ?? getWorkerEnv()[name] ?? fallback;
 
 export const ENV = {
+  // Emergency reporting rollback: leave support access intact, suppress cash
+  // figures and avoid the new reads until the cause has been reviewed.
+  get clientPaymentSummariesEnabled() {
+    return getEnvVar('CLIENT_PAYMENT_SUMMARIES_ENABLED', 'true').trim().toLowerCase() !== 'false';
+  },
   get appId() {
     return getEnvVar("VITE_APP_ID", "xflex-trading-academy");
   },

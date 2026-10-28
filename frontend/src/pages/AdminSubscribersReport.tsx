@@ -1,3 +1,5 @@
+import ClientPaymentSummary from '@/components/admin/ClientPaymentSummary';
+import { CLIENT_PAYMENT_EXPORT_HEADERS, clientPaymentExportFields } from '../../../shared/clientPaymentSummary';
 import { useState, useMemo } from 'react';
 import { trpc } from '@/lib/trpc';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -29,7 +31,7 @@ const subSortFns: Record<string, (a: any, b: any) => number> = {
   country: (a, b) => (a.country || '').localeCompare(b.country || ''),
   registered: (a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime(),
   keys: (a, b) => (a.totalKeys || 0) - (b.totalKeys || 0),
-  spent: (a, b) => (a.totalSpentIls || 0) - (b.totalSpentIls || 0),
+  spent: (a, b) => (a.paymentSummary?.netPaidMinor ?? 0) - (b.paymentSummary?.netPaidMinor ?? 0),
   renewals: (a, b) => (a.renewalCount || 0) - (b.renewalCount || 0),
 };
 
@@ -37,6 +39,7 @@ export default function AdminSubscribersReport() {
   const { language } = useLanguage();
   const isRtl = language === 'ar';
   const { data: subscribers, isLoading } = trpc.reports.subscribers.useQuery();
+  const canViewClientPayments = subscribers?.some((s: any) => s.canViewClientPayments === true) ?? false;
   const [search, setSearch] = useState('');
   const [countryFilter, setCountryFilter] = useState('');
 
@@ -49,7 +52,7 @@ export default function AdminSubscribersReport() {
     { key: 'country', en: 'Country', ar: 'البلد' },
     { key: 'registered', en: 'Registered', ar: 'تاريخ التسجيل' },
     { key: 'keys', en: 'Keys', ar: 'المفاتيح' },
-    { key: 'spent', en: 'Activated-key value (not revenue)', ar: 'قيمة المفاتيح المفعّلة (ليست إيرادًا)' },
+    { key: 'spent', en: 'Net confirmed paid', ar: 'صافي المدفوع الموثق' },
     { key: 'packages', en: 'Active Packages', ar: 'الباقات النشطة' },
     { key: 'renewals', en: 'Renewals', ar: 'التجديدات' },
   ] as const;
@@ -112,14 +115,12 @@ export default function AdminSubscribersReport() {
 
   const exportCSV = () => {
     if (!filtered.length) return;
-    const headers = ['Name', 'Email', 'Phone', 'City', 'Country', 'Registered', 'Total Keys', 'Legacy activated-key list value (ILS; not revenue)', 'Refund references (ILS)', 'Net legacy key indicator (ILS; not revenue)', 'Active Packages', 'Renewals'];
+    const headers = ['Name', 'Email', 'Phone', 'City', 'Country', 'Registered', 'Activated Keys',
+      ...(canViewClientPayments ? CLIENT_PAYMENT_EXPORT_HEADERS : []), 'Active Packages', 'Activated Renewals'];
     const rows = filtered.map((s: any) => [
       s.name || '', s.email, s.phone || '', s.city || '', s.country || '',
-      s.createdAt ? formatLocalizedDate(s.createdAt, language) : '',
-      s.totalKeys || 0,
-      (s.grossSpentIls || 0).toFixed(2),
-      (s.refundedIls || 0).toFixed(2),
-      (s.totalSpentIls || 0).toFixed(2),
+      s.createdAt ? formatLocalizedDate(s.createdAt, language) : '', s.totalKeys || 0,
+      ...(canViewClientPayments ? clientPaymentExportFields(s.paymentSummary) : []),
       (s.activePackages || []).join('; '), s.renewalCount,
     ]);
     const csv = [headers.join(','), ...rows.map(r => r.map((v: any) => `"${v}"`).join(','))].join('\n');
@@ -162,7 +163,7 @@ export default function AdminSubscribersReport() {
           <DropdownMenuContent align={isRtl ? 'start' : 'end'} className="w-48">
             <DropdownMenuLabel>{isRtl ? 'إظهار / إخفاء الأعمدة' : 'Toggle Columns'}</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {allColumns.map(col => (
+            {allColumns.filter(col => col.key !== 'spent' || canViewClientPayments).map(col => (
               <DropdownMenuCheckboxItem
                 key={col.key}
                 checked={visibleCols.has(col.key)}
@@ -215,7 +216,7 @@ export default function AdminSubscribersReport() {
                 {visibleCols.has('country') && <th className="px-3 py-3 text-start font-medium"><SortableHeader label={isRtl ? 'البلد' : 'Country'} sortKey="country" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>}
                 {visibleCols.has('registered') && <th className="px-3 py-3 text-start font-medium"><SortableHeader label={isRtl ? 'تاريخ التسجيل' : 'Registered'} sortKey="registered" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>}
                 {visibleCols.has('keys') && <th className="px-3 py-3 text-center font-medium"><SortableHeader label={isRtl ? 'المفاتيح' : 'Keys'} sortKey="keys" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>}
-                {visibleCols.has('spent') && <th className="px-3 py-3 text-center font-medium"><SortableHeader label={isRtl ? 'قيمة مفاتيح تشغيلية (ليست إيرادًا)' : 'Operational key value (not revenue)'} sortKey="spent" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>}
+                {canViewClientPayments && visibleCols.has('spent') && <th className="px-3 py-3 text-center font-medium"><SortableHeader label={isRtl ? 'صافي المدفوع الموثق' : 'Net confirmed paid'} sortKey="spent" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>}
                 {visibleCols.has('packages') && <th className="px-3 py-3 text-start font-medium">{isRtl ? 'الباقات النشطة' : 'Active Packages'}</th>}
                 {visibleCols.has('renewals') && <th className="px-3 py-3 text-center font-medium"><SortableHeader label={isRtl ? 'التجديدات' : 'Renewals'} sortKey="renewals" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} /></th>}
               </tr>
@@ -232,8 +233,8 @@ export default function AdminSubscribersReport() {
                     {s.createdAt ? new Date(s.createdAt).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US') : '—'}
                   </td>}
                   {visibleCols.has('keys') && <td className="px-3 py-2.5 text-center">{s.totalKeys || 0}</td>}
-                  {visibleCols.has('spent') && <td className="px-3 py-2.5 text-center font-medium text-green-700">
-                    ₪{(s.totalSpentIls || 0).toFixed(0)}
+                  {canViewClientPayments && visibleCols.has('spent') && <td className="px-3 py-2.5">
+                    <ClientPaymentSummary summary={s.paymentSummary} language={language} />
                   </td>}
                   {visibleCols.has('packages') && <td className="px-3 py-2.5">
                     {(s.activePackages || []).length > 0

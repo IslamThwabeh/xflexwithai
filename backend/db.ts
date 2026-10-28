@@ -116,6 +116,8 @@ import {
   studentSurveyAnswers, studentSurveyAuditLogs,
 } from "../database/schema-sqlite.ts";
 import { ENV } from './_core/env';
+import { readClientPaymentSummaries } from './services/client-payment-summary.service';
+import { unavailableClientPaymentSummary } from '../shared/clientPaymentSummary';
 import {
   getLivePackageConfigurationErrors,
   getLivePackagePurchaseTierForLatestPackage,
@@ -13053,7 +13055,7 @@ async function getSharedClientServiceContext(userId: number, options?: { include
   };
 }
 
-export async function getAdminClientProfile(userId: number, options?: { includeTimeline?: boolean }) {
+export async function getAdminClientProfile(userId: number, options?: { includeTimeline?: boolean; includePayments?: boolean }) {
   const user = await getUserById(userId);
   const normalizedEmail = user?.email?.trim().toLowerCase() ?? null;
 
@@ -13122,6 +13124,7 @@ export async function getAdminClientProfile(userId: number, options?: { includeT
     termsAcceptances,
     termsAcceptanceStatus,
     accountManagement,
+    paymentSummary: options?.includePayments ? await getClientPaymentSummary(userId, normalizedEmail) : undefined,
     recommendationNotifications,
     ...serviceContext,
   };
@@ -19689,10 +19692,18 @@ export async function getActivationActivityReport(limit = 500) {
   return { activations: rows.slice(0, boundedLimit), truncated: rows.length > boundedLimit };
 }
 
-/**
- * Get subscribers report — all users with enriched data
- */
-export async function getSubscribersReport(): Promise<any[]> {
+/** Client cash evidence is read separately from refund eligibility and access. */
+export async function getClientPaymentSummary(userId: number, email: string | null) {
+  if (!ENV.clientPaymentSummariesEnabled) return unavailableClientPaymentSummary();
+  const database = await getDb();
+  const client = (database as { $client?: D1Database } | null)?.$client;
+  if (!client) return unavailableClientPaymentSummary();
+  return (await readClientPaymentSummaries(client, [{ id: userId, email }])).summaries.get(userId)
+    ?? unavailableClientPaymentSummary();
+}
+
+/** Get subscribers with separate operational history and approved cash evidence. */
+export async function getSubscribersReport(options?: { includePayments?: boolean }): Promise<any[]> {
   const db = await getDb();
   if (!db) return [];
 
@@ -19735,6 +19746,10 @@ export async function getSubscribersReport(): Promise<any[]> {
       (refundedByUser.get(refund.userId) ?? 0) + Number(refund.amountIlsAgorot) / 100,
     );
   }
+
+  const paymentClient = (db as { $client?: D1Database }).$client;
+  const paymentSummaries = options?.includePayments && ENV.clientPaymentSummariesEnabled && paymentClient
+    ? (await readClientPaymentSummaries(paymentClient, allUsers)).summaries : null;
 
   return allUsers.map(u => {
     const normalizedEmail = (u.email || '').trim().toLowerCase();
@@ -19781,6 +19796,8 @@ export async function getSubscribersReport(): Promise<any[]> {
     return {
       ...u,
       totalKeys: userKeys.length,
+      canViewClientPayments: !!options?.includePayments,
+      ...(options?.includePayments ? { paymentSummary: paymentSummaries?.get(u.id) ?? unavailableClientPaymentSummary() } : {}),
       totalSpentIls,
       grossSpentIls,
       refundedIls,

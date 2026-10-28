@@ -1,3 +1,4 @@
+import ClientPaymentSummary from "./ClientPaymentSummary";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -557,6 +558,11 @@ export default function AdminClientProfileSheet({
                 </CardContent>
               </Card>
 
+              {profile.permissions.canViewClientPayments && <Card className="border-emerald-100 bg-white/95">
+                <CardHeader className="pb-3"><CardTitle className="text-base">{isRtl ? "المدفوعات الموثقة" : "Recorded payments"}</CardTitle></CardHeader>
+                <CardContent><ClientPaymentSummary summary={profile.paymentSummary} language={language} details canOpenOrders={profile.permissions.canManageAccountAccess || profile.permissions.canRecordFinancialRefund} /></CardContent>
+              </Card>}
+
               {profile.permissions.canManageAccountAccess && (
                 <Card className={profile.user.loginBlockedAt ? "border-rose-300 bg-rose-50/80" : "border-slate-200 bg-white/95"}>
                   <CardHeader className="pb-3">
@@ -590,25 +596,6 @@ export default function AdminClientProfileSheet({
                         </p>
                       </div>
                     )}
-
-                    <div className="grid gap-3 sm:grid-cols-3">
-                      <InfoLine
-                        label={isRtl ? "إجمالي المبيعات" : "Gross Sales"}
-                        value={formatAdminCurrencyFromIls(profile.accountManagement.sales.reduce((sum: number, sale: any) => sum + sale.grossIls, 0), language)}
-                      />
-                      <InfoLine
-                        label={isRtl ? "المبالغ المستردة" : "Refunds"}
-                        value={formatAdminCurrencyFromIls(profile.accountManagement.refunds.reduce((sum: number, refund: any) => sum + refund.amountIls, 0), language)}
-                      />
-                      <InfoLine
-                        label={isRtl ? "الصافي" : "Net"}
-                        value={formatAdminCurrencyFromIls(
-                          profile.accountManagement.sales.reduce((sum: number, sale: any) => sum + sale.grossIls, 0)
-                            - profile.accountManagement.refunds.reduce((sum: number, refund: any) => sum + refund.amountIls, 0),
-                          language,
-                        )}
-                      />
-                    </div>
 
                     {profile.accountManagement.refunds.length > 0 && (
                       <div className="space-y-2">
@@ -652,8 +639,8 @@ export default function AdminClientProfileSheet({
                     )}
                     <p className="text-xs leading-5 text-muted-foreground">
                       {isRtl
-                        ? "تقييد الدخول، إيقاف الخدمات، وتسجيل الاسترداد قرارات منفصلة. الاسترداد لا يحذف عملية البيع الأصلية؛ التقارير تعرض الإجمالي والاستردادات والصافي بالشيكل."
-                        : "Login restriction, service deactivation, and refund recording are separate decisions. Refunds preserve the original sale; reports show gross, refunds, and net in ILS."}
+                        ? "تقييد الدخول وإيقاف الخدمات وتسجيل الاسترداد قرارات منفصلة. المدفوعات الموثقة منفصلة عن قيم المفاتيح؛ السجلات التاريخية قد تحتاج إلى تحقق."
+                        : "Login restriction, service deactivation, and refund recording are separate decisions. Recorded payments are shown separately from operational key values; historical records may need verification."}
                     </p>
                   </CardContent>
                 </Card>

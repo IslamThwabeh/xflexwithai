@@ -24,9 +24,9 @@ describe('financial authorization UI contracts', () => {
     expect(ordersSource).toContain("staffRoles.includes('key_manager')");
     expect(ordersSource).toContain('canConfirmPayment &&');
     expect(ordersSource).toContain('canManageOperationalOrders &&');
-    expect(ROLE_PAGE_ACCESS.finance_manager).toEqual(['/admin/orders', '/admin/finance', '/admin/finance/expenses', '/admin/finance/controls', '/admin/finance/reconciliation']);
+    expect(ROLE_PAGE_ACCESS.finance_manager).toEqual(['/admin/orders', '/admin/copier', '/admin/finance', '/admin/finance/expenses', '/admin/finance/controls', '/admin/finance/reconciliation', '/admin/students', '/admin/reports/subscribers']);
     expect(ROLE_PAGE_ACCESS.finance_clerk).toEqual(['/admin/finance/expenses']);
-    expect(ROLE_PAGE_ACCESS.finance_viewer).toEqual(['/admin/finance']);
+    expect(ROLE_PAGE_ACCESS.finance_viewer).toEqual(['/admin/finance', '/admin/students', '/admin/reports/subscribers']);
   });
 
   it('keeps the expense workflow simple, ILS-only, and without deletion controls', () => {

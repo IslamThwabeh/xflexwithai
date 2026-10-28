@@ -315,6 +315,12 @@ const menuSectionsDef: MenuSection[] = [
         labelKey: "admin.sidebar.students",
         path: "/admin/students",
       },
+      {
+        icon: Users,
+        labelKey: "admin.sidebar.subscriberPayments",
+        label: { en: "Client Payment Report", ar: "تقرير مدفوعات العملاء" },
+        path: "/admin/reports/subscribers",
+      },
     ],
   },
   {
