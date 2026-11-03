@@ -2,6 +2,15 @@ export type StudentSurveyNotificationStage = "assigned" | "pre_due" | "due" | "o
 export type StudentSurveyNotificationLanguage = "ar" | "en";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+export const STUDENT_SURVEY_EMAIL_REMINDERS_FLAG = "student_surveys_email_reminders_enabled";
+
+/** Preserve assignment emails; allow reminder emails to be paused independently of in-app notices. */
+export function shouldSendStudentSurveyEmail(
+  stage: StudentSurveyNotificationStage,
+  reminderSetting: string | null | undefined,
+): boolean {
+  return stage === "assigned" || reminderSetting?.trim().toLowerCase() !== "false";
+}
 
 export function getStudentSurveyNotificationLanguage(
   notificationPrefs: string | null | undefined,

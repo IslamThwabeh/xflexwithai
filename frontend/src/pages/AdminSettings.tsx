@@ -61,7 +61,6 @@ export default function AdminSettings() {
   const [notifEmailsText, setNotifEmailsText] = useState('');
   const [emailPrefs, setEmailPrefs] = useState<Record<string, boolean>>({});
   const [studyPeriodDays, setStudyPeriodDays] = useState(14);
-  const [aiResumeMinutes, setAiResumeMinutes] = useState(30);
   const [currentAdminPassword, setCurrentAdminPassword] = useState('');
   const [newAdminPassword, setNewAdminPassword] = useState('');
   const [confirmAdminPassword, setConfirmAdminPassword] = useState('');
@@ -89,7 +88,6 @@ export default function AdminSettings() {
       } catch { setEmailPrefs({}); }
 
       setStudyPeriodDays(allSettings.study_period_days ? parseInt(allSettings.study_period_days, 10) || 14 : 14);
-      setAiResumeMinutes(allSettings.support_ai_resume_minutes ? parseInt(allSettings.support_ai_resume_minutes, 10) || 30 : 30);
     }
   }, [allSettings]);
 
@@ -359,31 +357,16 @@ export default function AdminSettings() {
                 </CardTitle>
                 <CardDescription>
                   {isRtl
-                    ? 'المدة التي ينتظرها الذكاء الاصطناعي قبل استئناف الرد تلقائيًا بعد طلب موظف حقيقي'
-                    : 'Minutes to wait before AI auto-resumes replying after a student requests a human agent'}
+                    ? 'تستمر متابعة الموظف حتى تتم إعادة تفعيل المساعد الذكي صراحةً.'
+                    : 'Human handoffs remain active until AI is explicitly re-enabled.'}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <input
-                    type="number"
-                    min={1}
-                    max={1440}
-                    value={aiResumeMinutes}
-                    onChange={e => setAiResumeMinutes(Math.max(1, Math.min(1440, parseInt(e.target.value, 10) || 30)))}
-                    className="w-24 border rounded px-3 py-2 text-sm dark:bg-slate-900 dark:border-slate-700"
-                    dir="ltr"
-                  />
-                  <span className="text-sm text-gray-500">{isRtl ? 'دقيقة' : 'minutes'}</span>
-                </div>
-                <Button
-                  size="sm"
-                  onClick={() => updateSetting.mutate({ key: 'support_ai_resume_minutes', value: String(aiResumeMinutes) })}
-                  disabled={updateSetting.isPending}
-                >
-                  {updateSetting.isPending ? <Loader2 className="w-4 h-4 me-1 animate-spin" /> : <Save className="w-4 h-4 me-1" />}
-                  {isRtl ? 'حفظ' : 'Save'}
-                </Button>
+                <p className="text-sm text-muted-foreground">
+                  {isRtl
+                    ? 'لن يعود المساعد تلقائياً بعد مرور وقت محدد. يستطيع الطالب اختيار استئناف المساعد الذكي، أو يستطيع الموظف إزالة التصعيد من المحادثة لاستئنافه.'
+                    : 'AI does not resume after a timer. The student can choose Resume AI, or staff can clear the conversation escalation to resume it.'}
+                </p>
               </CardContent>
             </Card>
 

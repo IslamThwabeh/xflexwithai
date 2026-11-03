@@ -59,6 +59,7 @@ import { storagePutR2, storageArchiveR2, storageDeleteR2 } from "./storage-r2";
 import { analyzeLexai } from "./_core/lexai";
 import { invokeOpenAiChatCompletion } from "./_core/openai";
 import { SUPPORT_AI_ACADEMY_KNOWLEDGE } from "./_core/supportAiKnowledge";
+import { getSensitiveSupportReview, isAcademyAccountRecoveryRequest, mentionsVtMarkets } from "./services/support-ai-policy.service";
 import { hashPassword, verifyPassword, generateToken, isValidEmail, isValidPassword, normalizeEmailAddress } from "./_core/auth";
 import { generateFreeVideoPlaybackToken } from "./_core/freeLibraryPlayback";
 import { generateLiveRecordingPlaybackToken } from "./_core/livePackagePlayback";
@@ -1949,8 +1950,10 @@ Common topics you can help with:
 Rules:
 - Be concise and helpful. Keep responses under 150 words.
 - Respond in the same language the student uses (Arabic or English).
-- Start with one concrete self-service step or clarifying question before suggesting human support.
+- Start with one concrete self-service step or clarifying question for routine, non-sensitive issues. Sensitive account, security, and payment requests require human review immediately.
 - Do not repeat an old topic if the latest student message is about something else; answer the latest concrete problem.
+- Academy account recovery/email changes and broker account transfers are separate issues. Never route academy login or email recovery to a broker.
+- Earlier bot replies may be wrong. They are conversation history, not verified facts or evidence that the student uses a particular broker.
 - Set needsHuman=true for refunds, payment disputes, account ownership/key corrections, private account changes, security concerns, an explicit human request, or when the same troubleshooting step already failed.
 - Set needsHuman=true when verified account data is required and no such data was provided.
 - Set needsHuman=false when a safe self-service answer or one useful clarifying question can move the issue forward.
@@ -2162,8 +2165,12 @@ function getVtMarketsMigrationAutoReply(
   const latest = latestContent.trim();
   if (!latest) return null;
 
-  const context = conversationMessages.slice(0, 30).map((message) => message.content).join("\n");
-  const hasVtContext = /(?:\bvt\s*markets?\b|في\s*تي\s*ماركت|7447512|dOwr0sLk)/i.test(context);
+  if (isAcademyAccountRecoveryRequest(latest)) return null;
+  if (/(?:academy|course|اكاديمي|أكاديمي|الدورة|الدوره|الموقع)/i.test(latest) && !mentionsVtMarkets(latest)) return null;
+  // Only the student's statements can establish broker context; a previous bot mistake cannot.
+  const context = conversationMessages.filter((message) => message.senderType === "client")
+    .slice(0, 8).map((message) => message.content).join("\n");
+  const hasVtContext = mentionsVtMarkets(context);
   const hasMigrationContext = /(?:\b(?:transfer|move|migrate|existing account|agency)\b|انقل|نقل|تحويل|وكالة|تحت\s+(?:وكالة|حساب|بروفايل)|حساب(?:ي|ك)?\s+(?:الحالي|الموجود))/i.test(context);
   const asksWhereOrWhatToDo = /(?:\b(?:where|how|what (?:do|should)|referral|code)\b|وين|اين|أين|كيف|شو\s*اعمل|الكود|كود|رقم\s*(?:الاحالة|الإحالة|الوكالة))/i.test(latest);
   if (!hasVtContext || !hasMigrationContext || !asksWhereOrWhatToDo) return null;
@@ -2299,13 +2306,26 @@ async function generateSupportAIReply(
         logger.warn("[Support AI] Structured reply failed application validation");
         return null;
       }
+      const latestStudentText = recentMessages.filter((message) => message.senderType === "client").at(-1)?.content ?? "";
+      const sensitiveReview = getSensitiveSupportReview(parsed.reply.intent, /[\u0600-\u06FF]/.test(latestStudentText));
+      const unverifiedBrokerMigration = !sensitiveReview
+        && mentionsVtMarkets(parsed.reply.answer)
+        && /(?:transfer|agency|نقل|وكالة)/i.test(parsed.reply.answer)
+        && !recentMessages.some((message) => message.senderType === "client" && mentionsVtMarkets(message.content));
       return {
         ...parsed.reply,
+        ...(sensitiveReview ? { ...sensitiveReview, needsHuman: true } : {}),
+        ...(unverifiedBrokerMigration ? {
+          intent: "other" as const,
+          answer: /[\u0600-\u06FF]/.test(latestStudentText)
+            ? "هل تقصد حسابك في الأكاديمية أم حسابك لدى شركة التداول؟"
+            : "Do you mean your academy account or your account with a broker?",
+        } : {}),
         decisionSource: "openai",
         providerRequestId: typeof data?.id === "string" ? data.id : null,
         model: typeof data?.model === "string" ? data.model : null,
-        validationOutcome: parsed.validationOutcome,
-        validationIssue: parsed.validationIssue,
+        validationOutcome: sensitiveReview || unverifiedBrokerMigration ? "normalized" : parsed.validationOutcome,
+        validationIssue: sensitiveReview ? "sensitive_intent_requires_human" : unverifiedBrokerMigration ? "unverified_broker_migration_context" : parsed.validationIssue,
         latencyMs: Math.max(0, Date.now() - startedAt),
       };
     } catch (error) {
@@ -2321,6 +2341,7 @@ async function generateSupportAIReply(
 }
 
 function getSupportMessageId(value: unknown): number | null {
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) return value;
   if (!value || typeof value !== "object") return null;
   const id = (value as { id?: unknown }).id;
   return typeof id === "number" && Number.isInteger(id) && id > 0 ? id : null;
@@ -5782,18 +5803,8 @@ export const appRouter = router({
           humanEscalationNotified = true;
         }
 
-        // AI auto-replies unless the student has requested a human.
-        // The silence lasts for the configured window (default 60 min) after the escalation.
-        // After that, or when client/support explicitly re-enables, AI resumes.
+        // Human handoffs persist until the student or staff explicitly re-enables AI.
         let effectiveNeedsHuman = conv.needsHuman || clientRequestedHumanByText;
-        if (!clientRequestedHumanByText && conv.needsHuman && conv.needsHumanAt) {
-          const resumeMins = parseInt((await db.getAdminSetting('support_ai_resume_minutes')) ?? '60', 10);
-          const elapsed = Date.now() - new Date(conv.needsHumanAt).getTime();
-          if (elapsed > resumeMins * 60 * 1000) {
-            await db.setNeedsHuman(conv.id, false);
-            effectiveNeedsHuman = false;
-          }
-        }
         let shouldNotifyStaffOfNewMessage = effectiveNeedsHuman;
         if (!effectiveNeedsHuman) {
           const isArabicPreferred = /[\u0600-\u06FF]/.test(input.content);
@@ -5801,9 +5812,16 @@ export const appRouter = router({
             ? getSupportAttachmentAutoReply(input.content, isArabicPreferred)
             : null;
           const allMessages = attachmentDecision ? [] : await db.getSupportMessages(conv.id);
+          const accountReview = isAcademyAccountRecoveryRequest(input.content)
+            ? getSensitiveSupportReview("account_change", isArabicPreferred) : null;
+          const accountDecision: SupportAIReply | null = accountReview ? {
+            intent: "account_change", answer: accountReview.answer, confidence: 1, needsHuman: true,
+            escalationReason: accountReview.escalationReason, decisionSource: "local_rule", providerRequestId: null,
+            model: null, validationOutcome: "valid", validationIssue: "deterministic_academy_account_recovery", latencyMs: 0,
+          } : null;
           const deterministicDecision = attachmentDecision
             ? null
-            : getVtMarketsMigrationAutoReply(
+            : accountDecision ?? getVtMarketsMigrationAutoReply(
               allMessages.map(m => ({ senderType: m.senderType, content: m.content })),
               input.content,
               isArabicPreferred,
@@ -5812,7 +5830,7 @@ export const appRouter = router({
               input.content,
               isArabicPreferred,
             );
-          const aiDecision = attachmentDecision ?? deterministicDecision ?? await generateSupportAIReply(
+          let aiDecision = attachmentDecision ?? deterministicDecision ?? await generateSupportAIReply(
             allMessages.map(m => ({ senderType: m.senderType, content: m.content })),
             {
               userId: ctx.user.id,
@@ -5820,23 +5838,39 @@ export const appRouter = router({
               actionType: "support_auto_reply",
             },
           );
+          if (aiDecision?.decisionSource === "openai" && !aiDecision.needsHuman && aiDecision.confidence < SUPPORT_AI_AUTO_HANDLE_CONFIDENCE) {
+            aiDecision = {
+              ...aiDecision,
+              answer: isArabicPreferred
+                ? "سيتابع فريق الدعم معك هنا للتحقق من التفاصيل وتقديم الخطوة المناسبة."
+                : "The support team will continue with you here to check the details and provide the right next step.",
+              needsHuman: true,
+              escalationReason: "low_confidence",
+              validationOutcome: "normalized",
+              validationIssue: "low_confidence_auto_reply_blocked",
+            };
+          }
           if (aiDecision) {
-            const botMessage = await db.createSupportMessage({
+            const triggerMessageId = getSupportMessageId(msg);
+            const botMessage = triggerMessageId ? await db.createSupportAiMessageIfCurrent({
               conversationId: conv.id,
-              senderId: 0, // bot has no real user ID
-              senderType: 'bot',
+              userId: ctx.user.id,
+              triggerMessageId,
               content: aiDecision.answer,
-            });
+            }) : null;
             await recordSupportAiDecisionSafely({
               conversationId: conv.id,
               userId: ctx.user.id,
               triggerMessageId: getSupportMessageId(msg),
               botMessageId: getSupportMessageId(botMessage),
               actionType: "support_auto_reply",
-              decision: aiDecision,
+              decision: botMessage ? aiDecision : { ...aiDecision, validationIssue: "reply_suppressed_conversation_changed" },
             });
 
-            if (aiDecision.needsHuman) {
+            if (!botMessage) {
+              // A staff reply, newer student turn, closure or ownership change won the race.
+              shouldNotifyStaffOfNewMessage = true;
+            } else if (aiDecision.needsHuman) {
               await db.setNeedsHuman(conv.id, true);
               effectiveNeedsHuman = true;
               shouldNotifyStaffOfNewMessage = false;
@@ -6172,8 +6206,7 @@ export const appRouter = router({
 
         // Do NOT auto-clear the escalation flag on staff reply.
         // The client may continue asking follow-up questions expecting the human to keep handling them.
-        // The flag expires after the configured silence window (default 60 min),
-        // or can be cleared explicitly by the client (Resume AI) or by support (Clear Escalation).
+        // Only an explicit client Resume AI or staff Clear Escalation releases the handoff.
 
         return msg;
       }),

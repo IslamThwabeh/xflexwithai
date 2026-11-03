@@ -15,6 +15,7 @@ vi.mock("../backend/db", async () => {
     hasAnyRole: vi.fn().mockResolvedValue(true),
     setNeedsHuman: vi.fn().mockResolvedValue(undefined),
     createSupportMessage: vi.fn(),
+    createSupportAiMessageIfCurrent: vi.fn(),
     recordSupportAiDecision: vi.fn().mockResolvedValue({ id: 1 }),
     createNotification: vi.fn().mockResolvedValue(undefined),
     enqueueEmailOutbox: vi.fn().mockResolvedValue(true),
@@ -129,6 +130,9 @@ describe("support chat staff notifications", () => {
     getSupportMessages.mockResolvedValue([] as any);
     setNeedsHuman.mockResolvedValue(undefined as any);
     createSupportMessage.mockResolvedValue(55 as any);
+    vi.mocked(db.createSupportAiMessageIfCurrent).mockImplementation(async (input) =>
+      await createSupportMessage({ conversationId: input.conversationId, senderId: 0, senderType: "bot", content: input.content }) as any,
+    );
     getSupportConversation.mockResolvedValue(null);
     assignSupportConversation.mockImplementation(async (input) => ({
       id: input.conversationId,
@@ -420,7 +424,7 @@ describe("support chat staff notifications", () => {
     expect(setNeedsHuman).not.toHaveBeenCalled();
   });
 
-  it("notifies staff when the structured AI decision has low confidence", async () => {
+  it("replaces a low-confidence automatic answer with a safe human handoff", async () => {
     vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(supportAiResponse({
       confidence: 0.55,
@@ -436,9 +440,14 @@ describe("support chat staff notifications", () => {
     await createAuthedCaller().supportChat.send({ content: "It is broken" });
 
     expect(notifyStaffByEvent).toHaveBeenCalledWith(
-      "new_support_message",
+      "human_escalation",
       expect.objectContaining({ metadata: { userId: 123, conversationId: 10 } }),
     );
+    expect(createSupportMessage).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      senderType: "bot", content: expect.not.stringContaining("Please share the lesson number."),
+    }));
+    expect(setNeedsHuman).toHaveBeenCalledWith(10, true);
+    expect(recordSupportAiDecision).toHaveBeenCalledWith(expect.objectContaining({ validationIssue: "low_confidence_auto_reply_blocked" }));
   });
 
   it("escalates when the structured AI decision requires account review", async () => {
@@ -679,6 +688,83 @@ describe("support chat staff notifications", () => {
         content: expect.stringContaining("لا أستطيع قراءة الصورة"),
       }),
     );
+  });
+
+  it("keeps a human handoff active even after the old resume window passes", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    getOrCreateSupportConversation.mockResolvedValue({ id: 10, userId: 123, status: "open", needsHuman: true, needsHumanAt: "2026-01-01T00:00:00.000Z" } as any);
+    await createAuthedCaller().supportChat.send({ content: "اوك" });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(setNeedsHuman).not.toHaveBeenCalledWith(10, false);
+    expect(db.createSupportAiMessageIfCurrent).not.toHaveBeenCalled();
+    expect(notifyStaffByEvent).toHaveBeenCalledWith("new_support_message", expect.anything());
+  });
+
+  it("routes Yaqoub's academy recovery to humans despite an earlier incorrect broker answer", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const content = "حسابي القديم حذفت البريد الالكتروني وصعب ارجعوا هس هذا حسابي لجديد وانا مسجل بالدورة الأساسية";
+    getSupportMessages.mockResolvedValue([{ senderType: "client", content }, { senderType: "bot", content: "Contact VT Markets to transfer your account" }] as any);
+    await createAuthedCaller().supportChat.send({ content });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(setNeedsHuman).toHaveBeenCalledWith(10, true);
+    expect(createSupportMessage).toHaveBeenNthCalledWith(2, expect.objectContaining({ content: expect.not.stringContaining("VT Markets") }));
+    expect(recordSupportAiDecision).toHaveBeenCalledWith(expect.objectContaining({ intent: "account_change", needsHuman: true, decisionSource: "local_rule" }));
+  });
+
+  it("does not establish broker context from a bot message alone", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    const fetchMock = vi.fn().mockResolvedValue(supportAiResponse({ answer: "Which account do you mean?" }));
+    vi.stubGlobal("fetch", fetchMock);
+    getSupportMessages.mockResolvedValue([
+      { senderType: "client", content: "كيف أرجع حساب الأكاديمية؟" },
+      { senderType: "bot", content: "Contact VT Markets to transfer your existing account" },
+    ] as any);
+    await createAuthedCaller().supportChat.send({ content: "كيف أرجع حساب الأكاديمية؟" });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(recordSupportAiDecision).toHaveBeenCalledWith(expect.objectContaining({ decisionSource: "openai" }));
+  });
+
+  it("retains legitimate existing-broker migration instructions from the student's own context", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    getSupportMessages.mockResolvedValue([
+      { senderType: "client", content: "وين احط الكود؟" },
+      { senderType: "client", content: "عندي حساب موجود في VT Markets وبدي انقل الحساب تحت وكالة روان" },
+    ] as any);
+    await createAuthedCaller().supportChat.send({ content: "وين احط الكود؟" });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(recordSupportAiDecision).toHaveBeenCalledWith(expect.objectContaining({ intent: "broker_onboarding", decisionSource: "local_rule", needsHuman: false }));
+  });
+
+  it("replaces model-invented broker transfer instructions with one clarifying question", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(supportAiResponse({ intent: "broker_onboarding", answer: "Ask VT Markets to transfer the account under agency 7447512" })));
+    getSupportMessages.mockResolvedValue([{ senderType: "client", content: "What should I do with my account?" }, { senderType: "bot", content: "VT Markets" }] as any);
+    await createAuthedCaller().supportChat.send({ content: "What should I do with my account?" });
+    expect(createSupportMessage).toHaveBeenNthCalledWith(2, expect.objectContaining({ content: "Do you mean your academy account or your account with a broker?" }));
+    expect(recordSupportAiDecision).toHaveBeenCalledWith(expect.objectContaining({ intent: "other", validationIssue: "unverified_broker_migration_context" }));
+  });
+
+  it.each(["account_change", "security", "billing_or_refund"])("enforces human review for model-classified %s even at high confidence", async (intent) => {
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(supportAiResponse({ intent, confidence: 0.99, needsHuman: false, answer: "Unsafe automatic promise" })));
+    getSupportMessages.mockResolvedValue([{ senderType: "client", content: "Please review this case" }] as any);
+    await createAuthedCaller().supportChat.send({ content: "Please review this case" });
+    expect(setNeedsHuman).toHaveBeenCalledWith(10, true);
+    expect(createSupportMessage).toHaveBeenNthCalledWith(2, expect.objectContaining({ content: expect.not.stringContaining("Unsafe automatic promise") }));
+    expect(recordSupportAiDecision).toHaveBeenCalledWith(expect.objectContaining({ needsHuman: true, validationIssue: "sensitive_intent_requires_human" }));
+  });
+
+  it("discards a generated answer if publication detects a newer message or human takeover", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(supportAiResponse()));
+    vi.mocked(db.createSupportAiMessageIfCurrent).mockResolvedValue(null);
+    await createAuthedCaller().supportChat.send({ content: "Help" });
+    expect(createSupportMessage).toHaveBeenCalledTimes(1);
+    expect(recordSupportAiDecision).toHaveBeenCalledWith(expect.objectContaining({ botMessageId: null, validationIssue: "reply_suppressed_conversation_changed" }));
+    expect(notifyStaffByEvent).toHaveBeenCalledWith("new_support_message", expect.anything());
   });
 
   it("normalizes voice-note duration before persisting the support message", async () => {

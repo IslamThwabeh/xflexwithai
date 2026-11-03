@@ -206,6 +206,8 @@ import {
   getNextStudentSurveyNotificationAt,
   getStudentSurveyNotificationLanguage,
   getStudentSurveyNotificationStage,
+  shouldSendStudentSurveyEmail,
+  STUDENT_SURVEY_EMAIL_REMINDERS_FLAG,
   type StudentSurveyNotificationStage,
 } from './services/student-survey-notifications.service';
 import type { LoyaltyRewardRedemptionStatus } from './services/loyalty-rewards.service';
@@ -4372,6 +4374,7 @@ export async function sendStudentSurveyAssignmentReminder(input: {
   });
   const language = getStudentSurveyNotificationLanguage(recipient.notificationPrefs);
   const email = language === "ar" ? arabic : english;
+  const sendReminderEmail = shouldSendStudentSurveyEmail("manual", await getAdminSetting(STUDENT_SURVEY_EMAIL_REMINDERS_FLAG));
   const dedupeKey = buildStudentSurveyNotificationDedupeKey({
     assignmentId: input.assignmentId,
     stage: "manual",
@@ -4400,7 +4403,7 @@ export async function sendStudentSurveyAssignmentReminder(input: {
       actorUserId: input.actorUserId,
       action: "reminder_sent",
       details: JSON.stringify({
-        channel: "in_app_and_email",
+        channel: sendReminderEmail ? "in_app_and_email" : "in_app",
         stage: "manual",
         status: assignment.status,
         dueAt: assignment.dueAt,
@@ -4429,7 +4432,7 @@ export async function sendStudentSurveyAssignmentReminder(input: {
     if (!notification) {
       throw new Error("STUDENT_SURVEY_REMINDER_INVARIANT_FAILED");
     }
-    await enqueueEmailOutbox({
+    if (sendReminderEmail) await enqueueEmailOutbox({
       dedupeKey,
       batchId: `student-survey:${assignment.surveyId}:manual:${language}`,
       recipientUserId: assignment.userId,
@@ -5445,6 +5448,7 @@ export async function materializeDueStudentSurveyNotifications(input?: {
   if (!isStudentSurveysEnabled(await getAdminSetting("student_surveys_enabled"))) {
     return { processed: 0, dashboardCreated: 0, emailsQueued: 0 };
   }
+  const reminderEmailSetting = await getAdminSetting(STUDENT_SURVEY_EMAIL_REMINDERS_FLAG);
 
   const now = new Date();
   const nowIso = now.toISOString();
@@ -5527,7 +5531,8 @@ export async function materializeDueStudentSurveyNotifications(input?: {
     dashboardCreated += notificationRows.length;
 
     const eventType = stage === "assigned" ? "student_survey_assigned" : "student_survey_reminder";
-    const queued = await enqueueEmailOutbox({
+    const sendEmail = shouldSendStudentSurveyEmail(stage, reminderEmailSetting);
+    const queued = sendEmail && await enqueueEmailOutbox({
       dedupeKey,
       batchId: `student-survey:${row.surveyId}:${stage}:${row.dueAt}:${language}`,
       recipientUserId: row.userId,
@@ -5573,7 +5578,7 @@ export async function materializeDueStudentSurveyNotifications(input?: {
         userId: row.userId,
         actorUserId: row.createdByUserId,
         action: stage === "assigned" ? "assignment_notification_scheduled" : "reminder_scheduled",
-        details: { channel: "in_app_and_email", stage, dueAt: row.dueAt, dedupeKey },
+        details: { channel: sendEmail ? "in_app_and_email" : "in_app", stage, dueAt: row.dueAt, dedupeKey },
       }).catch((error) => logger.warn("[SURVEYS] Notification audit write failed", {
         assignmentId: row.id,
         stage,
@@ -7569,6 +7574,9 @@ export async function getStudentSurveyEmailOutboxBlockReason(
   }
   if (!isStudentSurveysEnabled(await getAdminSetting("student_surveys_enabled"))) {
     return "student_surveys_disabled";
+  }
+  if (row.eventType === "student_survey_reminder" && !shouldSendStudentSurveyEmail("overdue", await getAdminSetting(STUDENT_SURVEY_EMAIL_REMINDERS_FLAG))) {
+    return "survey_email_reminders_disabled";
   }
   const metadata = parseOptionalJson<{ assignmentId?: number }>(row.metadataJson);
   const assignmentId = Number(metadata?.assignmentId);
@@ -15426,6 +15434,37 @@ export async function getSupportMessages(conversationId: number, limit: number =
     .where(eq(supportMessages.conversationId, conversationId))
     .orderBy(desc(supportMessages.createdAt))
     .limit(limit);
+}
+
+/** Publish only while this is still the latest client turn and no human has taken over. */
+export async function createSupportAiMessageIfCurrent(input: {
+  conversationId: number;
+  userId: number;
+  triggerMessageId: number;
+  content: string;
+}) {
+  const database = await getDb();
+  if (!database) throw new Error("Database not available");
+  const now = new Date().toISOString();
+  const inserted = await database.all<{ id: number }>(sql`
+    INSERT INTO supportMessages (conversationId,senderId,senderType,content,createdAt)
+    SELECT ${input.conversationId},0,'bot',${input.content},${now}
+    WHERE EXISTS (
+      SELECT 1 FROM supportConversations
+      WHERE id=${input.conversationId} AND userId=${input.userId} AND needsHuman=0 AND status='open'
+    ) AND EXISTS (
+      SELECT 1 FROM supportMessages
+      WHERE id=${input.triggerMessageId} AND conversationId=${input.conversationId}
+        AND senderId=${input.userId} AND senderType='client' AND deletedAt IS NULL
+    ) AND NOT EXISTS (
+      SELECT 1 FROM supportMessages
+      WHERE conversationId=${input.conversationId} AND id>${input.triggerMessageId} AND deletedAt IS NULL
+    ) RETURNING id
+  `);
+  if (!inserted[0]) return null;
+  await database.update(supportConversations).set({ updatedAt: now })
+    .where(eq(supportConversations.id, input.conversationId));
+  return inserted[0];
 }
 
 /** Edit a support message's content. Returns the updated message or null. */

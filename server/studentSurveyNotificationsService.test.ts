@@ -5,10 +5,21 @@ import {
   getNextStudentSurveyNotificationAt,
   getStudentSurveyNotificationLanguage,
   getStudentSurveyNotificationStage,
+  shouldSendStudentSurveyEmail,
 } from "../backend/services/student-survey-notifications.service";
 
 describe("student survey notification cadence", () => {
   const now = new Date("2026-08-15T08:00:00.000Z");
+
+  it("pauses reminder emails while preserving new-assignment emails", () => {
+    for (const stage of ["pre_due", "due", "overdue", "manual"] as const) {
+      expect(shouldSendStudentSurveyEmail(stage, "false")).toBe(false);
+      expect(shouldSendStudentSurveyEmail(stage, " FALSE ")).toBe(false);
+      expect(shouldSendStudentSurveyEmail(stage, "true")).toBe(true);
+      expect(shouldSendStudentSurveyEmail(stage, null)).toBe(true);
+    }
+    expect(shouldSendStudentSurveyEmail("assigned", "false")).toBe(true);
+  });
 
   it("schedules assignment, pre-due, due, then 24-hour reminders", () => {
     const dueAt = "2026-08-17T08:00:00.000Z";
