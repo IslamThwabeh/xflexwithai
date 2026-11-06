@@ -237,7 +237,7 @@ describe("remaining D1 hot-path safeguards", () => {
 
   it("uses normalized equality and slower visible-only polling", () => {
     const entitlementSection = backendSource.slice(
-      backendSource.indexOf("async function getUserEntitlementDays"),
+      backendSource.indexOf("export function buildLatestActivatedStandardPackageKeyQuery"),
       backendSource.indexOf("export function getKeyAccessEndDate"),
     );
     const termsSection = backendSource.slice(

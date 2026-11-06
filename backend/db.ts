@@ -552,6 +552,7 @@ export function buildTimedServiceAccessSummary(snapshot?: {
   endDate?: string | null;
   isPendingActivation?: boolean | null;
   isPaused?: boolean | null;
+  pausedRemainingDays?: number | null;
   frozenUntil?: string | null;
   pausedReason?: string | null;
   activationReason?: string | null;
@@ -575,6 +576,20 @@ export function buildTimedServiceAccessSummary(snapshot?: {
       frozenUntil: null,
       pausedReason: null,
       hasHistory: false,
+    };
+  }
+
+  // A saved pause balance survives the old calendar expiry, including a
+  // manual hold established before pending activation completed.
+  if (snapshot.isPaused && normalizePositiveInteger(snapshot.pausedRemainingDays)) {
+    return {
+      status: 'frozen',
+      ...audit,
+      endDate: snapshot.endDate ?? null,
+      daysLeft: null,
+      frozenUntil: snapshot.frozenUntil ?? null,
+      pausedReason: snapshot.pausedReason ?? null,
+      hasHistory: true,
     };
   }
 
@@ -717,8 +732,29 @@ async function ensureTimedServicesActivatedIfDue(userId: number) {
   );
 }
 
+/** Shared query for standard timed services; Live keys carry cohort metadata. */
+export function buildLatestActivatedStandardPackageKeyQuery(
+  database: Pick<ReturnType<typeof drizzle>, 'select'>,
+  normalizedEmail: string,
+) {
+  return database.select({
+    entitlementDays: registrationKeys.entitlementDays,
+    packageId: registrationKeys.packageId,
+    durationDays: packages.durationDays,
+  }).from(registrationKeys)
+    .innerJoin(packages, eq(packages.id, registrationKeys.packageId))
+    .where(and(
+      eq(registrationKeys.email, normalizedEmail),
+      isNotNull(registrationKeys.activatedAt),
+      isNotNull(registrationKeys.packageId),
+      eq(packages.packageType, 'standard'),
+    ))
+    .orderBy(desc(registrationKeys.activatedAt), desc(registrationKeys.id))
+    .limit(1);
+}
+
 /**
- * Look up actual entitlement days for a user from their most recent activated key → package.
+ * Look up actual entitlement days from the most recent activated standard key.
  * Keys can have custom durations (15, 45, etc.) — never assume 30.
  */
 async function getUserEntitlementDays(userId: number): Promise<number> {
@@ -731,18 +767,7 @@ async function getUserEntitlementDays(userId: number): Promise<number> {
   if (!user?.email) return DEFAULT_KEY_ENTITLEMENT_DAYS;
   const normalizedEmail = normalizeEmailAddress(user.email);
 
-  // Find the latest activated package key for this user
-  const [key] = await db.select({
-    entitlementDays: registrationKeys.entitlementDays,
-    packageId: registrationKeys.packageId,
-  }).from(registrationKeys)
-    .where(and(
-      eq(registrationKeys.email, normalizedEmail),
-      sql`${registrationKeys.activatedAt} IS NOT NULL`,
-      sql`${registrationKeys.packageId} IS NOT NULL`,
-    ))
-    .orderBy(desc(registrationKeys.activatedAt))
-    .limit(1);
+  const [key] = await buildLatestActivatedStandardPackageKeyQuery(db, normalizedEmail);
 
   if (!key) return DEFAULT_KEY_ENTITLEMENT_DAYS;
 
@@ -750,13 +775,7 @@ async function getUserEntitlementDays(userId: number): Promise<number> {
   const keyDays = normalizePositiveInteger(key.entitlementDays);
   if (keyDays) return keyDays;
 
-  // Fallback to the package's configured duration
-  if (key.packageId) {
-    const pkg = await getPackageById(key.packageId);
-    return normalizePositiveInteger(pkg?.durationDays) ?? DEFAULT_KEY_ENTITLEMENT_DAYS;
-  }
-
-  return DEFAULT_KEY_ENTITLEMENT_DAYS;
+  return normalizePositiveInteger(key.durationDays) ?? DEFAULT_KEY_ENTITLEMENT_DAYS;
 }
 
 async function getUserLatestActivatedPackageId(userId: number): Promise<number | null> {
@@ -768,19 +787,13 @@ async function getUserLatestActivatedPackageId(userId: number): Promise<number |
   if (!user?.email) return null;
   const normalizedEmail = normalizeEmailAddress(user.email);
 
-  const [key] = await db.select({ packageId: registrationKeys.packageId }).from(registrationKeys)
-    .where(and(
-      eq(registrationKeys.email, normalizedEmail),
-      sql`${registrationKeys.activatedAt} IS NOT NULL`,
-      sql`${registrationKeys.packageId} IS NOT NULL`,
-    ))
-    .orderBy(desc(registrationKeys.activatedAt))
-    .limit(1);
+  const [key] = await buildLatestActivatedStandardPackageKeyQuery(db, normalizedEmail);
 
   if (key?.packageId) return Number(key.packageId);
 
   const [subscription] = await db.select({ packageId: packageSubscriptions.packageId }).from(packageSubscriptions)
-    .where(eq(packageSubscriptions.userId, userId))
+    .innerJoin(packages, eq(packages.id, packageSubscriptions.packageId))
+    .where(and(eq(packageSubscriptions.userId, userId), eq(packages.packageType, 'standard')))
     .orderBy(desc(packageSubscriptions.createdAt))
     .limit(1);
 

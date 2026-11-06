@@ -3,6 +3,45 @@ import { describe, expect, it, vi } from "vitest";
 import { buildTimedServiceAccessSummary } from "../backend/db";
 
 describe("buildTimedServiceAccessSummary", () => {
+  it("keeps an indefinite hold frozen after its old expiry when days are saved", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2027-01-10T12:00:00.000Z"));
+      expect(buildTimedServiceAccessSummary({
+        endDate: "2026-11-22T11:24:59.787Z",
+        isPaused: true,
+        pausedRemainingDays: 30,
+        frozenUntil: null,
+        pausedReason: "Manual financial hold",
+      })).toMatchObject({ status: "frozen", daysLeft: null, frozenUntil: null });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not recover expired time from a zero or invalid pause balance", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2027-01-10T12:00:00.000Z"));
+      for (const pausedRemainingDays of [0, -1, NaN]) {
+        expect(buildTimedServiceAccessSummary({
+          endDate: "2026-11-22T11:24:59.787Z", isPaused: true, pausedRemainingDays,
+        }).status).toBe("expired");
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows a saved manual hold even while the service was awaiting activation", () => {
+    expect(buildTimedServiceAccessSummary({
+      isPendingActivation: true,
+      isPaused: true,
+      pausedRemainingDays: 30,
+      frozenUntil: null,
+    }).status).toBe("frozen");
+  });
+
   it("returns expired when a frozen subscription is already past its end date", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-05T12:00:00.000Z"));
