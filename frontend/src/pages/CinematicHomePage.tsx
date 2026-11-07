@@ -522,15 +522,12 @@ function AnimatedCounter({
 }
 
 // ─── Nav ──────────────────────────────────────────────────────────────────────
-function CinematicNav({ onScrollTo, showAnnouncement }: { onScrollTo: (id: string) => void; showAnnouncement: boolean }) {
+function CinematicNav({ onScrollTo }: { onScrollTo: (id: string) => void }) {
   const { language, setLanguage, isRTL } = useLanguage();
   const isArabic = language === 'ar';
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const navContentRef = useRef<HTMLDivElement>(null);
-  const { data: liveState } = trpc.packages.livePublicState.useQuery(undefined, {
-    staleTime: PUBLIC_OFFER_STATE_STALE_MS,
-  });
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
@@ -574,7 +571,7 @@ function CinematicNav({ onScrollTo, showAnnouncement }: { onScrollTo: (id: strin
   };
 
   return (
-    <header className={`cin-nav fixed inset-x-0 top-0 z-50 ${scrolled ? 'cin-nav-scrolled' : ''}`} dir={isRTL ? 'rtl' : 'ltr'}>
+    <header className={`cin-nav sticky top-0 z-50 bg-[#050505] ${scrolled ? 'cin-nav-scrolled' : ''}`} dir={isRTL ? 'rtl' : 'ltr'}>
       <div ref={navContentRef}>
       <div className="container mx-auto flex h-16 items-center justify-between px-4 md:h-20 md:px-8">
         <Link href={localePrefix}><a className="flex shrink-0 items-center gap-2"><img src={BRAND_LOGO_SRC} alt={APP_TITLE} className="cin-logo-img cin-logo-header" /></a></Link>
@@ -595,19 +592,9 @@ function CinematicNav({ onScrollTo, showAnnouncement }: { onScrollTo: (id: strin
           {menuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
         </button>
       </div>
-      {liveState?.purchasable && (
-        <Link href={`/${language}/packages/live-package`}>
-          <a className="flex min-h-9 items-center justify-center gap-2 border-y border-[#C8A96B]/22 bg-[#C8A96B]/12 px-4 py-1.5 text-center text-xs font-bold text-[#F1D99B] shadow-[0_10px_35px_rgba(200,169,107,0.12)] backdrop-blur-xl transition-colors hover:bg-[#C8A96B]/18 md:text-sm">
-            <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-[#F1D99B] shadow-[0_0_14px_rgba(241,217,155,0.75)]" />
-            <span>{isArabic ? 'بكج لايف متاح الآن — التسجيل لفترة محدودة' : 'Live Package is open — registration is available for a limited time'}</span>
-            <ArrowUpRight className="h-4 w-4 shrink-0" />
-          </a>
-        </Link>
-      )}
-      {showAnnouncement && <EasyLifeNotice variant="banner" />}
       </div>
       {menuOpen && (
-        <div className="border-t border-white/10 bg-[#0A0A0A]/96 px-4 pb-6 pt-4 backdrop-blur-2xl md:hidden">
+        <div className="absolute inset-x-0 top-full border-t border-white/10 bg-[#0A0A0A]/96 px-4 pb-6 pt-4 backdrop-blur-2xl md:hidden">
           <div className="flex flex-col gap-5">
             <button
               type="button"
@@ -627,6 +614,28 @@ function CinematicNav({ onScrollTo, showAnnouncement }: { onScrollTo: (id: strin
         </div>
       )}
     </header>
+  );
+}
+
+function HomepageAnnouncements({ showEasyLife }: { showEasyLife: boolean }) {
+  const { language, isRTL } = useLanguage();
+  const { data: liveState } = trpc.packages.livePublicState.useQuery(undefined, {
+    staleTime: PUBLIC_OFFER_STATE_STALE_MS,
+  });
+
+  if (!liveState?.purchasable && !showEasyLife) return null;
+
+  return (
+    <div className="relative z-10 shrink-0 bg-[#050505]" dir={isRTL ? 'rtl' : 'ltr'}>
+      {liveState?.purchasable && (
+        <Link href={`/${language}/packages/live-package`} className="flex min-h-9 items-center justify-center gap-2 border-y border-[#C8A96B]/22 bg-[#C8A96B]/12 px-4 py-1.5 text-center text-xs font-bold text-[#F1D99B] transition-colors hover:bg-[#C8A96B]/18 md:text-sm">
+          <span className="h-2 w-2 shrink-0 rounded-full bg-[#F1D99B]" />
+          <span>{language === 'ar' ? 'بكج لايف متاح الآن — التسجيل لفترة محدودة' : 'Live Package is open — registration is available for a limited time'}</span>
+          <ArrowUpRight aria-hidden="true" className="h-4 w-4 shrink-0" />
+        </Link>
+      )}
+      {showEasyLife && <EasyLifeNotice variant="banner" />}
+    </div>
   );
 }
 
@@ -812,10 +821,10 @@ function HeroSection({ onScrollTo, showCompanyIntro }: { onScrollTo: (id: string
       ];
 
   return (
-    <section ref={heroRef} className="relative flex min-h-screen flex-col items-start justify-center overflow-hidden" dir={isRTL ? 'rtl' : 'ltr'}>
+    <section ref={heroRef} className="relative flex flex-1 flex-col items-start justify-center overflow-hidden" dir={isRTL ? 'rtl' : 'ltr'}>
       {/* Background image */}
       <div className="cin-bg-zoom absolute inset-0">
-        <img src={IMG.hero} alt="" width={1536} height={1024} fetchPriority="high" className="h-full w-full object-cover object-center" loading="eager" />
+        <img src={IMG.hero} alt="" width={1536} height={1024} fetchPriority="high" className="h-full w-full object-cover object-[center_20%]" loading="eager" />
         <div className="absolute inset-0 bg-gradient-to-r from-[#050505]/92 via-[#050505]/70 to-[#050505]/30" />
         <div className="absolute inset-0 bg-gradient-to-t from-[#050505]/85 via-transparent to-transparent" />
       </div>
@@ -835,7 +844,7 @@ function HeroSection({ onScrollTo, showCompanyIntro }: { onScrollTo: (id: string
       <ParticleField count={18} />
 
       {/* Content */}
-      <div className="relative z-10 container mx-auto px-4 pb-20 md:px-8" style={{ paddingTop: 'calc(var(--cin-home-header-height, 80px) + 2rem)' }}>
+      <div className="relative z-10 container mx-auto px-4 py-12 md:px-8 md:py-16">
         <div className="grid items-center gap-16 lg:grid-cols-2">
           <div className="max-w-2xl">
             <div className="cin-hero-1 inline-flex items-center gap-2 rounded-full border border-[#00C176]/35 bg-[#00C176]/12 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-[#00C176]" style={{ boxShadow: '0 0 24px rgba(0,193,118,0.25)' }}>
@@ -2304,9 +2313,12 @@ export default function CinematicHomePage() {
     <div className="min-h-screen overflow-x-clip bg-[#050505] text-white">
       <CinematicStyles />
       <ScrollProgress />
-      <CinematicNav onScrollTo={scrollTo} showAnnouncement={showAnnouncement} />
+      <CinematicNav onScrollTo={scrollTo} />
       <main className="overflow-x-clip">
-        <HeroSection onScrollTo={scrollTo} showCompanyIntro={showAnnouncement} />
+        <div className="flex flex-col" style={{ minHeight: 'calc(100svh - var(--cin-home-header-height, 80px))' }}>
+          <HomepageAnnouncements showEasyLife={showAnnouncement} />
+          <HeroSection onScrollTo={scrollTo} showCompanyIntro={showAnnouncement} />
+        </div>
         <TrustBadgesRow />
         <TrustBar />
         <FeaturedLivePackageSection />

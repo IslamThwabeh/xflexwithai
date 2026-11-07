@@ -5,7 +5,8 @@ The approved company statement and bilingual Easy Life copy live in
 copy. Easy Life links open the existing business WhatsApp number with an inquiry;
 they do not create an order or select an online card payment method.
 
-The homepage promotes Easy Life below the navigation and the company statement
+The homepage promotes Easy Life in a separate strip below the navigation, above
+the hero image, and the company statement
 inside the opening section for seven days. Afterward, both extra placements hide
 automatically, including for visitors who keep the page open. The About page,
 footers, homepage packages, package details and checkout inquiries remain.
@@ -67,3 +68,17 @@ eligible products or online card processing from this announcement.
 - API health and deliberately invalid recovery-input probes passed. No real
   reset email, password change, account or order was created during production
   verification. No database migration or new runtime secret was needed.
+
+## Homepage layout correction — 2026-11-07
+
+The Live and Easy Life announcements now occupy normal document flow between the
+sticky navigation and the hero image. They scroll away instead of covering the
+image or remaining pinned over the page. The hero fills the available opening
+viewport and uses upper image framing to keep the subject's head visible. The
+mobile menu overlays the page and remains excluded from anchor-scroll offsets.
+
+TypeScript and the full production build passed. The local desktop layout was
+visually checked in the user's Chrome before the computer shutdown. After the
+restart, Computer Use stopped because it could not reliably identify Chrome's
+current URL; further live screenshot collection requires a fresh connection.
+The campaign's original November 7–14 launch window remains unchanged.
