@@ -48,4 +48,22 @@ eligible products or online card processing from this announcement.
   was created.
 - Screenshots are in `output/playwright/easy-life/`. Existing nested-anchor React
   console warnings and existing build chunk-size warnings remain outside this
-  change. No production deployment was performed.
+  change. This local verification preceded the production release below.
+
+## Production release — 2026-11-07
+
+- Combined source commit: `6c8d095`, pushed to `origin/codex/live-package-phase-a`.
+- Includes the completed customer password-recovery changes. All 33 focused tests,
+  TypeScript, frontend/SEO build and Worker build passed before release.
+- API Worker version: `e78050b7-75df-4012-acb6-6c0e5b02b15f` (100% production).
+- Pages production deployment: `e2c20382-2a29-4b15-baf7-f3bb8a766ed7`, source
+  `6c8d095`, at `https://e2c20382.xflexwithai.pages.dev` and
+  `https://xflexacademy.com`.
+- Launch window: November 7, 2026 at 20:45 through November 14 at 20:45,
+  Asia/Amman. The build explicitly used `2026-11-07T17:45:00Z`.
+- Production `/ar`, `/en`, `/ar/about`, `/auth` and `/ar/packages/basic` returned
+  200 with the new entry script. Entry, Home, Auth and shared-layout JavaScript
+  SHA-256 hashes matched the local release build.
+- API health and deliberately invalid recovery-input probes passed. No real
+  reset email, password change, account or order was created during production
+  verification. No database migration or new runtime secret was needed.

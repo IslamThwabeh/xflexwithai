@@ -24,3 +24,11 @@ npm run check
 npm test -- server/passwordRecoveryPersistence.test.ts server/publicPasswordRecovery.test.ts server/profilePasswordRecovery.test.ts server/sessionCookieOptions.test.ts server/accountAccessRoutes.test.ts
 npm run build
 ```
+
+Production release on 2026-11-07: source `6c8d095` includes this feature together
+with the company details and Easy Life announcement. The API Worker is
+`e78050b7-75df-4012-acb6-6c0e5b02b15f`; Pages deployment
+`e2c20382-2a29-4b15-baf7-f3bb8a766ed7` reports the same source. The combined
+33-test verification, TypeScript and both builds passed. Production API checks
+used invalid inputs only; real reset-email delivery and real account password
+changes were not exercised. See `docs/easy-life-launch.md` for release evidence.
