@@ -3127,23 +3127,21 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    // ── OTP-based password reset (for profile page) ──────────────
-    requestPasswordResetCode: protectedProcedure
+    // Recovery must be reachable before sign-in as well as from the profile.
+    requestPasswordResetCode: publicProcedure
       .input(z.object({ email: z.string() }))
       .mutation(async ({ input, ctx }) => {
-        if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
         const email = normalizeEmail(input.email || "");
-        // Only allow resetting your own password
+        if (!isValidEmail(email) || await db.getAdminByEmail(email)) return { success: true };
         const user = await db.getUserByEmail(email);
-        if (!user || user.id !== ctx.user.id) {
+        if (!user || user.loginBlockedAt || (ctx.user && user.id !== ctx.user.id)) {
           return { success: true };
         }
 
         const nowMs = Date.now();
         await db.deleteExpiredEmailOtps(nowMs);
 
-        const ip = getReqHeader(ctx.req, "cf-connecting-ip") ||
-          (getReqHeader(ctx.req, "x-forwarded-for") || "").split(",")[0].trim() || "";
+        const ip = getRequestIp(ctx.req);
         const ipHash = ip ? await sha256Base64(`ip:${ip}`) : null;
         const userAgent = getReqHeader(ctx.req, "user-agent") || "";
         const userAgentHash = userAgent ? await sha256Base64(`ua:${userAgent}`) : null;
@@ -3153,6 +3151,7 @@ export const appRouter = router({
         if (per30Sec > 0) return { success: true };
         const perHour = await db.countEmailOtpsSentSince({ email, sinceMs: nowMs - 60 * 60_000, purpose: "password_reset" });
         if (perHour >= 5) return { success: true };
+        if (ipHash && await db.countEmailOtpsSentSince({ ipHash, sinceMs: nowMs - 60 * 60_000 }) >= 20) return { success: true };
 
         const code = generateNumericCode(6);
         const salt = generateSaltBase64(16);
@@ -3179,31 +3178,30 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    resetPasswordWithOtp: protectedProcedure
+    resetPasswordWithOtp: publicProcedure
       .input(z.object({
         email: z.string(),
         code: z.string().regex(/^\d{6}$/),
         newPassword: z.string().min(8),
       }))
       .mutation(async ({ input, ctx }) => {
-        if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
         const email = normalizeEmail(input.email);
         const code = input.code.trim();
 
         const user = await db.getUserByEmail(email);
-        if (!user || user.id !== ctx.user.id) {
+        if (!user || user.loginBlockedAt || (ctx.user && user.id !== ctx.user.id) || await db.getAdminByEmail(email)) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid request' });
         }
 
         const otp = await db.getLatestEmailOtp(email, "password_reset");
-        if (!otp || otp.expiresAtMs < Date.now()) {
+        if (!otp || otp.expiresAtMs <= Date.now() || otp.attempts >= 10) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'Code expired. Please request a new one.' });
         }
 
         const computedHash = await sha256Base64(`${otp.salt}:${code}`);
         if (computedHash !== otp.codeHash) {
-          await db.incrementEmailOtpAttempts(otp.id);
-          if ((otp.attempts ?? 0) + 1 >= 10) {
+          const attempts = await db.incrementEmailOtpAttempts(otp.id);
+          if (attempts >= 10) {
             await db.deleteEmailOtpsForEmail(email, "password_reset");
           }
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid code' });
@@ -3214,10 +3212,42 @@ export const appRouter = router({
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'Password must be at least 8 characters with uppercase, lowercase, and a number' });
         }
         const hashed = await hashPassword(input.newPassword);
-        await db.updateUserPassword(user.id, hashed);
-        await db.deleteEmailOtpsForEmail(email, "password_reset");
+        const completed = await db.completePasswordRecovery({ userId: user.id, email, purpose: "password_reset", codeHash: computedHash, passwordHash: hashed });
+        if (!completed) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Code expired or already used. Please request a new one.' });
 
         logger.info('[AUTH] Password reset via OTP', { userId: user.id });
+        return { success: true };
+      }),
+
+    createSupportPasswordReset: adminProcedure
+      .input(z.object({ userId: z.number().int().positive(), identityVerified: z.literal(true) }))
+      .mutation(async ({ input, ctx }) => {
+        const user = await db.getUserById(input.userId);
+        if (!user || user.isStaff || user.loginBlockedAt || await db.getAdminByEmail(user.email)) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Recovery links are available only for active customer accounts.' });
+        }
+        const token = generateSaltBase64(32).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        const expiresAtMs = Date.now() + 30 * 60_000;
+        await db.logAdminAction(ctx.admin.id, user.id, 'issue_password_recovery', { identityVerified: true, expiresAtMs });
+        await db.deleteEmailOtpsForEmail(user.email, "support_reset");
+        await db.createEmailOtp({ email: user.email, purpose: "support_reset", codeHash: await sha256Base64(token), salt: "", sentAtMs: Date.now(), expiresAtMs });
+        return { email: user.email, token, expiresAtMs };
+      }),
+
+    resetPasswordWithSupportToken: publicProcedure
+      .input(z.object({ email: z.string().email(), token: z.string().regex(/^[A-Za-z0-9_-]{43}$/), newPassword: z.string().min(8).max(128) }))
+      .mutation(async ({ input }) => {
+        const email = normalizeEmail(input.email);
+        const user = await db.getUserByEmail(email);
+        const invalid = () => new TRPCError({ code: 'BAD_REQUEST', message: 'This recovery link is invalid, expired, or already used. Please contact support.' });
+        if (!user || user.isStaff || user.loginBlockedAt || await db.getAdminByEmail(email)) throw invalid();
+        if (!isValidPassword(input.newPassword)) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Password must be at least 8 characters with uppercase, lowercase, and a number' });
+        const codeHash = await sha256Base64(input.token);
+        const credential = await db.getLatestEmailOtp(email, "support_reset");
+        if (!credential || credential.codeHash !== codeHash || credential.expiresAtMs <= Date.now()) throw invalid();
+        const completed = await db.completePasswordRecovery({ userId: user.id, email, purpose: "support_reset", codeHash, passwordHash: await hashPassword(input.newPassword) });
+        if (!completed) throw invalid();
+        logger.info('[AUTH] Password reset via support recovery', { userId: user.id });
         return { success: true };
       }),
     

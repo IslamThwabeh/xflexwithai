@@ -18,6 +18,10 @@ import { PUBLIC_CATALOG_STALE_MS, PUBLIC_OFFER_STATE_STALE_MS } from '@/lib/quer
 import { trpc } from '@/lib/trpc';
 import { isArticleAvailableInLanguage } from '@shared/curatedArticles';
 import { APP_TITLE } from '@/const';
+import CompanyStatement from '@/components/public/CompanyStatement';
+import EasyLifeNotice from '@/components/public/EasyLifeNotice';
+import { COMPANY_PUBLIC_INFO } from '@shared/companyPublicInfo';
+import useEasyLifeAnnouncement from '@/hooks/useEasyLifeAnnouncement';
 import {
   CINEMATIC_PRIMARY_NAV_ITEMS,
   DEFAULT_CINEMATIC_PRIMARY_ACTION,
@@ -518,11 +522,12 @@ function AnimatedCounter({
 }
 
 // ─── Nav ──────────────────────────────────────────────────────────────────────
-function CinematicNav({ onScrollTo }: { onScrollTo: (id: string) => void }) {
+function CinematicNav({ onScrollTo, showAnnouncement }: { onScrollTo: (id: string) => void; showAnnouncement: boolean }) {
   const { language, setLanguage, isRTL } = useLanguage();
   const isArabic = language === 'ar';
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const navContentRef = useRef<HTMLDivElement>(null);
   const { data: liveState } = trpc.packages.livePublicState.useQuery(undefined, {
     staleTime: PUBLIC_OFFER_STATE_STALE_MS,
   });
@@ -531,6 +536,19 @@ function CinematicNav({ onScrollTo }: { onScrollTo: (id: string) => void }) {
     const onScroll = () => setScrolled(window.scrollY > 24);
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  useEffect(() => {
+    const content = navContentRef.current;
+    if (!content) return;
+    const updateHeight = () => document.documentElement.style.setProperty('--cin-home-header-height', `${content.getBoundingClientRect().height}px`);
+    updateHeight();
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(content);
+    return () => {
+      observer.disconnect();
+      document.documentElement.style.removeProperty('--cin-home-header-height');
+    };
   }, []);
 
   const navLinks = CINEMATIC_PRIMARY_NAV_ITEMS.map((item) => ({
@@ -557,6 +575,7 @@ function CinematicNav({ onScrollTo }: { onScrollTo: (id: string) => void }) {
 
   return (
     <header className={`cin-nav fixed inset-x-0 top-0 z-50 ${scrolled ? 'cin-nav-scrolled' : ''}`} dir={isRTL ? 'rtl' : 'ltr'}>
+      <div ref={navContentRef}>
       <div className="container mx-auto flex h-16 items-center justify-between px-4 md:h-20 md:px-8">
         <Link href={localePrefix}><a className="flex shrink-0 items-center gap-2"><img src={BRAND_LOGO_SRC} alt={APP_TITLE} className="cin-logo-img cin-logo-header" /></a></Link>
         <nav className="hidden items-center gap-7 text-sm font-medium text-white/65 md:flex">
@@ -585,6 +604,8 @@ function CinematicNav({ onScrollTo }: { onScrollTo: (id: string) => void }) {
           </a>
         </Link>
       )}
+      {showAnnouncement && <EasyLifeNotice variant="banner" />}
+      </div>
       {menuOpen && (
         <div className="border-t border-white/10 bg-[#0A0A0A]/96 px-4 pb-6 pt-4 backdrop-blur-2xl md:hidden">
           <div className="flex flex-col gap-5">
@@ -661,7 +682,7 @@ function FeaturedLivePackageSection() {
 }
 
 // ─── 1. Hero (with mouse spotlight + chart bg + particles + glow orbs) ───────
-function HeroSection({ onScrollTo }: { onScrollTo: (id: string) => void }) {
+function HeroSection({ onScrollTo, showCompanyIntro }: { onScrollTo: (id: string) => void; showCompanyIntro: boolean }) {
   const { language, isRTL } = useLanguage();
   const isArabic = language === 'ar';
   const heroRef = useRef<HTMLElement | null>(null);
@@ -814,7 +835,7 @@ function HeroSection({ onScrollTo }: { onScrollTo: (id: string) => void }) {
       <ParticleField count={18} />
 
       {/* Content */}
-      <div className="relative z-10 container mx-auto px-4 pb-20 pt-24 md:px-8">
+      <div className="relative z-10 container mx-auto px-4 pb-20 md:px-8" style={{ paddingTop: 'calc(var(--cin-home-header-height, 80px) + 2rem)' }}>
         <div className="grid items-center gap-16 lg:grid-cols-2">
           <div className="max-w-2xl">
             <div className="cin-hero-1 inline-flex items-center gap-2 rounded-full border border-[#00C176]/35 bg-[#00C176]/12 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-[#00C176]" style={{ boxShadow: '0 0 24px rgba(0,193,118,0.25)' }}>
@@ -829,6 +850,8 @@ function HeroSection({ onScrollTo }: { onScrollTo: (id: string) => void }) {
             <p className="cin-hero-3 mt-6 max-w-xl text-base leading-8 text-white/70 md:text-lg">
               {isArabic ? 'مسار تعليمي متكامل من الصفر حتى الاحتراف، مع إدارة مخاطر، تطبيق عملي، توصيات مباشرة، وتحليل ذكي من LexAI في مكان واحد.' : 'A complete structured curriculum, live trade recommendations, and LexAI intelligence — everything you need to trade at a professional level.'}
             </p>
+
+            {showCompanyIntro && <CompanyStatement className="mt-5 max-w-xl border-s-2 border-[#C8A96B]/65 ps-4 text-sm leading-7 text-white/85" />}
 
             <div className="cin-hero-4 mt-9 flex flex-wrap gap-4">
               <button type="button" onClick={() => onScrollTo('packages')} className="cin-btn-green inline-flex items-center gap-2 rounded-full px-7 py-3.5 text-base font-semibold text-white">
@@ -1797,6 +1820,8 @@ function PackagesSection() {
           <p className="mx-auto mt-4 max-w-lg text-base text-white/52">{isArabic ? 'جميع الأسعار بالشيكل وتشمل ضريبة 16٪. المادة التعليمية تبقى مدى الحياة.' : 'All prices in ILS including 16% VAT. Learning content stays with you for life.'}</p>
         </div>
 
+        <EasyLifeNotice className="mx-auto mb-10 max-w-3xl" />
+
         <div data-reveal className="mb-12 grid grid-cols-2 gap-4 md:grid-cols-4">
           {(isArabic
             ? [{ display: 'منظم', label: 'مسار تعليمي' }, { value: 8, label: 'مراحل' }, { display: 'مباشر', label: 'دعم فني' }, { value: 2, label: 'خياران' }]
@@ -2202,6 +2227,9 @@ function CinematicFooter() {
             <p className="mt-3 max-w-xs text-sm text-white/40">
               {isArabic ? 'أكاديمية تعليم تداول عربية.' : 'Arabic-first trading education academy.'}
             </p>
+            <CompanyStatement className="mt-3 max-w-sm text-sm leading-7 text-white/75" />
+            <p className="mt-2 max-w-sm text-xs leading-6 text-white/60">{COMPANY_PUBLIC_INFO[language].office}</p>
+            <EasyLifeNotice variant="footer" className="mt-4 max-w-sm" />
           </div>
 
           <div className="grid grid-cols-2 gap-8 text-sm text-white/45 sm:grid-cols-3">
@@ -2260,10 +2288,14 @@ function CinematicFooter() {
 
 // ─── Page root ────────────────────────────────────────────────────────────────
 export default function CinematicHomePage() {
+  const showAnnouncement = useEasyLifeAnnouncement();
   const scrollTo = (id: string) => {
     const el = document.getElementById(id);
     if (!el) return;
-    const headerOffset = window.innerWidth >= 768 ? 88 : 72;
+    // The expanded mobile menu overlays the page; exclude it from anchor offsets.
+    const headerHeight = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cin-home-header-height'))
+      || (window.innerWidth >= 768 ? 80 : 64);
+    const headerOffset = headerHeight + 8;
     const top = el.getBoundingClientRect().top + window.scrollY - headerOffset;
     window.scrollTo({ top, behavior: 'smooth' });
   };
@@ -2272,9 +2304,9 @@ export default function CinematicHomePage() {
     <div className="min-h-screen overflow-x-clip bg-[#050505] text-white">
       <CinematicStyles />
       <ScrollProgress />
-      <CinematicNav onScrollTo={scrollTo} />
+      <CinematicNav onScrollTo={scrollTo} showAnnouncement={showAnnouncement} />
       <main className="overflow-x-clip">
-        <HeroSection onScrollTo={scrollTo} />
+        <HeroSection onScrollTo={scrollTo} showCompanyIntro={showAnnouncement} />
         <TrustBadgesRow />
         <TrustBar />
         <FeaturedLivePackageSection />

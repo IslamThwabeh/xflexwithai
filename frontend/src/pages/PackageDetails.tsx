@@ -4,6 +4,7 @@ import { CheckCircle, ChevronRight, ArrowLeft, X, Star, BookOpen, ShoppingCart, 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import CinematicPublicLayout from '@/components/public/CinematicPublicLayout';
+import EasyLifeNotice from '@/components/public/EasyLifeNotice';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { formatIlsAmount, getPackageDisplayPricing } from '@/lib/packagePricing';
 import { PUBLIC_CATALOG_STALE_MS, PUBLIC_OFFER_STATE_STALE_MS } from '@/lib/queryCaching';
@@ -250,6 +251,7 @@ export default function PackageDetails() {
                 </p>
               </div>
 
+              <EasyLifeNotice appearance={isComprehensive ? 'dark' : 'light'} className="mb-5" />
               {isComprehensive && <UpgradeCallout />}
               {isLive && !liveState?.purchasable ? <Button size="lg" disabled className="w-full font-bold">
                 {language === 'ar' ? 'التسجيل مغلق حالياً' : 'Registration is closed'}

@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { RegisterForm } from '@/components/RegisterForm';
 import CinematicPublicLayout from '@/components/public/CinematicPublicLayout';
+import EasyLifeNotice from '@/components/public/EasyLifeNotice';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/_core/hooks/useAuth';
 import { CURRENT_TERMS_VERSION } from '@/lib/legalVersions';
@@ -72,6 +73,7 @@ function CheckoutAccountGate({
               </div>
 
               <div className="p-5 sm:p-8">
+                <EasyLifeNotice appearance="light" className="mb-6" />
                 <div
                   className="mb-7 grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1.5"
                   role="tablist"
@@ -355,6 +357,7 @@ export default function Checkout() {
           {/* Left: Form */}
           <div className="lg:col-span-2 space-y-6">
             {/* Payment Method */}
+            <EasyLifeNotice appearance="light" />
             <div className="bg-white border border-slate-200 rounded-[28px] p-6 shadow-[0_14px_36px_rgba(15,23,42,0.05)]">
               <h2 className="font-bold text-lg mb-4">{t('checkout.paymentMethod')}</h2>
               <div className="grid gap-3">

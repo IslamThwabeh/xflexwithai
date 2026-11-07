@@ -1,4 +1,4 @@
-import { eq, desc, and, or, sql, ne, inArray, notInArray, isNotNull, isNull, gte, lte, lt, gt, like, asc, type SQL } from "drizzle-orm";
+import { eq, desc, and, or, sql, ne, inArray, notInArray, isNotNull, isNull, gte, lte, lt, gt, like, asc, exists, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import type { D1Database } from "@cloudflare/workers-types";
 import {
@@ -1416,7 +1416,37 @@ export async function setUserEmailVerified(userId: number): Promise<void> {
 // Passwordless Email OTP Login
 // ============================================================================
 
-export type OtpPurpose = "login" | "login_stepup" | "password_reset";
+export type OtpPurpose = "login" | "login_stepup" | "password_reset" | "support_reset";
+
+/** Change the password and consume recovery credentials in one D1 transaction. */
+export async function completePasswordRecovery(input: {
+  userId: number;
+  email: string;
+  purpose: "password_reset" | "support_reset";
+  codeHash: string;
+  passwordHash: string;
+}): Promise<boolean> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const credential = and(
+    eq(authEmailOtps.email, input.email),
+    eq(authEmailOtps.purpose, input.purpose),
+    eq(authEmailOtps.codeHash, input.codeHash),
+    gt(authEmailOtps.expiresAtMs, Date.now()),
+    lt(authEmailOtps.attempts, 10),
+  );
+  const [updated] = await db.batch([
+    db.update(users).set({ passwordHash: input.passwordHash }).where(and(
+      eq(users.id, input.userId), eq(users.email, input.email), isNull(users.loginBlockedAt),
+      exists(db.select({ id: authEmailOtps.id }).from(authEmailOtps).where(credential)),
+    )).returning({ id: users.id }),
+    db.delete(authEmailOtps).where(and(eq(authEmailOtps.email, input.email), or(
+      eq(authEmailOtps.purpose, "password_reset"), eq(authEmailOtps.purpose, "support_reset"),
+      eq(authEmailOtps.purpose, "login"), eq(authEmailOtps.purpose, "login_stepup"),
+    ), sql`changes() > 0`)),
+  ]);
+  return updated.length === 1;
+}
 
 export async function deleteExpiredEmailOtps(nowMs: number): Promise<void> {
   const db = await getDb();
@@ -1474,21 +1504,12 @@ export async function getLatestEmailOtp(email: string, purpose: OtpPurpose = "lo
 export async function incrementEmailOtpAttempts(id: number): Promise<number> {
   const db = await getDb();
   if (!db) return 0;
-
-  const otp = await db
-    .select({ attempts: authEmailOtps.attempts })
-    .from(authEmailOtps)
-    .where(eq(authEmailOtps.id, id))
-    .limit(1);
-
-  const nextAttempts = (otp[0]?.attempts ?? 0) + 1;
-
-  await db
+  const [updated] = await db
     .update(authEmailOtps)
-    .set({ attempts: nextAttempts })
-    .where(eq(authEmailOtps.id, id));
-
-  return nextAttempts;
+    .set({ attempts: sql`${authEmailOtps.attempts} + 1` })
+    .where(eq(authEmailOtps.id, id))
+    .returning({ attempts: authEmailOtps.attempts });
+  return updated?.attempts ?? 10;
 }
 
 export async function deleteEmailOtpsForEmail(email: string, purpose: OtpPurpose = "login"): Promise<void> {

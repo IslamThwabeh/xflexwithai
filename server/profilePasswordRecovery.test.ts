@@ -3,8 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../backend/db", async () => ({
   ...await vi.importActual<typeof import("../backend/db")>("../backend/db"),
   getUserByEmail: vi.fn(),
+  getAdminByEmail: vi.fn(),
   getLatestEmailOtp: vi.fn(),
   updateUserPassword: vi.fn(),
+  completePasswordRecovery: vi.fn(),
   deleteEmailOtpsForEmail: vi.fn(),
   incrementEmailOtpAttempts: vi.fn(),
   updateUser: vi.fn(),
@@ -31,6 +33,8 @@ describe("personal profile and password recovery for support staff", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     vi.mocked(db.getUserByEmail).mockResolvedValue(supportUser as any);
+    vi.mocked(db.getAdminByEmail).mockResolvedValue(undefined);
+    vi.mocked(db.completePasswordRecovery).mockResolvedValue(true);
     vi.mocked(db.getLatestEmailOtp).mockResolvedValue({
       id: 3,
       salt: "test-salt",
@@ -42,11 +46,11 @@ describe("personal profile and password recovery for support staff", () => {
 
   it("lets support reset their own password with a reset code without the forgotten password", async () => {
     await expect(caller().auth.resetPasswordWithOtp(resetInput)).resolves.toEqual({ success: true });
-    const [userId, hash] = vi.mocked(db.updateUserPassword).mock.calls[0];
+    const { userId, passwordHash: hash } = vi.mocked(db.completePasswordRecovery).mock.calls[0][0];
     expect(userId).toBe(supportUser.id);
     expect(await verifyPassword(resetInput.newPassword, hash)).toBe(true);
     expect(db.getLatestEmailOtp).toHaveBeenCalledWith(supportUser.email, "password_reset");
-    expect(db.deleteEmailOtpsForEmail).toHaveBeenCalledWith(supportUser.email, "password_reset");
+    expect(db.completePasswordRecovery).toHaveBeenCalledWith(expect.objectContaining({ email: supportUser.email, purpose: "password_reset" }));
   });
 
   it("rejects another account's reset even when signed in as support", async () => {
@@ -71,9 +75,9 @@ describe("personal profile and password recovery for support staff", () => {
     expect(db.updateUser).toHaveBeenCalledWith(supportUser.id, { loginSecurityMode: "password_plus_otp" });
   });
 
-  it("requires authentication for personal settings and password recovery", async () => {
+  it("requires authentication for personal settings but allows recovery before login", async () => {
     await expect(caller(null).users.updateProfile({ name: "Test" })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
-    await expect(caller(null).auth.resetPasswordWithOtp(resetInput)).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    await expect(caller(null).auth.resetPasswordWithOtp(resetInput)).resolves.toEqual({ success: true });
     expect(db.updateUser).not.toHaveBeenCalled();
     expect(db.updateUserPassword).not.toHaveBeenCalled();
   });

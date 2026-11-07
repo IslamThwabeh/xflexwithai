@@ -3,6 +3,7 @@ import { ArrowLeft, GraduationCap, Target, Users, Award, Instagram, Facebook, Se
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import CinematicPublicLayout from '@/components/public/CinematicPublicLayout';
+import CompanyStatement from '@/components/public/CompanyStatement';
 
 export default function About() {
   const { t, language, isRTL } = useLanguage();
@@ -25,6 +26,7 @@ export default function About() {
                 ? 'نبني تجربة تعليم تداول أوضح وأكثر انضباطاً للمتداول العربي: مسار عملي، دعم بشري، وتحليل ذكي يساعد الطالب على اتخاذ القرار بثقة أكبر.'
                 : 'We build a clearer, more disciplined trading education experience for Arab traders: a practical path, real human support, and smart analysis that helps students make decisions with more confidence.'}
             </p>
+            <CompanyStatement className="mx-auto mt-5 max-w-3xl text-base leading-8 text-white/80" />
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3 text-sm text-white/80">
               <span className="rounded-full border border-white/12 bg-white/[0.06] px-4 py-2 backdrop-blur-sm">
                 {language === 'ar' ? '8 مراحل تعليمية' : '8 learning stages'}

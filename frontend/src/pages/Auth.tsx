@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoginForm } from "@/components/LoginForm";
+import { PasswordRecoveryForm, readSupportRecoveryLink } from "@/components/PasswordRecoveryForm";
 import { RegisterForm } from "@/components/RegisterForm";
 import { APP_TITLE } from "@/const";
 import { Link, useLocation } from "wouter";
@@ -32,7 +33,8 @@ export default function Auth() {
   const { t, language } = useLanguage();
   const isRtl = language === "ar";
   const [showLogin, setShowLogin] = useState(() => !shouldOpenRegisterByDefault());
-  const [loginMethod, setLoginMethod] = useState<"code" | "password">("code");
+  const [supportRecovery, setSupportRecovery] = useState(readSupportRecoveryLink);
+  const [loginMethod, setLoginMethod] = useState<"code" | "password" | "recovery">(supportRecovery ? "recovery" : "code");
   const [otpStep, setOtpStep] = useState<"request" | "verify">("request");
   const [otpEmail, setOtpEmail] = useState("");
   const [otpCode, setOtpCode] = useState("");
@@ -124,7 +126,7 @@ export default function Auth() {
   });
 
   useEffect(() => {
-    if (loading || checkingAdmin || clearingAdmin) return;
+    if (loading || checkingAdmin || clearingAdmin || loginMethod === "recovery") return;
     if (!isAuthenticated) return;
 
     if (adminCheck?.isAdmin) {
@@ -141,7 +143,7 @@ export default function Auth() {
     }
 
     setLocation(nextPath ?? "/courses");
-  }, [adminCheck?.isAdmin, adminCheck?.isStaff, adminCheck?.staffRoles, checkingAdmin, isAuthenticated, loading, nextPath, setLocation, clearingAdmin, logout]);
+  }, [adminCheck?.isAdmin, adminCheck?.isStaff, adminCheck?.staffRoles, checkingAdmin, isAuthenticated, loading, nextPath, setLocation, clearingAdmin, logout, loginMethod]);
 
   const requestLoginCode = trpc.auth.requestLoginCode.useMutation();
   const verifyLoginCode = trpc.auth.verifyLoginCode.useMutation();
@@ -299,7 +301,7 @@ export default function Auth() {
 
                     {showLogin ? (
                       <div className="p-6 sm:p-8">
-                        <div className="mb-6 flex gap-2">
+                        {loginMethod !== "recovery" && <div className="mb-6 flex gap-2">
                           <button
                             type="button"
                             onClick={() => {
@@ -332,9 +334,9 @@ export default function Auth() {
                             <KeyRound className="h-4 w-4" />
                             {t("auth.page.loginMethod.password")}
                           </button>
-                        </div>
+                        </div>}
 
-                        {loginMethod === "code" ? (
+                        {loginMethod === "recovery" ? <PasswordRecoveryForm supportRecovery={supportRecovery} initialEmail={otpEmail} onBack={() => { setSupportRecovery(null); setLoginMethod("password"); }} /> : loginMethod === "code" ? (
                           <form onSubmit={handleOtpFormSubmit}>
                             <h2 className="mb-1 text-xl font-semibold text-[var(--color-xf-dark)]">{t("auth.page.code.title")}</h2>
                             <p className="mb-5 text-sm text-[var(--color-xf-dark)]/40">{t("auth.page.code.description")}</p>
@@ -441,6 +443,9 @@ export default function Auth() {
                             }}
                           />
                         )}
+                        {loginMethod !== "recovery" && <button type="button" onClick={() => setLoginMethod("recovery")} className="mt-5 text-sm font-medium text-emerald-700 hover:underline">
+                          {isRtl ? "نسيت كلمة المرور؟ أو لم يصلك رمز الدخول؟" : "Forgot password or not receiving a code?"}
+                        </button>}
                       </div>
                     ) : (
                       <div className="p-6 sm:p-8">

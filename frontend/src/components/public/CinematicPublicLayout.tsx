@@ -13,6 +13,9 @@ import {
 import { APP_TITLE } from '@/const';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { getLanguageSwitchLabel } from '@/lib/languageToggle';
+import CompanyStatement from './CompanyStatement';
+import EasyLifeNotice from './EasyLifeNotice';
+import { COMPANY_PUBLIC_INFO } from '@shared/companyPublicInfo';
 import {
   CINEMATIC_PRIMARY_NAV_ITEMS,
   DEFAULT_CINEMATIC_PRIMARY_ACTION,
@@ -356,11 +359,9 @@ export default function CinematicPublicLayout({
                   ? 'أكاديمية تداول عربية تجمع بين التعليم العملي، التحليل الواضح، والدعم المستمر للمتداول الجاد.'
                   : 'An Arabic-first trading academy built around practical education, clear analysis, and ongoing support for serious traders.'}
               </p>
-              <p className="mt-3 max-w-sm text-xs leading-6 text-white/36">
-                {isArabic
-                  ? 'مجمع قطوم التجاري، الطابق الرابع، البالوع — الزيارات متاحة بموعد مسبق فقط.'
-                  : 'Office visits in Ramallah are available by appointment only.'}
-              </p>
+              <CompanyStatement className="mt-3 max-w-sm text-sm leading-7 text-white/75" />
+              <p className="mt-2 max-w-sm text-xs leading-6 text-white/60">{COMPANY_PUBLIC_INFO[language].office}</p>
+              <EasyLifeNotice variant="footer" className="mt-4 max-w-sm" />
             </div>
 
             <div className="grid grid-cols-2 gap-8 text-sm text-white/46 sm:grid-cols-3">

@@ -1,4 +1,5 @@
 import ClientPaymentSummary from "./ClientPaymentSummary";
+import ClientPasswordRecovery from "./ClientPasswordRecovery";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -131,6 +132,7 @@ export default function AdminClientProfileSheet({
   const isRtl = language === "ar";
   const locale = isRtl ? "ar-EG" : "en-US";
   const utils = trpc.useUtils();
+  const { data: recoveryAdminCheck } = trpc.auth.isAdmin.useQuery(undefined, { enabled: open });
   const sheetTitleRef = useRef<HTMLHeadingElement>(null);
   const [blockDialogOpen, setBlockDialogOpen] = useState(false);
   const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
@@ -562,6 +564,10 @@ export default function AdminClientProfileSheet({
                 <CardHeader className="pb-3"><CardTitle className="text-base">{isRtl ? "المدفوعات الموثقة" : "Recorded payments"}</CardTitle></CardHeader>
                 <CardContent><ClientPaymentSummary summary={profile.paymentSummary} language={language} details canOpenOrders={profile.permissions.canManageAccountAccess || profile.permissions.canRecordFinancialRefund} /></CardContent>
               </Card>}
+
+              {open && recoveryAdminCheck?.isAdmin && !profile.user.isStaff && !profile.user.isDeleted && !profile.user.loginBlockedAt && (
+                <ClientPasswordRecovery key={profile.user.id} userId={profile.user.id} />
+              )}
 
               {profile.permissions.canManageAccountAccess && (
                 <Card className={profile.user.loginBlockedAt ? "border-rose-300 bg-rose-50/80" : "border-slate-200 bg-white/95"}>
