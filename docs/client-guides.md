@@ -51,3 +51,20 @@ access to a paid feature. Existing LexAI/recommendation access gates are unchang
 - No client subscription, activation, account password, order or payment was
   changed during verification. Existing mobile navigation emits a Radix missing
   description warning; the new guide dialogs include titles and descriptions.
+
+## Production release — 2026-11-07
+
+- Source `1ed53b8` is pushed to `origin/codex/live-package-phase-a`.
+- Worker version `fcae65bf-b33f-4db9-8fc1-b47db737b08d` is active at 100%, with
+  `CLIENT_GUIDES_BUCKET` bound to the private guide bucket.
+- Pages deployment `f0b91f40-98b2-4866-9cab-124d6e9c9459` reports source `1ed53b8`:
+  `https://f0b91f40.xflexwithai.pages.dev` / `https://xflexacademy.com/guides`.
+- Production guide, LexAI, Recommendations and dashboard routes returned the new
+  application shell with private/no-store and noindex headers. Entry, guide,
+  library, help-button and service JavaScript files plus all six posters matched
+  local release SHA-256 hashes.
+- API health, anonymous playback-query rejection, all six anonymous stream
+  rejections and the allowed range-request CORS preflight passed. The R2 public
+  development URL is disabled. Signed-in browser playback was tested with
+  isolated client fixtures and the actual prepared files; no real customer
+  credentials or account changes were used for the production checks.
