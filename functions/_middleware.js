@@ -33,6 +33,7 @@ const PRIVATE_PREFIXES = [
   "/course/",
   "/lexai",
   "/recommendations",
+  "/guides",
   "/support",
   "/quiz",
   "/copier/checkout",

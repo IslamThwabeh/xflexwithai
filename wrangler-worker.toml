@@ -41,6 +41,11 @@ database_id = "cf374361-2caa-4597-a38d-5cecced7827d"
 binding = "VIDEOS_BUCKET"
 bucket_name = "xflexwithai-videos"
 
+# Client guides use a private bucket, separate from the public video domain.
+[[env.production.r2_buckets]]
+binding = "CLIENT_GUIDES_BUCKET"
+bucket_name = "xflexacademy-client-guides"
+
 # Finance receipts remain private and separate from the public video domain.
 # Provision this bucket before deploying this configuration.
 [[env.production.r2_buckets]]

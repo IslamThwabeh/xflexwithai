@@ -8,7 +8,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
 import { AlertTriangle, ClipboardCheck, Headphones } from "lucide-react";
 
-const SURVEY_BLOCK_ALLOWLIST = ["/surveys", "/support"];
+const SURVEY_BLOCK_ALLOWLIST = ["/surveys", "/support", "/guides"];
 
 function isSurveyBlockAllowedRoute(path: string) {
   return SURVEY_BLOCK_ALLOWLIST.some((allowed) => path === allowed || path.startsWith(`${allowed}/`));

@@ -8854,6 +8854,16 @@ export const appRouter = router({
   // =============================================
   // FREE LIBRARY (public)
   // =============================================
+  clientGuides: router({
+    playback: protectedProcedure.input(z.object({ slug: z.string().min(1).max(80) })).query(async ({ input, ctx }) => {
+      const { getClientGuide } = await import('../shared/clientGuides');
+      if (!getClientGuide(input.slug)) throw new TRPCError({ code: 'NOT_FOUND', message: 'Guide not found' });
+      const { generateClientGuidePlaybackToken } = await import('./_core/clientGuidePlayback');
+      const token = await generateClientGuidePlaybackToken(input.slug, ctx.user.id);
+      return { streamPath: `/api/client-guides/${input.slug}/stream?token=${encodeURIComponent(token)}` };
+    }),
+  }),
+
   freeLibrary: router({
     list: publicProcedure.query(async () => {
       const videos = await Promise.all(

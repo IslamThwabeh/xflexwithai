@@ -25,6 +25,7 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import { Link } from "wouter";
 import ClientLayout from "@/components/ClientLayout";
+import ClientGuideHelpButton from '@/components/ClientGuideHelpButton';
 
 export default function LexAI() {
   const { user, loading: authLoading } = useAuth();
@@ -688,7 +689,7 @@ export default function LexAI() {
             </AlertDescription>
           </Alert>
         )}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 md:gap-3">
             <div className="w-10 h-10 md:w-12 md:h-12 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-xl md:rounded-2xl flex items-center justify-center shadow-md">
               <Sparkles className="h-5 w-5 md:h-6 md:w-6 text-white" />
@@ -703,6 +704,7 @@ export default function LexAI() {
               </p>
             </div>
           </div>
+          <ClientGuideHelpButton topic="lexai" />
         </div>
 
         {/* Remaining days - desktop only */}

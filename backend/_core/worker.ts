@@ -5,6 +5,7 @@ import { appRouter } from "../routers";
 import { createWorkerContext } from "./context-worker";
 import * as db from "../db";
 import { verifyFreeVideoPlaybackToken } from "./freeLibraryPlayback";
+import { serveClientGuideMedia } from '../services/client-guide-media';
 import { verifyLiveRecordingPlaybackToken } from "./livePackagePlayback";
 import { sendFreezeExpiredEmail, sendExpiryAlertEmail, sendDripEmail, sendMilestoneEmail, sendInactivityEmail, sendOnboardingStalledEmail } from "./orderEmails";
 import { logger } from "./logger";
@@ -283,6 +284,7 @@ export interface Env {
   LIVE_EXPERT_ATTACHMENTS_BUCKET?: R2Bucket;
   DB: D1Database;
   VIDEOS_BUCKET: R2Bucket;
+  CLIENT_GUIDES_BUCKET?: R2Bucket;
   // Dedicated private bucket. Intentionally optional until infrastructure is
   // approved and provisioned; finance routes fail closed when it is absent.
   FINANCE_RECEIPTS_BUCKET?: R2Bucket;
@@ -1058,6 +1060,10 @@ export default {
             return { headers };
           },
         });
+      }
+
+      if (pathname.startsWith('/api/client-guides/')) {
+        return serveClientGuideMedia(request, env.CLIENT_GUIDES_BUCKET, corsHeaders);
       }
 
       const freeLibraryDocumentMatch = pathname.match(/^\/api\/free-library\/documents\/([^/]+)\/(view|download)$/);

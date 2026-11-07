@@ -34,6 +34,7 @@ import {
   LogOut,
   LayoutDashboard,
   Headphones,
+  BookOpen,
   ShoppingBag,
   Package,
   FileText,
@@ -205,6 +206,12 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
       label: language === "ar" ? "ملفات الدورة" : "Course Documents",
       icon: <FileText className="h-4 w-4" />,
       match: "/documents",
+    },
+    {
+      href: '/guides',
+      label: language === 'ar' ? 'دليل الاستخدام' : 'How-to guides',
+      icon: <BookOpen className="h-4 w-4" />,
+      match: '/guides',
     },
     {
       href: "/support",

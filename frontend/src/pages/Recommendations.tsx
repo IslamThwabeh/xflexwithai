@@ -11,6 +11,7 @@ import { formatPendingActivationDate, getPendingActivationDaysLeft, getPendingAc
 import { toast } from "sonner";
 import { ArrowUpRight, Clock3, Copy, Flame, Heart, Rocket, ThumbsUp, Frown, Bell, BellOff, TrendingUp, BookOpen, MessageSquare, Building2, Megaphone, CheckCircle2 } from "lucide-react";
 import ClientLayout from "@/components/ClientLayout";
+import ClientGuideHelpButton from '@/components/ClientGuideHelpButton';
 import { useLanguage } from "@/contexts/LanguageContext";
 import { buildRecommendationThreads, groupRecommendationThreadsByDay } from "@/lib/recommendationThreads";
 import { Link, useLocation } from "wouter";
@@ -651,9 +652,12 @@ export default function Recommendations() {
     <ClientLayout>
     <div className="min-h-[calc(100vh-64px)] bg-[var(--color-xf-cream)]">
       <div className="container mx-auto px-3 py-6 space-y-6 sm:px-4 sm:py-8">
-        <div>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
           <h1 className="text-3xl font-bold">{t('rec.title')}</h1>
           <p className="text-muted-foreground">{t('rec.subtitle')}</p>
+          </div>
+          <ClientGuideHelpButton topic="recommendations" />
         </div>
 
         {recommendationAccess?.activationReason === 'protection_expired' && (

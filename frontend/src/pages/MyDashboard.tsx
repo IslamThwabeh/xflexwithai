@@ -220,6 +220,9 @@ export default function MyDashboard() {
       <div className="flex-1 min-w-0 bg-[var(--color-xf-cream)]">
         <main className="mx-auto w-full min-w-0 max-w-[1440px] px-4 py-8">
           <div className="space-y-8">
+            <Link href="/guides" className="inline-flex items-center gap-2 text-sm font-semibold text-emerald-800 underline-offset-4 hover:underline">
+              <Play className="h-4 w-4" />{isRTL ? 'شاهد شروحات الاستخدام' : 'Watch the how-to guides'}
+            </Link>
             {/* Welcome Section */}
             <div>
               <h1 className="text-3xl font-bold mb-1">

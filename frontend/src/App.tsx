@@ -64,6 +64,7 @@ const CourseWatch = lazy(() => import("./pages/CourseWatch"));
 const ActivateKey = lazy(() => import("./pages/ActivateKey"));
 const LexAI = lazy(() => import("./pages/LexAI"));
 const Recommendations = lazy(() => import("./pages/Recommendations"));
+const ClientGuides = lazy(() => import('./pages/ClientGuides'));
 const SupportChat = lazy(() => import("./pages/SupportChat"));
 const QuizLevels = lazy(() => import("./pages/QuizLevels"));
 const TakeQuiz = lazy(() => import("./pages/TakeQuiz"));
@@ -475,6 +476,9 @@ function Router() {
         <ProtectedRoute>
           <Recommendations />
         </ProtectedRoute>
+      </Route>
+      <Route path="/guides">
+        <ProtectedRoute><ClientGuides /></ProtectedRoute>
       </Route>
       <Route path={"/live-package"}>
         <ProtectedRoute>

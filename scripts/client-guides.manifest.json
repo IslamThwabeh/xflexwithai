@@ -1,0 +1,11 @@
+{
+  "bucket": "xflexacademy-client-guides",
+  "videos": [
+    { "slug": "demo-account", "sourceFile": "كيف افتح حساب تجريبيWhatsApp Video 2026-11-07 at 8.00.45 PM.mp4", "posterAt": 20, "privacyWindows": [] },
+    { "slug": "recommendations", "sourceFile": "كيف اطبق صفقة على برنامج التوصيات و كيف اعمل حجز و تأمين و كيف اتابع الصفقة WhatsApp Video 2026-11-07 at 8.00.45 PM.mp4", "posterAt": 12, "privacyWindows": [] },
+    { "slug": "lexai-options", "sourceFile": "اختيارات ليكس ايه ايWhatsApp Video 2026-11-07 at 8.00.45 PM.mp4", "posterAt": 12, "privacyWindows": [] },
+    { "slug": "lexai-analysis", "sourceFile": "كيف احلل على ليكس ايه ايWhatsApp Video 2026-11-07 at 8.00.45 PM.mp4", "posterAt": 72, "privacyWindows": [[43,49],[161,168],[348,353]] },
+    { "slug": "lexai-apply", "sourceFile": "كيف اطبق من ليكس ايه ايWhatsApp Video 2026-11-07 at 8.00.45 PM.mp4", "posterAt": 42, "privacyWindows": [] },
+    { "slug": "lexai-review", "sourceFile": "كيف اقيم تحليلي من ليكس ايه ايWhatsApp Video 2026-11-07 at 8.00.45 PM.mp4", "posterAt": 26, "privacyWindows": [[7.4,8.9],[11.4,12.9]] }
+  ]
+}

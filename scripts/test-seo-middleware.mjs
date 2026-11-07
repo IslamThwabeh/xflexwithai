@@ -33,7 +33,7 @@ assert.equal(communityRoute.status, 200);
 assert.equal(communityRoute.headers.get("x-robots-tag"), "noindex, nofollow");
 assert.equal(communityRoute.headers.get("cache-control"), "private, no-store");
 
-for (const pathname of ["/surveys", "/job-opportunities"]) {
+for (const pathname of ["/surveys", "/job-opportunities", "/guides"]) {
   const studentFeatureRoute = await onRequest(contextFor(`https://xflexacademy.com${pathname}`, async (request) => {
     assert.equal(new URL(request.url).pathname, "/app-shell/");
     return new Response("<html>student feature app</html>", {
