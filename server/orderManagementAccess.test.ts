@@ -58,4 +58,8 @@ describe('read-only support order access', () => {
     expect(db.confirmOrderPayment).not.toHaveBeenCalled();
     expect(db.createOrderActivationKeys).not.toHaveBeenCalled();
   });
+  it('does not let support retire paid orders or read parser diagnostics', async () => {
+    await expect(caller().orders.adminRetireLiveOrder({ orderId: 154, replacementOrderId: 166, paidIlsMinor: 200000, reason: 'Customer changed packages' })).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(caller().recommendations.parserDiagnostics()).rejects.toMatchObject({ code: 'FORBIDDEN' });
+  });
 });

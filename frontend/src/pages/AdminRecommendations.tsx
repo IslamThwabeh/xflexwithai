@@ -17,6 +17,7 @@ import { PauseCircle, PlayCircle, UserCog, Bell, TrendingUp, Copy, Trash2, Arrow
 import { useDataTable, DataTablePagination, zebraRow } from "@/components/DataTable";
 import { formatLocalizedDate } from "@/lib/dateLocale";
 import { buildRecommendationThreads, groupRecommendationThreadsByDay } from "@/lib/recommendationThreads";
+import { applyRecommendationAutofill, getMissingRecommendationFields, type RecommendationFormFields } from "@/lib/recommendationAutofill";
 
 type RecommendationType = "recommendation" | "update" | "result";
 type FollowUpPresetGroupKey = "pips" | "management" | "outcome";
@@ -358,6 +359,10 @@ function AnalystView() {
   const [parentMessage, setParentMessage] = useState<any | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
   const [showTradeDetails, setShowTradeDetails] = useState(false);
+  const [parseReview, setParseReview] = useState<{ rawText: string; diagnosticId?: string; hasWarnings: boolean } | null>(null);
+  const liveDraft = useRef({ content, type, editingMessageId, parentId: parentMessage?.id, fields: { symbol, side, entryPrice, stopLoss, takeProfit1, takeProfit2, takeProfit3, riskPercent } });
+  liveDraft.current = { content, type, editingMessageId, parentId: parentMessage?.id, fields: { symbol, side, entryPrice, stopLoss, takeProfit1, takeProfit2, takeProfit3, riskPercent } };
+  const parseSnapshot = useRef<{ fields: RecommendationFormFields; type: RecommendationType; editingMessageId: number | null; parentId?: number } | null>(null);
   const [activePresetGroup, setActivePresetGroup] = useState<FollowUpPresetGroupKey>("pips");
   const [reportMonth, setReportMonth] = useState(getCurrentMonthValue());
   const [overrideDrafts, setOverrideDrafts] = useState<Record<number, { outcome: TradeOutcome; pips: string }>>({});
@@ -490,6 +495,7 @@ function AnalystView() {
             ? (isRTL ? "تم إرسال التحديث" : "Update sent")
             : (isRTL ? "تم نشر التوصية" : "Recommendation published")
       );
+      setParseReview(null);
       setContent("");
       setCustomPips("");
       setSide("");
@@ -540,27 +546,28 @@ function AnalystView() {
   });
 
   const parseDraftMutation = trpc.recommendations.parseDraft.useMutation({
-    onSuccess: (result) => {
-      setSymbol(result.fields.symbol || symbol || "XAUUSD");
-      setSide(result.fields.side || side);
-      setEntryPrice(result.fields.entryPrice || entryPrice);
-      setStopLoss(result.fields.stopLoss || stopLoss);
-      setTakeProfit1(result.fields.takeProfit1 || takeProfit1);
-      setTakeProfit2(result.fields.takeProfit2 || takeProfit2);
-      setTakeProfit3(result.fields.takeProfit3 || takeProfit3);
-      setRiskPercent(result.fields.riskPercent || riskPercent);
+    onSuccess: (result, variables) => {
+      const current = liveDraft.current;
+      const snapshot = parseSnapshot.current;
+      if (!snapshot || current.content.trim() !== variables.rawText || current.type !== snapshot.type
+        || current.editingMessageId !== snapshot.editingMessageId || current.parentId !== snapshot.parentId) {
+        toast.info(isRTL ? "تغيّر النص أثناء التحليل. اضغط التحليل مجدداً." : "The draft changed during parsing. Parse it again.");
+        return;
+      }
+      const fields = applyRecommendationAutofill(current.fields, snapshot.fields, result.fields);
+      setSymbol(fields.symbol);
+      setSide(fields.side);
+      setEntryPrice(fields.entryPrice);
+      setStopLoss(fields.stopLoss);
+      setTakeProfit1(fields.takeProfit1);
+      setTakeProfit2(fields.takeProfit2);
+      setTakeProfit3(fields.takeProfit3);
+      setRiskPercent(fields.riskPercent);
       setShowTradeDetails(true);
-
-      const sourceLabel = result.parser.source === "rule"
-        ? (isRTL ? "تحليل تلقائي" : "Rule parser")
-        : result.parser.source === "ai"
-          ? (isRTL ? "تحليل بالذكاء الاصطناعي" : "AI parser")
-          : (isRTL ? "تحليل هجين" : "Hybrid parser");
-      toast.success(
-        isRTL
-          ? `${sourceLabel} (${Math.round(result.parser.confidence * 100)}%)`
-          : `${sourceLabel} (${Math.round(result.parser.confidence * 100)}%)`
-      );
+      const needsReview = result.parser.warnings.length > 0 || getMissingRecommendationFields(fields).length > 0;
+      setParseReview({ rawText: variables.rawText, diagnosticId: result.diagnosticId, hasWarnings: needsReview });
+      if (needsReview) toast.warning(isRTL ? "راجع الحقول الناقصة أو غير الواضحة قبل الإرسال." : "Review missing or uncertain fields before sending.");
+      else toast.success(isRTL ? "تمت التعبئة. راجع التفاصيل قبل الإرسال." : "Auto-filled. Review the details before sending.");
     },
     onError: (error) => toast.error(error.message),
   });
@@ -722,6 +729,7 @@ function AnalystView() {
       takeProfit2: type === "recommendation" ? takeProfit2.trim() || undefined : undefined,
       takeProfit3: type === "recommendation" ? takeProfit3.trim() || undefined : undefined,
       riskPercent: type === "recommendation" ? riskPercent.trim() || undefined : undefined,
+      parserDiagnosticId: type === "recommendation" && parseReview?.rawText === content.trim() ? parseReview.diagnosticId : undefined,
       parentId: parentMessage?.id ?? undefined,
     });
   };
@@ -742,6 +750,8 @@ function AnalystView() {
       return;
     }
 
+    parseSnapshot.current = { fields: { ...liveDraft.current.fields }, type, editingMessageId, parentId: parentMessage?.id };
+    setParseReview(null);
     parseDraftMutation.mutate({ rawText: content.trim() });
   };
 
@@ -1530,6 +1540,23 @@ function AnalystView() {
                     : (isRTL ? "اكتب التحديث هنا" : "Write the update here")}
               rows={3}
             />
+            {type === "recommendation" && parseReview?.rawText === content.trim() && (
+              <div role="status" className="mt-2 rounded-md border p-3 text-sm">
+                <p>{parseReview.hasWarnings
+                  ? (isRTL ? "بعض التفاصيل تحتاج مراجعة. الحقول غير المستخرجة تُترك فارغة." : "Some details need review. Fields that could not be extracted are left empty.")
+                  : (isRTL ? "تم استخراج التفاصيل. راجع القيم قبل الإرسال." : "Details extracted. Review the values before sending.")}</p>
+                {!!getMissingRecommendationFields(liveDraft.current.fields).length && (
+                  <p className="mt-1 text-amber-700">
+                    {isRTL ? "الحقول الناقصة: " : "Missing fields: "}
+                    {getMissingRecommendationFields(liveDraft.current.fields).map(field => ({
+                      symbol: isRTL ? "الرمز" : "Symbol", side: isRTL ? "الاتجاه" : "Side",
+                      entryPrice: isRTL ? "سعر الدخول" : "Entry", stopLoss: isRTL ? "وقف الخسارة" : "Stop loss",
+                      takeProfit1: isRTL ? "الهدف الأول" : "Target 1",
+                    })[field]).join(isRTL ? "، " : ", ")}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
           )}
 

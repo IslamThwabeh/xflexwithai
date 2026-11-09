@@ -18360,7 +18360,9 @@ export async function updatePendingOrderActivationRecipient(input: {
 export async function getUserOrders(userId: number): Promise<Order[]> {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(orders).where(eq(orders.userId, userId)).orderBy(desc(orders.createdAt));
+  return db.select().from(orders).where(and(eq(orders.userId, userId),
+    sql`NOT EXISTS (SELECT 1 FROM order_retirements retired WHERE retired.order_id = ${orders.id})`
+  )).orderBy(desc(orders.createdAt));
 }
 
 export async function getAllOrders(status?: string) {
@@ -18401,10 +18403,10 @@ export async function getAllOrders(status?: string) {
     .from(orders)
     .leftJoin(users, eq(orders.userId, users.id))
     .orderBy(desc(orders.createdAt));
-  if (status) {
-    return q.where(eq(orders.status, status));
-  }
-  return q;
+  return q.where(and(
+    status ? eq(orders.status, status) : undefined,
+    sql`NOT EXISTS (SELECT 1 FROM order_retirements retired WHERE retired.order_id = ${orders.id})`,
+  ));
 }
 
 export async function getOrderPackageConfigurationSummaries(orderIds: number[]) {

@@ -40,7 +40,8 @@ import { logger } from "./_core/logger";
 import * as db from "./db";
 import { filterRecipientsByMutedThreads } from "./services/recommendation-thread.service";
 import { protectRecommendationAuthors } from "./services/recommendation-privacy.service";
-import { parseRecommendationDraft } from "./services/recommendation-parser.service";
+import { parseDraftWithDiagnostics, recordParserSubmission, listParserDiagnostics } from "./services/recommendation-parser-diagnostics.service";
+import { retireReplacedLiveOrder, getRenewalCreditBalances, findRetiredOrder } from "./services/live-order-retirement.service";
 import {
   PACKAGE_KEY_ISSUANCE_PURPOSES,
   PACKAGE_KEY_KINDS,
@@ -4886,6 +4887,7 @@ export const appRouter = router({
           takeProfit2: z.string().max(50).optional(),
           takeProfit3: z.string().max(50).optional(),
           riskPercent: z.string().max(20).optional(),
+          parserDiagnosticId: z.string().uuid().optional(),
           parentId: z.number().optional(),
         })
       )
@@ -5176,6 +5178,10 @@ export const appRouter = router({
           });
         }
 
+        if (input.type === 'recommendation') await recordParserSubmission({
+          diagnosticId: input.parserDiagnosticId, actorUserId: ctx.user.id,
+          messageId, content: trimmedContent, fields: input,
+        });
         return { success: true, messageId };
       }),
 
@@ -5183,7 +5189,7 @@ export const appRouter = router({
       .input(z.object({ rawText: z.string().min(3).max(4000) }))
       .mutation(async ({ ctx, input }) => {
         await ensureRecommendationPublishAccess(ctx);
-        const result = await parseRecommendationDraft(input.rawText);
+        const result = await parseDraftWithDiagnostics(input.rawText, ctx.user.id);
 
         const isAdmin = !!(ctx.user?.email && await db.getAdminByEmail(ctx.user.email));
         if (ctx.user?.isStaff && !isAdmin) {
@@ -5201,6 +5207,10 @@ export const appRouter = router({
 
         return result;
       }),
+
+    parserDiagnostics: adminProcedure
+      .input(z.object({ limit: z.number().int().min(1).max(100).default(100) }).optional())
+      .query(({ input }) => listParserDiagnostics(input?.limit)),
 
     editMessage: protectedProcedure
       .input(z.object({
@@ -8045,6 +8055,11 @@ export const appRouter = router({
         return order;
       }),
 
+    myRenewalCredit: protectedProcedure.query(async ({ ctx }) => ({
+      currency: 'ILS' as const,
+      amountIlsMinor: (await getRenewalCreditBalances([ctx.user.id])).get(ctx.user.id) ?? 0,
+    })),
+
     // User: get my orders
     myOrders: protectedProcedure.query(async ({ ctx }) => {
       if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
@@ -8098,15 +8113,30 @@ export const appRouter = router({
         const canReadRequestEvidence = !!ctx.admin || await db.hasAnyRole(ctx.user.id, ['key_manager', 'finance_manager']);
         const packageItems = await db.getOrderPackageConfigurationSummaries(orders.map((order) => order.id));
         const itemsByOrder = new Map<number, typeof packageItems>();
+        const renewalCredits = await getRenewalCreditBalances(orders.map(order => order.userId));
         for (const item of packageItems) {
           const existing = itemsByOrder.get(item.orderId) ?? [];
           existing.push(item);
           itemsByOrder.set(item.orderId, existing);
         }
         return orders.map((order) => attachOrderDisplayPricing(
-          canReadRequestEvidence ? order : { ...order, termsAcceptedIpAddress: null, termsAcceptedUserAgent: null },
+          { ...(canReadRequestEvidence ? order : { ...order, termsAcceptedIpAddress: null, termsAcceptedUserAgent: null }), renewalCreditIlsMinor: renewalCredits.get(order.userId) ?? 0 },
           itemsByOrder.get(order.id) ?? [],
         ));
+      }),
+
+    adminRetireLiveOrder: financeControlProcedure
+      .input(z.object({
+        orderId: z.number().int().positive(), replacementOrderId: z.number().int().positive(),
+        paidIlsMinor: z.number().int().positive().max(1_000_000_000),
+        reason: z.string().trim().min(5).max(1000),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.financeActor.access !== 'owner' || ctx.financeActor.actorType !== 'admin') {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Only the finance owner can remove a replaced paid Live order.' });
+        }
+        try { return await retireReplacedLiveOrder(ctx.financeActor, input); }
+        catch (error) { throw new TRPCError({ code: 'BAD_REQUEST', message: error instanceof Error ? error.message : 'Live order could not be removed.' }); }
       }),
 
     adminClassifyPurpose: adminOrRoleProcedure(['finance_manager'])
@@ -8215,6 +8245,7 @@ export const appRouter = router({
       .mutation(async ({ input, ctx }) => {
         const order = await db.getOrderById(input.orderId);
         if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
+        if (await findRetiredOrder(order.id)) throw new TRPCError({ code: 'CONFLICT', message: 'This replaced order has been removed and cannot be reopened.' });
 
         const actorType = ctx.admin ? 'admin' as const : 'staff' as const;
         const actorId = ctx.admin?.id ?? ctx.user.id;

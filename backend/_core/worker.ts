@@ -1,6 +1,7 @@
 import type { D1Database, ExecutionContext, KVNamespace, R2Bucket, ScheduledController } from "@cloudflare/workers-types";
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { cleanupPendingExpertImages } from '../services/live-expert.service';
+import { cleanupParserDiagnostics } from '../services/recommendation-parser-diagnostics.service';
 import { appRouter } from "../routers";
 import { createWorkerContext } from "./context-worker";
 import * as db from "../db";
@@ -1484,6 +1485,8 @@ export default {
     }
 
     if (controller.cron === RAW_DATA_RETENTION_CRON) {
+      try { await cleanupParserDiagnostics(); }
+      catch { logger.warn('[CRON] Parser diagnostic cleanup unavailable'); }
       try {
         const retentionRun = await runRawDataRetentionAutomation(env);
         if (!retentionRun.skipped) {

@@ -29,6 +29,7 @@ export default function MyOrders() {
   const { language, t } = useLanguage();
   const isRtl = language === 'ar';
   const { data: orders, isLoading } = trpc.orders.myOrders.useQuery();
+  const { data: renewalCredit } = trpc.orders.myRenewalCredit.useQuery();
 
   const statusLabel = (status: string) => {
     const labels: Record<string, { en: string; ar: string }> = {
@@ -50,6 +51,11 @@ export default function MyOrders() {
           <h1 className="text-2xl font-bold">{t('myOrders.title')}</h1>
         </div>
 
+        {!!renewalCredit?.amountIlsMinor && <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-900">
+          <p className="font-semibold">{isRtl ? 'رصيد متاح للتجديد: ' : 'Available renewal credit: '}
+            {formatAdminCurrencyFromIls(renewalCredit.amountIlsMinor / 100, language)}</p>
+          <p className="mt-1 text-sm">{isRtl ? 'تواصل مع الدعم لاستخدام رصيدك عند التجديد.' : 'Contact support to use your balance when renewing.'}</p>
+        </div>}
         {isLoading ? (
           <div className="space-y-4">
             {[1, 2].map((i) => (

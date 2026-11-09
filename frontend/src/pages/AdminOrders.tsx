@@ -77,6 +77,8 @@ export default function AdminOrders() {
     rationale: '',
   });
   const [purposeDrafts, setPurposeDrafts] = useState<Record<number, { purpose: 'new_sale' | 'renewal' | 'upgrade'; reason: string }>>({});
+  const [retireOrder, setRetireOrder] = useState<any | null>(null);
+  const [retireDraft, setRetireDraft] = useState({ replacementOrderId: '', paidIls: '', reason: '' });
   const { data: adminCheck } = trpc.auth.isAdmin.useQuery();
   const { data: financeAuthority } = trpc.roles.myFinanceAuthority.useQuery(undefined, {
     enabled: adminCheck?.isAdmin === true,
@@ -115,8 +117,21 @@ export default function AdminOrders() {
     onError: error => toast.error(error.message),
   });
   const [expandedId, setExpandedId] = useState<number | null>(() => getFocusedOrderId(routeSearch));
+  const retireLiveOrder = trpc.orders.adminRetireLiveOrder.useMutation({
+    onSuccess: async () => {
+      setRetireOrder(null);
+      await utils.orders.adminList.invalidate();
+      toast.success(language === 'ar' ? 'تم حذف طلب اللايف المستبدل وحفظ رصيد التجديد.' : 'Replaced Live order removed and renewal credit saved.');
+    },
+    onError: error => toast.error(error.message),
+  });
 
   const allOrders = orders ?? [];
+  const replacementChoices = allOrders.filter(order => order.userId === retireOrder?.userId
+    && order.status === 'completed' && order.id !== retireOrder?.id
+    && order.packageItems?.some(item => item.packageSlug === 'comprehensive'));
+  const retirementReplacement = replacementChoices.find(order => order.id === Number(retireDraft.replacementOrderId));
+  const retirementCredit = Number(retireDraft.paidIls) - Number(retirementReplacement?.displayTotalIls ?? 0);
   const filteredOrders = filterOrdersForSearch(allOrders, search);
   const {
     paged,
@@ -372,6 +387,10 @@ export default function AdminOrders() {
                         <span className="text-gray-500">{language === 'ar' ? 'طريقة الدفع' : 'Payment'}:</span>{' '}
                         {formatPaymentMethodLabel(order.paymentMethod, language)}
                       </div>
+                      {order.renewalCreditIlsMinor > 0 && <div className="rounded-md bg-emerald-50 p-3 font-medium text-emerald-900">
+                        {language === 'ar' ? 'رصيد متاح للتجديد: ' : 'Available renewal credit: '}
+                        {formatAdminCurrencyFromIls(order.renewalCreditIlsMinor / 100, language)}
+                      </div>}
                       {order.paymentReference && (
                         <div>
                           <span className="text-gray-500">Ref:</span> {order.paymentReference}
@@ -451,6 +470,14 @@ export default function AdminOrders() {
                       </div>
                     )}
                     <div className="flex flex-wrap gap-2">
+                      {financeAuthority?.isFinanceOwner && order.status === 'completed' && order.packageItems?.some((item: any) => item.packageSlug === 'live-package') && (
+                        <Button size="sm" variant="outline" onClick={() => {
+                          setRetireOrder(order);
+                          setRetireDraft({ replacementOrderId: '', paidIls: String(order.displayTotalIls), reason: '' });
+                        }}>
+                          {language === 'ar' ? 'حذف طلب لايف مستبدل' : 'Remove replaced Live order'}
+                        </Button>
+                      )}
                       {canManageOperationalOrders && ['pending', 'awaiting_confirmation', 'paid'].includes(order.status) && (
                         <Button size="sm" variant="outline" onClick={() => openRecipientCorrection(order)}>
                           <Pencil className="w-3.5 h-3.5 me-1" />
@@ -498,6 +525,37 @@ export default function AdminOrders() {
             })}
           </div>
         )}
+
+        <Dialog open={!!retireOrder} onOpenChange={open => { if (!open && !retireLiveOrder.isPending) setRetireOrder(null); }}>
+          <DialogContent dir={language === 'ar' ? 'rtl' : 'ltr'}>
+            <DialogHeader>
+              <DialogTitle>{language === 'ar' ? 'حذف طلب اللايف المستبدل' : 'Remove replaced Live order'} #{retireOrder?.id}</DialogTitle>
+              <DialogDescription>{language === 'ar'
+                ? 'للطلبات ذات المفاتيح غير المستخدمة فقط. يُحذف الطلب من القوائم وتُصحّح الدفعة المكررة مع حفظ إثبات الدفع ورصيد التجديد.'
+                : 'For unused keys only. Removes the order from lists, corrects the duplicated payment allocation, and keeps payment evidence and renewal credit.'}</DialogDescription>
+            </DialogHeader>
+            <Label htmlFor="retire-replacement">{language === 'ar' ? 'طلب الشامل البديل' : 'Replacement Comprehensive order'}</Label>
+            <select id="retire-replacement" className="h-10 rounded-md border px-3" value={retireDraft.replacementOrderId} onChange={event => setRetireDraft({ ...retireDraft, replacementOrderId: event.target.value })}>
+              <option value="">{language === 'ar' ? 'اختر الطلب' : 'Choose an order'}</option>
+              {replacementChoices.map(order => <option key={order.id} value={order.id}>#{order.id} · {formatAdminCurrencyFromIls(order.displayTotalIls, language)}</option>)}
+            </select>
+            <Label htmlFor="retire-paid">{language === 'ar' ? 'إجمالي ما دفعه العميل بالشيكل' : 'Total actually paid by customer (ILS)'}</Label>
+            <Input id="retire-paid" type="number" min="0.01" step="0.01" value={retireDraft.paidIls} onChange={event => setRetireDraft({ ...retireDraft, paidIls: event.target.value })} />
+            {retirementReplacement && <p className="rounded-md bg-emerald-50 p-3 text-sm">
+              {language === 'ar' ? 'للشامل: ' : 'Comprehensive: '}{formatAdminCurrencyFromIls(retirementReplacement.displayTotalIls, language)} ·{' '}
+              {language === 'ar' ? 'رصيد التجديد المتبقي: ' : 'Remaining renewal credit: '}{formatAdminCurrencyFromIls(retirementCredit, language)}
+            </p>}
+            <Label htmlFor="retire-reason">{language === 'ar' ? 'السبب' : 'Reason'}</Label>
+            <Textarea id="retire-reason" minLength={5} maxLength={1000} value={retireDraft.reason} onChange={event => setRetireDraft({ ...retireDraft, reason: event.target.value })} />
+            <DialogFooter>
+              <Button variant="outline" disabled={retireLiveOrder.isPending} onClick={() => setRetireOrder(null)}>{language === 'ar' ? 'إلغاء' : 'Cancel'}</Button>
+              <Button disabled={retireLiveOrder.isPending || !retirementReplacement || retirementCredit < 0 || !Number.isFinite(retirementCredit) || retireDraft.reason.trim().length < 5}
+                onClick={() => retireLiveOrder.mutate({ orderId: retireOrder.id, replacementOrderId: Number(retireDraft.replacementOrderId), paidIlsMinor: Math.round(Number(retireDraft.paidIls) * 100), reason: retireDraft.reason.trim() })}>
+                {language === 'ar' ? 'حذف الطلب وحفظ الرصيد' : 'Remove order and save credit'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Pagination */}
         {!isLoading && !isError && filteredOrders.length > 0 && (
