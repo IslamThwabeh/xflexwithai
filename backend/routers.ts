@@ -72,6 +72,7 @@ import {
 } from "./_core/email";
 import { buildRecommendationAlertEmail, buildRecommendationMessageEmail } from "./_core/recommendationEmails";
 import { buildSupportReplyEmail } from "./_core/supportEmails";
+import { isSupportWorkingHours } from '../shared/studentWelcome';
 import {
   buildStudentCommunityClientEmail,
   buildStudentCommunityPostAnnouncementEmail,
@@ -1910,18 +1911,6 @@ Respond ONLY with the JSON object, nothing else.`,
 // ============================================================================
 // Support Chat — Working Hours & AI Auto-Reply
 // ============================================================================
-
-/** Check if current Jordan time is within working hours (Sun-Thu 12:00-20:00) */
-function isSupportWorkingHours(): boolean {
-  const now = new Date();
-  // Jordan is UTC+3 (Asia/Amman). Get day/hour in Jordan time.
-  const jordanStr = now.toLocaleString('en-US', { timeZone: 'Asia/Amman', hour12: false });
-  const jordanDate = new Date(jordanStr);
-  const day = jordanDate.getDay(); // 0=Sun, 1=Mon, ..., 4=Thu, 5=Fri, 6=Sat
-  const hour = jordanDate.getHours();
-  // Working days: Sun(0)-Thu(4), hours 12:00-19:59
-  return day >= 0 && day <= 4 && hour >= 12 && hour < 20;
-}
 
 const SUPPORT_AI_SYSTEM_PROMPT = `You are the XFlex Trading Academy support assistant. You help students with courses, packages, subscriptions, and platform usage.
 
@@ -5674,7 +5663,7 @@ export const appRouter = router({
   // =========================================================================
 
   // ── Working-hours & AI auto-reply helpers ──────────────────────────────
-  // Jordan working hours: Sun-Thu 12:00-20:00 (Asia/Amman, UTC+3)
+  // Jordan working hours: Sun-Thu 15:00-19:00 (Asia/Amman)
   // Outside those hours, GPT-4o-mini answers automatically.
   // ──────────────────────────────────────────────────────────────────────
 
@@ -5732,6 +5721,12 @@ export const appRouter = router({
     // the browser's scroll viewport every few seconds.
     myConversation: protectedProcedure.query(async ({ ctx }) => {
       if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
+      // Recover a welcome if activation completed but its follow-up was interrupted.
+      try {
+        if (await db.ensureStudentSupportWelcome(ctx.user.id)) deferSupportReplyEmailDrain(ctx);
+      } catch (error) {
+        logger.error('[STUDENT WELCOME] Chat recovery failed', { userId: ctx.user.id, error });
+      }
       const conv = await db.getOrCreateSupportConversation(ctx.user.id);
       const checkedAt = new Date().toISOString();
       const history = await db.getSupportMessageHistory({
@@ -9871,6 +9866,14 @@ export const appRouter = router({
           userAgent: getRequestUserAgent(ctx.req),
         });
         if (result.success) {
+          if (!result.isRenewal && !result.isUpgrade) {
+            try {
+              if (await db.ensureStudentSupportWelcome(ctx.user.id)) deferSupportReplyEmailDrain(ctx);
+            } catch (error) {
+              // Keep the student's successful activation intact. Chat entry retries this.
+              logger.error('[STUDENT WELCOME] Activation follow-up failed', { userId: ctx.user.id, error });
+            }
+          }
           // Auto-award referral points (if user was referred)
           try { await db.activateReferral(ctx.user.id); } catch {}
         }

@@ -13,6 +13,7 @@ vi.mock("../backend/db", async () => {
     markSupportMessagesRead: vi.fn(),
     getSupportMessageHistory: vi.fn(),
     getSupportMessageChanges: vi.fn(),
+    ensureStudentSupportWelcome: vi.fn(),
   };
 });
 
@@ -81,6 +82,16 @@ describe("support performance routes", () => {
     } as any);
     vi.mocked(db.markSupportMessagesRead).mockResolvedValue(undefined);
     vi.mocked(db.markClientMessagesRead).mockResolvedValue(undefined);
+    vi.mocked(db.ensureStudentSupportWelcome).mockResolvedValue(false);
+  });
+
+  it('recovers the activation welcome before fetching the student conversation', async () => {
+    vi.mocked(db.ensureStudentSupportWelcome).mockResolvedValue(true);
+    vi.mocked(db.getSupportMessageHistory).mockResolvedValue({ messages: [], nextCursor: null });
+    await createStudentCaller().supportChat.myConversation();
+    expect(db.ensureStudentSupportWelcome).toHaveBeenCalledWith(44);
+    expect(vi.mocked(db.ensureStudentSupportWelcome).mock.invocationCallOrder[0])
+      .toBeLessThan(vi.mocked(db.getOrCreateSupportConversation).mock.invocationCallOrder[0]);
   });
 
   it("loads only the newest 50 messages for the student and returns an older-history cursor", async () => {

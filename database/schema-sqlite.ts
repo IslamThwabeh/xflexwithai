@@ -908,6 +908,13 @@ export const supportConversations = sqliteTable("supportConversations", {
 export type SupportConversation = typeof supportConversations.$inferSelect;
 export type InsertSupportConversation = typeof supportConversations.$inferInsert;
 
+export const studentSupportWelcomes = sqliteTable('student_support_welcomes', {
+  userId: integer('user_id').primaryKey(),
+  conversationId: integer('conversation_id'),
+  deliveredAt: text('delivered_at'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+});
+
 /**
  * Messages in a support conversation.
  */

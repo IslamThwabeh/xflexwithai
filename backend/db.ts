@@ -15395,6 +15395,13 @@ export async function getSupportConversation(conversationId: number) {
   return conv ?? null;
 }
 
+export async function ensureStudentSupportWelcome(userId: number) {
+  const database = await getDb();
+  if (!database) return false;
+  const { deliverStudentSupportWelcome } = await import('./services/student-welcome.service');
+  return deliverStudentSupportWelcome(database.$client, userId);
+}
+
 export async function getSupportConversationByUser(userId: number) {
   const db = await getDb();
   if (!db) return null;

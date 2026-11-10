@@ -65,6 +65,7 @@ const ActivateKey = lazy(() => import("./pages/ActivateKey"));
 const LexAI = lazy(() => import("./pages/LexAI"));
 const Recommendations = lazy(() => import("./pages/Recommendations"));
 const ClientGuides = lazy(() => import('./pages/ClientGuides'));
+const HomeScreenGuide = lazy(() => import('./pages/HomeScreenGuide'));
 const SupportChat = lazy(() => import("./pages/SupportChat"));
 const QuizLevels = lazy(() => import("./pages/QuizLevels"));
 const TakeQuiz = lazy(() => import("./pages/TakeQuiz"));
@@ -476,6 +477,9 @@ function Router() {
         <ProtectedRoute>
           <Recommendations />
         </ProtectedRoute>
+      </Route>
+      <Route path="/guides/home-screen">
+        <ProtectedRoute><HomeScreenGuide /></ProtectedRoute>
       </Route>
       <Route path="/guides">
         <ProtectedRoute><ClientGuides /></ProtectedRoute>

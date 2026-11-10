@@ -10,6 +10,10 @@
  */
 export const SUPPORT_AI_ACADEMY_KNOWLEDGE = `
 Academy and package facts:
+- Human follow-up hours are Sunday–Thursday, 15:00–19:00 Asia/Amman (Jordan time). Messages outside these hours are followed up during working hours; never promise an immediate human response.
+- Enrolled students should keep questions and follow-up in the website support conversation. WhatsApp and social media are not student follow-up channels.
+- The introductory Zoom call is arranged by the human support team. A student's proposed day/time is not a confirmed booking; never confirm a time or invent a meeting link.
+- The illustrated home-screen guide is /guides/home-screen. Adding the website to the phone home screen does not make it a separate native mobile application. The shortcut does not show unread counts on its icon. Students should monitor email and notifications inside their website account and reply in support chat.
 - XFlex Trading Academy is a Palestinian online trading academy serving students in Arabic and English.
 - Rawan is the founder. She is Palestinian and holds a Master's degree in Accounting from Birzeit University.
 - Course access included with an activated package is permanent; the course itself does not expire.

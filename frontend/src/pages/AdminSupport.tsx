@@ -1,4 +1,5 @@
 import AdminClientProfileSheet from "@/components/admin/AdminClientProfileSheet";
+import SupportMessageContent from '@/components/SupportMessageContent';
 import DashboardLayout from "@/components/DashboardLayout";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -1260,7 +1261,7 @@ export default function AdminSupport() {
                                 className="cursor-text select-text text-sm whitespace-pre-wrap break-words"
                                 style={{ WebkitUserSelect: 'text', userSelect: 'text' }}
                               >
-                                {msg.content}
+                                <SupportMessageContent content={msg.content} />
                               </p>
                             )}
                             {msg.attachmentUrl && (msg as any).attachmentType === 'voice' ? (

@@ -24,6 +24,7 @@ vi.mock('../backend/db', async () => {
     deactivateUnusedOrderActivationKeys: vi.fn(),
     fulfillPackageEntitlements: vi.fn(),
     activatePackageKey: vi.fn(),
+    ensureStudentSupportWelcome: vi.fn(),
     activateReferral: vi.fn(),
     createPackageKey: vi.fn(),
     getUnusedMatchingPackageKey: vi.fn(),
@@ -80,6 +81,23 @@ describe('package activation routes', () => {
     vi.mocked(db.getAdminByEmail).mockResolvedValue({ id: 1, email: user.email, name: 'Owner Admin' } as any);
     vi.mocked(db.isFinanceOwnerAdmin).mockResolvedValue(true);
     vi.mocked(db.getUnusedMatchingPackageKey).mockResolvedValue(undefined);
+    vi.mocked(db.ensureStudentSupportWelcome).mockResolvedValue(false);
+  });
+
+  it.each([false, true])('checks the one-time welcome after fresh activation (retry=%s)', async alreadyActivated => {
+    vi.mocked(db.activatePackageKey).mockResolvedValue({ success: true, isRenewal: false, isUpgrade: false, alreadyActivated } as any);
+    await createCaller().packageKeys.activateKey({ keyCode: 'XFLEX-WELCOME' });
+    expect(db.ensureStudentSupportWelcome).toHaveBeenCalledWith(user.id);
+  });
+
+  it.each([
+    { success: false },
+    { success: true, isRenewal: true },
+    { success: true, isUpgrade: true },
+  ])('does not start welcome delivery for $success/$isRenewal/$isUpgrade', async result => {
+    vi.mocked(db.activatePackageKey).mockResolvedValue(result as any);
+    await createCaller().packageKeys.activateKey({ keyCode: 'XFLEX-NO-WELCOME' });
+    expect(db.ensureStudentSupportWelcome).not.toHaveBeenCalled();
   });
 
   it('rejects a malformed gift recipient before an order is created', async () => {

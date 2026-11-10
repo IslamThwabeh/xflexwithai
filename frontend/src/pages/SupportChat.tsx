@@ -1,5 +1,8 @@
 import ClientLayout from "@/components/ClientLayout";
 import SupportBugReportsPanel from "@/components/SupportBugReportsPanel";
+import SupportMessageContent from '@/components/SupportMessageContent';
+import { Link } from 'wouter';
+import { HOME_SCREEN_GUIDE_PATH } from '@shared/studentWelcome';
 import { trpc, type RouterOutputs } from "@/lib/trpc";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Button } from "@/components/ui/button";
@@ -459,8 +462,12 @@ export default function SupportChat() {
                       <span className={`inline-block h-2 w-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-gray-400'}`} />
                       <p className="text-sm text-muted-foreground">
                         {isOnline
-                          ? (isRTL ? 'فريق الدعم متاح الآن — والذكاء الاصطناعي يرد مباشرة حتى تطلب شخصاً حقيقياً' : 'Support team is online — AI replies instantly until you request a human')
-                          : (isRTL ? 'فريق الدعم خارج ساعات العمل — والذكاء الاصطناعي يرد حتى يبدأ دوام الفريق' : 'Support team is offline — AI replies until working hours resume')}
+                          ? (hasRequestedHuman
+                            ? (isRTL ? 'فريق الدعم سيتابع معك هنا خلال الدوام' : 'The support team will follow up here during working hours')
+                            : (isRTL ? 'فريق الدعم متاح الآن — والذكاء الاصطناعي يرد مباشرة حتى تطلب شخصاً حقيقياً' : 'Support team is online — AI replies instantly until you request a human'))
+                          : (hasRequestedHuman
+                            ? (isRTL ? 'فريق الدعم خارج الدوام — سيتابع معك خلال ساعات العمل' : 'Support team is outside working hours — the team will follow up during its hours')
+                            : (isRTL ? 'فريق الدعم خارج ساعات العمل — والذكاء الاصطناعي يرد حتى يبدأ دوام الفريق' : 'Support team is offline — AI replies until working hours resume'))}
                       </p>
                     </>
                   ) : (
@@ -487,6 +494,10 @@ export default function SupportChat() {
             )}
           </div>
 
+          {isChatTab && <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs leading-6 text-slate-600">
+            <span>{isRTL ? 'دوام الفريق: الأحد–الخميس، ٣–٧ مساءً بتوقيت الأردن' : 'Team hours: Sun–Thu, 3–7 PM Jordan time'}</span>
+            <Link href={HOME_SCREEN_GUIDE_PATH} className="font-semibold text-emerald-700 underline">{isRTL ? 'إضافة الموقع للشاشة الرئيسية' : 'Add website to home screen'}</Link>
+          </div>}
           <div className="mt-4 inline-flex rounded-2xl bg-slate-100 p-1">
             <button
               type="button"
@@ -533,11 +544,11 @@ export default function SupportChat() {
               <span>
                 {isRTL
                   ? (isOnline
-                      ? 'تم طلب وكيل بشري. سينضم أحد أعضاء فريق الدعم إلى المحادثة قريباً.'
-                      : 'تم طلب وكيل بشري. سيتم الرد عليك خلال ساعات العمل (الأحد-الخميس ١٢-٨ مساءً).')
+                      ? 'فريق الدعم سيتابع معك هنا لتنسيق موعدك والإجابة على أسئلتك.'
+                      : 'فريق الدعم سيتابع معك خلال ساعات العمل (الأحد–الخميس ٣–٧ مساءً بتوقيت الأردن).')
                   : (isOnline
-                      ? 'Human agent requested. A support team member will join the chat soon.'
-                      : 'Human agent requested. You\'ll get a reply during working hours (Sun-Thu 12-8 PM).')}
+                      ? 'The support team will follow up here to arrange your call and answer your questions.'
+                      : 'The support team will follow up during working hours (Sun–Thu 3–7 PM Jordan time).')}
               </span>
             </div>
             <button
@@ -730,7 +741,7 @@ export default function SupportChat() {
                         className="cursor-text select-text text-sm whitespace-pre-wrap break-words"
                         style={{ WebkitUserSelect: 'text', userSelect: 'text' }}
                       >
-                        {msg.content}
+                        <SupportMessageContent content={msg.content} />
                       </p>
                     )}
                     {msg.attachmentUrl && (msg as any).attachmentType === 'voice' ? (
