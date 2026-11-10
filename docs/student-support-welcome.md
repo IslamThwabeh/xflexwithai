@@ -68,3 +68,30 @@ the illustrations and mobile layouts still need a real-device visual check.
   WhatsApp browser window was rejected to protect unrelated private content;
   no screenshot of that window was taken. Native-browser isolation did not
   produce a reviewable preview. Browser/device visual QA remains unverified.
+
+## Production release — 2026-11-10
+
+- Implementation commit `5c11cf1bf94776c870afa44dc444c1c5ce43f711` is pushed
+  to `origin/codex/live-package-phase-a`.
+- Migration 134 is recorded exactly once. Verification found 116 receipts,
+  all exclusions for existing students, and zero delivered welcomes from the
+  migration. Apply cost: 580 rows read and 122 rows written; database size
+  429,219,840 bytes. Post-apply recovery bookmark:
+  `00001912-00000ad4-0000511f-10b9948a9998a237769127b36972c5c0`.
+- Production Worker version `e4be1e11-e43f-4f69-9078-5bbdc0f52717` is deployed
+  with source tag `5c11cf1`, existing variables preserved, all five D1/R2
+  bindings and the four existing schedules retained.
+- Pages production deployment `cf7500f3-b879-4aca-877d-4931310de26c` on `main`
+  reports source `5c11cf1`: `https://cf7500f3.xflexwithai.pages.dev`.
+  Primary guide URL: `https://xflexacademy.com/guides/home-screen`.
+- The full production build generated the app shell, 36 public pages and six
+  article pages. Generated-output SEO checks passed.
+- Post-deploy smoke checks passed: production `/ar`, `/guides/home-screen`,
+  `/support` and `/guides` all returned 200 with the new release entry asset.
+  Private routes retained noindex and no-store headers. API health and database
+  health returned 200; anonymous `supportChat.myConversation` returned 401.
+- The entry, guide library, home-screen guide, welcome copy and support-chat
+  JavaScript assets returned 200 and exactly matched local SHA-256 hashes.
+- No real student was impersonated and no synthetic production account,
+  activation, support message or email was created for QA. Real-device visual
+  review and a real student/inbox end-to-end check remain unverified.
