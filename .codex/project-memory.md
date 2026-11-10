@@ -1,6 +1,19 @@
 # XFLEX Project Memory
 
-Last updated: 2026-10-23
+Last updated: 2026-11-10
+
+## Automatic student support welcome — 2026-11-10
+
+- The BO requested consistent onboarding to reduce duplicate WhatsApp/social messages and missed introductory calls. User reviewed and approved the behavior before implementation, then explicitly authorized push and production deployment.
+- A new student receives one automatic Arabic welcome in the consolidated website support conversation after successfully redeeming an approved fresh package key. Payment approval issues the key; redemption is the existing access-granting event. Renewals, upgrades, staff and unactivated accounts do not start a new welcome. Existing students are excluded from backfill.
+- The welcome asks the student to propose a day/time for an introductory Zoom call. A human must confirm the appointment; there is no automated booking or Zoom-link creation. Human follow-up is Sunday–Thursday, 15:00–19:00 Asia/Amman. Enrolled-student follow-up stays in website support, not WhatsApp/social media.
+- The welcome links to `/guides/home-screen`, a bilingual iPhone/Safari and Android/Chrome guide also reachable from Support and the guide library. Its visuals are clearly labelled illustrations, not actual phone screenshots. Adding the site to the home screen does not make it a separate native app, and the shortcut has no unread-count badge. Students should monitor email and website account notifications and reply in support chat.
+- `shared/studentWelcome.ts` holds welcome copy, the guide URL, notification notices and the timezone-aware support-hours function. `backend/services/student-welcome.service.ts` atomically writes the support message, human handoff, in-app notification, urgent transactional email-outbox item and durable receipt. AI is paused so appointment replies reach human support. Existing assignment/history are preserved; activation success survives follow-up failure, and chat entry retries delivery.
+- `backend/_core/supportAiKnowledge.ts` was updated and deployed with the approved hours, follow-up channel, Zoom confirmation rules and shortcut/notification explanation. Keep internal deployment IDs and project-memory details out of AI-facing knowledge; no API key, model or OpenAI account configuration change is needed for this feature.
+- Migration `134_student_support_welcome.sql` is applied exactly once in production. It creates `student_support_welcomes`; `delivered_at = NULL` receipts represent pre-existing students excluded from onboarding, not failed deliveries. Verification found 116 exclusions and zero delivered welcomes from the migration. Durable receipts prevent duplicates even if chat messages are later deleted. Do not rerun the exclusion seed or remove receipts to force messages.
+- Implementation `5c11cf1bf94776c870afa44dc444c1c5ce43f711` and verification notes `d2dfdde` are pushed to `origin/codex/live-package-phase-a`. Production Worker `e4be1e11-e43f-4f69-9078-5bbdc0f52717` is active at 100%; Pages deployment `cf7500f3-b879-4aca-877d-4931310de26c` on production branch `main` reports source `5c11cf1`. Preview: `https://cf7500f3.xflexwithai.pages.dev`.
+- Validation: 91 focused tests, the 227-test/33-file critical-cycle gate, TypeScript, full production/Worker builds, generated SEO/app-shell checks and a synthetic local rehearsal against schema-only production definitions passed. Production page/API health, anonymous support authorization, private noindex/no-store headers and five exact asset hashes passed. No real student was impersonated, and no synthetic production account, activation, chat message or email was created for QA. Real-device visual review and a real student/inbox end-to-end check remain unverified.
+- Canonical implementation/release record: `docs/student-support-welcome.md`, including migration cost, recovery bookmarks and verification limits. The separate pre-existing guides and other service-access gates remain as documented there.
 
 ## Shared profile access and staff password recovery — 2026-10-23
 
