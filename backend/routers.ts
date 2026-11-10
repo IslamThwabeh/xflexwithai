@@ -73,6 +73,7 @@ import {
 import { buildRecommendationAlertEmail, buildRecommendationMessageEmail } from "./_core/recommendationEmails";
 import { buildSupportReplyEmail } from "./_core/supportEmails";
 import { isSupportWorkingHours } from '../shared/studentWelcome';
+import { ACADEMY_TIME_LABEL_EN, formatAcademyDateTime } from '../shared/academyLocale';
 import {
   buildStudentCommunityClientEmail,
   buildStudentCommunityPostAnnouncementEmail,
@@ -2398,7 +2399,7 @@ function buildSupportStaffEmailContent(input: {
   if (recent.length > 1) {
     lines.push("", "Recent client messages:");
     for (const message of recent) {
-      const time = message.createdAt ? new Date(message.createdAt).toLocaleString("en-US", { timeZone: "Asia/Amman" }) : "";
+      const time = message.createdAt ? formatAcademyDateTime(message.createdAt, 'en') + ` ${ACADEMY_TIME_LABEL_EN}` : "";
       lines.push(`- ${time ? `${time}: ` : ""}${message.content.trim()}`);
     }
   }
@@ -5663,7 +5664,7 @@ export const appRouter = router({
   // =========================================================================
 
   // ── Working-hours & AI auto-reply helpers ──────────────────────────────
-  // Jordan working hours: Sun-Thu 15:00-19:00 (Asia/Amman)
+  // Palestine working hours: Sun-Thu 15:00-19:00 (Asia/Hebron)
   // Outside those hours, GPT-4o-mini answers automatically.
   // ──────────────────────────────────────────────────────────────────────
 
@@ -7748,9 +7749,9 @@ export const appRouter = router({
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Session not found.' });
         }
         const recipients = await db.listLivePackageNotificationRecipients(context.pkg.id, context.config.cohortKey);
-        const ammanTime = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Amman' }).format(new Date(session.startsAt));
+        const academyTime = formatAcademyDateTime(session.startsAt, 'en');
         const subject = `Live session reminder: ${session.titleEn}`;
-        const bodyText = `Live Package session: ${session.titleEn}\nTime: ${ammanTime} Asia/Amman\nJoin Zoom: ${session.zoomJoinUrl}\n\nThis message is sent with recipients hidden in BCC.`;
+        const bodyText = `Live Package session: ${session.titleEn}\nTime: ${academyTime} ${ACADEMY_TIME_LABEL_EN}\nJoin Zoom: ${session.zoomJoinUrl}\n\nThis message is sent with recipients hidden in BCC.`;
         return { recipientCount: recipients.length, subject, bodyText };
       }),
 
@@ -7778,9 +7779,9 @@ export const appRouter = router({
         if (!scheduledFor || Date.parse(scheduledFor) < now - 60_000) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'Choose a valid notification time.' });
         }
-        const ammanTime = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Amman' }).format(new Date(session.startsAt));
+        const academyTime = formatAcademyDateTime(session.startsAt, 'en');
         const subject = `Live session reminder: ${session.titleEn}`;
-        const bodyText = `Live Package session: ${session.titleEn}\nTime: ${ammanTime} Asia/Amman\nJoin Zoom: ${session.zoomJoinUrl}\n\nRecipients are resolved at dispatch time and hidden in BCC.`;
+        const bodyText = `Live Package session: ${session.titleEn}\nTime: ${academyTime} ${ACADEMY_TIME_LABEL_EN}\nJoin Zoom: ${session.zoomJoinUrl}\n\nRecipients are resolved at dispatch time and hidden in BCC.`;
         const job = await db.createLivePackageNotificationJob({
           sessionId: session.id,
           packageId: context.pkg.id,

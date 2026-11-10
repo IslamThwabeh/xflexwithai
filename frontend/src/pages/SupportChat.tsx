@@ -495,7 +495,7 @@ export default function SupportChat() {
           </div>
 
           {isChatTab && <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs leading-6 text-slate-600">
-            <span>{isRTL ? 'دوام الفريق: الأحد–الخميس، ٣–٧ مساءً بتوقيت الأردن' : 'Team hours: Sun–Thu, 3–7 PM Jordan time'}</span>
+            <span>{isRTL ? 'دوام الفريق: الأحد–الخميس، ٣–٧ مساءً بتوقيت فلسطين' : 'Team hours: Sun–Thu, 3–7 PM Palestine time'}</span>
             <Link href={HOME_SCREEN_GUIDE_PATH} className="font-semibold text-emerald-700 underline">{isRTL ? 'إضافة الموقع للشاشة الرئيسية' : 'Add website to home screen'}</Link>
           </div>}
           <div className="mt-4 inline-flex rounded-2xl bg-slate-100 p-1">
@@ -545,10 +545,10 @@ export default function SupportChat() {
                 {isRTL
                   ? (isOnline
                       ? 'فريق الدعم سيتابع معك هنا لتنسيق موعدك والإجابة على أسئلتك.'
-                      : 'فريق الدعم سيتابع معك خلال ساعات العمل (الأحد–الخميس ٣–٧ مساءً بتوقيت الأردن).')
+                      : 'فريق الدعم سيتابع معك خلال ساعات العمل (الأحد–الخميس ٣–٧ مساءً بتوقيت فلسطين).')
                   : (isOnline
                       ? 'The support team will follow up here to arrange your call and answer your questions.'
-                      : 'The support team will follow up during working hours (Sun–Thu 3–7 PM Jordan time).')}
+                      : 'The support team will follow up during working hours (Sun–Thu 3–7 PM Palestine time).')}
               </span>
             </div>
             <button

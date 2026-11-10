@@ -1,3 +1,5 @@
+import { ACADEMY_TIME_LABEL_AR, ACADEMY_TIME_LABEL_EN, formatAcademyDateTime } from '../../shared/academyLocale';
+
 export type StudentSurveyNotificationStage = "assigned" | "pre_due" | "due" | "overdue" | "manual";
 export type StudentSurveyNotificationLanguage = "ar" | "en";
 
@@ -59,11 +61,7 @@ export function getStudentSurveyNotificationStage(input: {
 function formatDeadline(value: string, language: StudentSurveyNotificationLanguage) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
-  return new Intl.DateTimeFormat(language === "ar" ? "ar-JO" : "en-GB", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "Asia/Amman",
-  }).format(parsed);
+  return `${formatAcademyDateTime(parsed, language)} ${language === 'ar' ? ACADEMY_TIME_LABEL_AR : ACADEMY_TIME_LABEL_EN}`;
 }
 
 function escapeHtml(value: string) {

@@ -1,3 +1,4 @@
+import { ACADEMY_TIME_ZONE } from '@shared/academyLocale';
 import { CalendarDays, Clock, ExternalLink, PlayCircle, Radio } from 'lucide-react';
 import ClientLayout from '@/components/ClientLayout';
 import LiveExpertEntry from '@/components/LiveExpertEntry';
@@ -8,10 +9,10 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 
-const formatDate = (value: string, language: string) => new Intl.DateTimeFormat(language === 'ar' ? 'ar-JO' : 'en-GB', {
+const formatDate = (value: string, language: string) => new Intl.DateTimeFormat(language === 'ar' ? 'ar-PS' : 'en-GB', {
   dateStyle: 'medium',
   timeStyle: 'short',
-  timeZone: 'Asia/Amman',
+  timeZone: ACADEMY_TIME_ZONE,
 }).format(new Date(value));
 
 export default function LivePackageWorkspace() {

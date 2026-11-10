@@ -1,3 +1,5 @@
+import { ACADEMY_TIME_LABEL_AR, ACADEMY_TIME_ZONE } from './academyLocale';
+
 export const HOME_SCREEN_GUIDE_PATH = '/guides/home-screen';
 export const HOME_SCREEN_GUIDE_URL = `https://xflexacademy.com${HOME_SCREEN_GUIDE_PATH}`;
 
@@ -7,16 +9,16 @@ export const HOME_SCREEN_NOTICE_EN = 'Adding the website to your home screen mak
 export const STUDENT_WELCOME_AR = [
   'نورت أكاديمية XFlex! 👋',
   'بالبداية خلينا نحدد موعد لمكالمة على Zoom، نشرحلك فيها الخطة والخدمات وكيف تستفيد منها. ابعتلنا هون بالمحادثة اليوم والوقت اللي بناسبك، والفريق رح يتابع معك لتأكيد الموعد. إرسال الوقت المقترح ما بيعتبر حجز مؤكد.',
-  '🕒 دوام فريق المتابعة: من الأحد للخميس، من الساعة ٣ للساعة ٧ مساءً بتوقيت الأردن. إذا بعتت خارج الدوام، رح نتابع معك خلال ساعات العمل.',
+  `🕒 دوام فريق المتابعة: من الأحد للخميس، من الساعة ٣ للساعة ٧ مساءً ${ACADEMY_TIME_LABEL_AR}. إذا بعتت خارج الدوام، رح نتابع معك خلال ساعات العمل.`,
   '💬 متابعتك معنا بتكون هون فقط، داخل محادثة الدعم بموقع الأكاديمية. يرجى عدم إرسال أسئلتك أو نفس الرسائل على واتساب أو السوشال ميديا؛ ما رح تتم الإجابة أو المتابعة معك على القنوات الثانية.',
   `📱 لتسهيل الدخول لحسابك ومتابعة الدعم، أضف الموقع للشاشة الرئيسية لجوالك. دليل مصوّر للآيفون والأندرويد:\n${HOME_SCREEN_GUIDE_URL}`,
   `🔔 تنبيه مهم: ${HOME_SCREEN_NOTICE_AR}`,
 ].join('\n\n');
 
-/** The team's published schedule, in Jordan local time. End time is exclusive. */
+/** The team's published schedule, in Palestine local time. End time is exclusive. */
 export function isSupportWorkingHours(now = new Date()): boolean {
   const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Amman', weekday: 'short', hour: 'numeric', hourCycle: 'h23',
+    timeZone: ACADEMY_TIME_ZONE, weekday: 'short', hour: 'numeric', hourCycle: 'h23',
   }).formatToParts(now);
   const day = parts.find(part => part.type === 'weekday')?.value;
   const hour = Number(parts.find(part => part.type === 'hour')?.value);

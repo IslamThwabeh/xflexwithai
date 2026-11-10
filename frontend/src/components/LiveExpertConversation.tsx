@@ -1,3 +1,4 @@
+import { ACADEMY_TIME_ZONE } from '@shared/academyLocale';
 import { useEffect, useRef, useState } from 'react';
 import { ImagePlus, Loader2, Send, X } from 'lucide-react';
 import { trpc, type RouterOutputs } from '@/lib/trpc';
@@ -125,7 +126,7 @@ export default function LiveExpertConversation({ conversationId, viewer, title, 
             <p className="mb-1 text-xs font-semibold text-slate-600">{message.sender_name}{message.sender_role === 'admin' ? (isAr ? ' · الإدارة' : ' · Admin') : ''}</p>
             {message.content ? <p dir="auto" className="whitespace-pre-wrap break-words text-sm leading-6 [overflow-wrap:anywhere]">{message.content}</p> : null}
             {message.attachment_id ? <Button variant="outline" size="sm" className="mt-2 max-w-full" onClick={() => setScreenshot({ id: message.attachment_id!, fileName: message.file_name || 'Screenshot' })}><ImagePlus className="me-2 h-4 w-4 shrink-0" /><span className="truncate">{message.file_name || (isAr ? 'عرض الصورة' : 'View screenshot')}</span></Button> : null}
-            <time className="mt-2 block text-[11px] text-slate-500" dateTime={message.created_at}>{new Intl.DateTimeFormat(isAr ? 'ar-JO' : 'en-GB', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Amman' }).format(new Date(message.created_at))}</time>
+            <time className="mt-2 block text-[11px] text-slate-500" dateTime={message.created_at}>{new Intl.DateTimeFormat(isAr ? 'ar-PS' : 'en-GB', { dateStyle: 'short', timeStyle: 'short', timeZone: ACADEMY_TIME_ZONE }).format(new Date(message.created_at))}</time>
           </article>;
         })}
       </div>

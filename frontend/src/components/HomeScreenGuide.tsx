@@ -78,7 +78,7 @@ export default function HomeScreenGuide() {
           <p className="mb-5 text-sm leading-7 text-slate-600">{step.body}</p><PhoneIllustration android={android} step={index} />
         </li>)}
       </ol>
-      <div className="rounded-2xl bg-emerald-50 p-5 text-sm leading-7 text-emerald-950"><p>{ar ? 'دوام فريق المتابعة: الأحد–الخميس، ٣–٧ مساءً بتوقيت الأردن. ابعت أسئلتك وموعدك المقترح لمكالمة Zoom داخل محادثة الدعم فقط.' : 'Support hours: Sunday–Thursday, 3–7 PM Jordan time. Send questions and your proposed Zoom call time in the website support chat only.'}</p><Link href="/support" className="mt-2 inline-block font-bold underline">{ar ? 'العودة لمحادثة الدعم' : 'Back to support chat'}</Link></div>
+      <div className="rounded-2xl bg-emerald-50 p-5 text-sm leading-7 text-emerald-950"><p>{ar ? 'دوام فريق المتابعة: الأحد–الخميس، ٣–٧ مساءً بتوقيت فلسطين. ابعت أسئلتك وموعدك المقترح لمكالمة Zoom داخل محادثة الدعم فقط.' : 'Support hours: Sunday–Thursday, 3–7 PM Palestine time. Send questions and your proposed Zoom call time in the website support chat only.'}</p><Link href="/support" className="mt-2 inline-block font-bold underline">{ar ? 'العودة لمحادثة الدعم' : 'Back to support chat'}</Link></div>
       <p className="text-xs leading-6 text-slate-500">{ar ? 'تعليمات المتصفح الرسمية: ' : 'Official browser instructions: '}<a href="https://support.apple.com/en-eg/guide/iphone/iphea86e5236/ios" target="_blank" rel="noreferrer" className="underline">Apple Safari</a>{' · '}<a href="https://support.google.com/chrome/answer/15085120?co=GENIE.Platform%3DAndroid&hl=en" target="_blank" rel="noreferrer" className="underline">Google Chrome</a></p>
     </div>
   );

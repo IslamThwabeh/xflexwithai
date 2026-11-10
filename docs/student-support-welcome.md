@@ -9,7 +9,7 @@ deleted. Migration 134 records existing students as excluded without messaging
 them. There is no backfill campaign.
 
 The welcome asks for a proposed introductory Zoom call time, states that the
-team must confirm it, publishes Sunday–Thursday 15:00–19:00 Asia/Amman hours,
+team must confirm it, publishes Sunday–Thursday 15:00–19:00 Palestine (Asia/Hebron) hours,
 and directs student follow-up to website support only. It links to the bilingual
 `/guides/home-screen` guide and explains that the home-screen shortcut is not a
 separate native application and has no unread-count badge. Students should
@@ -95,3 +95,22 @@ the illustrations and mobile layouts still need a real-device visual check.
 - No real student was impersonated and no synthetic production account,
   activation, support message or email was created for QA. Real-device visual
   review and a real student/inbox end-to-end check remain unverified.
+
+## Palestine default correction — 2026-11-10
+
+- The user explicitly corrected the academy's default location/time wording to
+  **فلسطين / Palestine** for future messages, emails and academy communications.
+  This supersedes the Jordan wording used in the initial welcome release.
+- `shared/academyLocale.ts` owns the country/time labels, `Asia/Hebron` business
+  timezone and customer date/time formatter. Support remains Sunday–Thursday,
+  15:00–19:00 on Palestine's local clock, including seasonal clock changes.
+- Updated welcome emails/chat copy, Support and the illustrated guide, new
+  survey/service notices, new Live reminder emails and the matching customer
+  date displays. Support-AI knowledge carries the same location/time convention.
+- Root `AGENTS.md` and `.codex/project-memory.md` record the owner's default for
+  future work. Reuse shared defaults in new customer communications.
+- Existing stored UTC instants, scheduler cron expressions, report timezone
+  choices, prior chat/email history and welcome receipts are preserved. There
+  is no backfill, welcome resend or additional schema migration.
+- Correction verification passed TypeScript, 68 focused tests, the 227-test
+  critical release gate, complete frontend/Worker builds and generated SEO checks.

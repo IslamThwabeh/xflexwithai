@@ -5,7 +5,7 @@ import {
 } from "../backend/services/timed-service-notifications.service";
 
 describe("timed service lifecycle notification content", () => {
-  it("builds bilingual three-day and one-day reminders with the Amman deadline", () => {
+  it("builds bilingual three-day and one-day reminders with the Palestine deadline", () => {
     const threeDays = buildTimedServiceReminderContent({
       clientName: "Yasmine",
       services: ["Recommendations"],
@@ -26,6 +26,17 @@ describe("timed service lifecycle notification content", () => {
     expect(oneDay.titleAr).toContain("24 ساعة");
     expect(oneDay.titleEn).toContain("24 hours");
     expect(oneDay.contentEn).toContain("LexAI + Recommendations");
+    expect(oneDay.contentEn).toContain('Palestine time');
+    expect(oneDay.contentAr).toContain('بتوقيت فلسطين');
+  });
+
+  it('uses the winter Palestine offset in reminder emails and notifications', () => {
+    const reminder = buildTimedServiceReminderContent({
+      services: ['Recommendations'], deadline: '2026-11-10T13:00:00Z', stage: 'one_day',
+    });
+    expect(reminder.deadlineEn).toContain('15:00');
+    expect(reminder.text).toContain('Palestine time');
+    expect(reminder.text).toContain('بتوقيت فلسطين');
   });
 
   it("explains policy activation and renders exact dates for each service", () => {

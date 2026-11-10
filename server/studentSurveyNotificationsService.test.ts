@@ -66,4 +66,17 @@ describe("student survey notification cadence", () => {
       dueAt: "2026-08-17T08:00:00.000Z",
     })).toBe("student_survey:7:due:2026-08-17T08:00:00.000Z");
   });
+
+  it('labels new survey emails and notices with Palestine time and its winter offset', () => {
+    for (const language of ['ar', 'en'] as const) {
+      const notice = buildStudentSurveyNotificationContent({
+        surveyTitle: 'Service survey', dueAt: '2026-11-10T13:00:00Z', stage: 'assigned',
+        language, surveyUrl: 'https://xflexacademy.com/surveys',
+      });
+      const label = language === 'ar' ? 'بتوقيت فلسطين' : 'Palestine time';
+      expect(notice.text).toContain(label);
+      expect(notice.html).toContain(label);
+      if (language === 'en') expect(notice.text).toContain('15:00');
+    }
+  });
 });

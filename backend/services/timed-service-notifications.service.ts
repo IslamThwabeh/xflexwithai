@@ -2,6 +2,7 @@ import type {
   TimedServiceActivationReason,
   TimedServiceReminderStage,
 } from "./timed-service-activation.service";
+import { ACADEMY_TIME_LABEL_AR, ACADEMY_TIME_LABEL_EN, formatAcademyDateTime } from '../../shared/academyLocale';
 
 export type TimedServiceName = "LexAI" | "Recommendations";
 
@@ -14,11 +15,7 @@ export type TimedServiceWindow = {
 function formatDateTime(value: string, locale: "ar" | "en") {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
-  return new Intl.DateTimeFormat(locale === "ar" ? "ar-JO" : "en-GB", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "Asia/Amman",
-  }).format(parsed);
+  return `${formatAcademyDateTime(parsed, locale)} ${locale === 'ar' ? ACADEMY_TIME_LABEL_AR : ACADEMY_TIME_LABEL_EN}`;
 }
 
 function serviceLabel(name: TimedServiceName, locale: "ar" | "en") {

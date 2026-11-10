@@ -1,3 +1,4 @@
+import { ACADEMY_TIME_ZONE } from '@shared/academyLocale';
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -247,7 +248,7 @@ export default function MyDashboard() {
                     {surveyAvailability.nearestDueAt && (
                       <p className="mt-1 text-sm text-amber-800">
                         {isRTL ? "أقرب موعد: " : "Nearest deadline: "}
-                        {new Date(surveyAvailability.nearestDueAt).toLocaleString(isRTL ? "ar-JO" : "en-GB", { timeZone: "Asia/Amman" })}
+                        {new Date(surveyAvailability.nearestDueAt).toLocaleString(isRTL ? "ar-PS" : "en-GB", { timeZone: ACADEMY_TIME_ZONE })}
                       </p>
                     )}
                   </div>

@@ -48,12 +48,16 @@ describe('student support welcome', () => {
     expect(message).toMatchObject({ senderId: 0, senderType: 'support', isRead: 0, content: STUDENT_WELCOME_AR });
     expect(message.content).toContain(HOME_SCREEN_GUIDE_URL);
     expect(message.content).toContain('٣ للساعة ٧');
+    expect(message.content).toContain('بتوقيت فلسطين');
+    expect(message.content).not.toContain('الأردن');
     expect(message.content).toContain('ما رح يظهر عدد الرسائل');
     const conversation = await database.prepare('SELECT * FROM supportConversations').first<any>();
     expect(conversation.needsHuman).toBe(1);
     const email = await database.prepare('SELECT * FROM email_outbox').first<any>();
     expect(email).toMatchObject({ eventType: 'support_client_reply', status: 'pending', recipientEmail: 'student@example.com' });
     expect(email.bodyHtml).toContain('&lt;Student&gt;');
+    expect(email.bodyText).toContain('بتوقيت فلسطين');
+    expect(email.bodyHtml).toContain('بتوقيت فلسطين');
   });
 
   it('reuses a closed conversation and preserves its staff assignment and history', async () => {
@@ -100,12 +104,17 @@ describe('student support welcome', () => {
   });
 });
 
-describe('Jordan support hours', () => {
+describe('Palestine support hours', () => {
   it.each([
-    ['2026-11-08T11:59:59Z', false], // Sunday, 14:59 Jordan
-    ['2026-11-08T12:00:00Z', true],
-    ['2026-11-12T15:59:59Z', true], // Thursday, 18:59 Jordan
-    ['2026-11-12T16:00:00Z', false],
+    ['2026-11-08T12:00:00Z', false], // Sunday, 14:00 Palestine in winter
+    ['2026-11-08T12:59:59Z', false],
+    ['2026-11-08T13:00:00Z', true],
+    ['2026-11-12T16:59:59Z', true], // Thursday, 18:59 Palestine in winter
+    ['2026-11-12T17:00:00Z', false],
+    ['2026-08-09T11:59:59Z', false], // Sunday, 14:59 Palestine in summer
+    ['2026-08-09T12:00:00Z', true],
+    ['2026-08-09T15:59:59Z', true],
+    ['2026-08-09T16:00:00Z', false],
     ['2026-11-13T13:00:00Z', false], // Friday
     ['2026-11-14T13:00:00Z', false], // Saturday
   ])('%s => %s', (time, expected) => {
