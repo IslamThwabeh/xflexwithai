@@ -73,24 +73,23 @@ Private recovery snapshots, guarded SQL, schema rehearsal, Time Travel bookmark
 and operational evidence are under ignored `tmp/private-handoffs/`. They are not
 support-AI knowledge or student-facing content.
 
-## Production release — 2026-11-11
+## Staff checklist and closeout
 
-- Implementation `9d31178` is pushed to `origin/codex/live-package-phase-a`.
-- Worker `522d3cc3-6a68-4b14-93e2-1f65fd44f548` was published before
-  Pages `0e88c2fb-bb53-4b28-8d2c-799bb1fe1671` (production branch `main`,
-  source `9d31178`). Preview: <https://0e88c2fb.xflexwithai.pages.dev>.
-- Worker deployment preserved live variables, all existing D1/R2 bindings and
-  the four schedules. There was no schema migration or new recurring work.
-- Seven live route checks passed, including API/database health, public/private
-  pages and anonymous rejection of order list/detail APIs. Private order pages
-  retain noindex and private/no-store headers. Entry, Admin Orders and Order
-  Detail assets matched the exact tested local SHA-256 hashes. The preview
-  serves the same release entry.
-- Previous recovery targets are Worker
-  `fedec938-3564-46c6-a1ee-4c40319efa88` and Pages
-  `fd146426-aa2d-4b48-93d6-6e216eb8ea5a`. Code rollback must preserve the
-  owner's separate audited data correction; do not restore the entire database
-  or reopen the older key as part of an application rollback.
+1. Verify the receipt and terms through the existing authorized approval flow.
+2. If an unused renewal key conflicts, review the referenced key/order before
+   approval. Expiry alone does not authorize closing the entitlement. Record the
+   verified decision and reason before an authorized closure.
+3. If payment is confirmed but key issuance is pending, a finance owner/manager
+   uses **Retry key issuance**. Keep the existing order and payment confirmation.
+4. When a key is ready, the customer redeems it from the activation page. Key
+   managers can use **View package keys** to locate the assigned credential.
+
+This case is closed: the previous unused key is closed, the current key was
+delivered and redeemed, and the current 30-day renewal is active. No further
+repair, key issuance, activation or email resend is pending for that order.
+Do not rerun its private repair SQL. Future renewals follow the normal workflow.
+The existing limit remains: signed-in production screens were not exercised as
+QA; the recorded real redemption and provider delivery were verified read-only.
 
 ## Production release — 2026-11-11
 
