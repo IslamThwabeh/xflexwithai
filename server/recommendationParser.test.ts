@@ -96,3 +96,47 @@ describe("recommendation parser format regressions", () => {
     expect(result.parser.warnings).toContain("Ambiguous field: entryPrice");
   });
 });
+
+describe("price-before-target labels", () => {
+  it.each(recommendationParserCorpus.filter(sample => sample.category === "reversed-target"))("avoids AI even when configured: $id", async ({ text, expected }) => {
+    vi.stubEnv("OPENAI_API_KEY", "test-only");
+    vi.mocked(invokeOpenAiChatCompletion).mockRejectedValue(new Error("This format must not need the provider"));
+    const result = await parseRecommendationDraft(text);
+    expect(result.fields).toMatchObject(expected);
+    expect(result.parser).toMatchObject({ source: "rule", usedAi: false, warnings: [] });
+    expect(invokeOpenAiChatCompletion).not.toHaveBeenCalled();
+  });
+
+  it("does not borrow the next target's reversed price for an empty earlier label", async () => {
+    const result = await parseRecommendationDraft("XAUUSD BUY 2400\nSL 2390\nTP1\n2420 :TP2\n2430 :TP3");
+    expect(result.fields.takeProfit1).toBeUndefined();
+    expect(result.fields.takeProfit2).toBe("2420");
+    expect(result.fields.takeProfit3).toBe("2430");
+    expect(result.parser.warnings).toContain("Missing field: takeProfit1");
+  });
+
+  it("keeps a forward price on the next line when it has no reversed label", async () => {
+    const result = await parseRecommendationDraft("XAUUSD BUY 2400\nSL 2390\nTP1\n2410\n2420 :TP2\n2430 :TP3");
+    expect(result.fields).toMatchObject({ takeProfit1: "2410", takeProfit2: "2420", takeProfit3: "2430" });
+  });
+
+  it("treats repeated prices with equivalent decimal formatting as the same value", async () => {
+    const result = await parseRecommendationDraft("XAUUSD BUY 2400\nSL 2390\nTP1 2410\n2410.00 :TP1");
+    expect(result.fields.takeProfit1).toBe("2410");
+    expect(result.parser.warnings).not.toContain("Ambiguous field: takeProfit1");
+  });
+
+  it.each([
+    "TP1 2410\n2415 :TP1",
+    "2410 :TP1\n2415 :TP1",
+    "2410-2415 :TP1",
+    "2410 to 2415 :TP1",
+    "2,410 :TP1",
+  ])("keeps ambiguous reversed targets unresolved through AI fallback: %s", async target => {
+    vi.stubEnv("OPENAI_API_KEY", "test-only");
+    vi.mocked(invokeOpenAiChatCompletion).mockResolvedValue({ choices: [{ message: { content: '{"takeProfit1":"2410"}' } }] } as any);
+    const result = await parseRecommendationDraft("XAUUSD BUY 2400\nSL 2390\n" + target);
+    expect(result.fields.takeProfit1).toBeUndefined();
+    expect(result.parser.warnings).toContain("Ambiguous field: takeProfit1");
+  });
+});

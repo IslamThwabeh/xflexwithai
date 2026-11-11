@@ -43,7 +43,7 @@ export type RecommendationParseResult = {
   };
 };
 
-export const RECOMMENDATION_PARSER_VERSION = "2026-11-09.1";
+export const RECOMMENDATION_PARSER_VERSION = "2026-11-11.1";
 export const RECOMMENDATION_FIELD_NAMES = [
   "symbol", "side", "entryPrice", "stopLoss", "takeProfit1", "takeProfit2", "takeProfit3", "riskPercent",
 ] as const;
@@ -55,7 +55,7 @@ const normalizeText = (value: string) => value.normalize("NFKC")
   .replace(/[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069\u200b-\u200d\ufe0f]/g, "")
   .replace(/[\u064b-\u065f\u0670\u0640]/g, "")
   .replace(/٫/g, ".").replace(/٬/g, "").replace(/٪/g, "%")
-  .replace(/\p{S}/gu, " ");
+  .replace(/\p{S}/gu, symbol => symbol === "=" ? symbol : " ");
 
 const normalizeNumeric = (value: string | number | null | undefined, risk = false) => {
   if (value === null || value === undefined) return undefined;
@@ -92,6 +92,15 @@ const LABELS: Record<Exclude<keyof RecommendationParsedFields, "symbol" | "side"
   takeProfit3: "(?:tp\\s*\\(?\\s*3\\s*\\)?|target\\s*3|(?:الهدف|هدف)\\s*(?:3|الثالث))",
   riskPercent: "(?:risk(?:\\s*percent)?|نسبة\\s*المخاطرة|المخاطرة|مخاطرة)",
 };
+const TARGET_FIELDS = ["takeProfit1", "takeProfit2", "takeProfit3"] as const;
+const INLINE_SPACE = "[^\\S\\r\\n]*";
+const RANGE_SEPARATOR = "(?:[-–—]|to\\b|الى|إلى)";
+const REVERSED_TARGET_PREFIX = "(?:^|[\\r\\n;/|])" + INLINE_SPACE;
+const REVERSED_TARGET_SUFFIX = new RegExp(
+  "^" + INLINE_SPACE + "(?:" + RANGE_SEPARATOR + INLINE_SPACE + NUMBER + INLINE_SPACE + ")?[:=]" + INLINE_SPACE
+    + "(?:" + TARGET_FIELDS.map(field => LABELS[field]).join("|") + ")" + END,
+  "iu",
+);
 const FORBIDDEN_SYMBOL = /^(?:BUY|SELL|ENTRY|PRICE|RISK|SYMBOL|PAIR|ASSET|TARGET|STOP|LOSS|TP\d*|SL)$/;
 const normalizeSymbol = (value: string | null | undefined) => {
   const symbol = value?.trim().replace("/", "").toUpperCase();
@@ -111,10 +120,29 @@ const extractSymbol = (text: string) => {
 
 function extractNumericField(text: string, field: keyof typeof LABELS) {
   const regex = new RegExp(BOUNDARY + LABELS[field] + END + PADDING + "(" + NUMBER + ")(\\s*%)?", "giu");
-  const matches = [...text.matchAll(regex)];
-  const values = matches.map(match => normalizeNumeric(match[1] + (match[2]?.trim() || ""), field === "riskPercent"));
-  const range = matches.some(match => /^\s*(?:[-–—]|to\b|الى|إلى)\s*\d/iu.test(text.slice(match.index! + match[0].length)));
-  const unique = [...new Set(values.filter((value): value is string => !!value))];
+  // A forward label must not borrow the following line's reversed target price.
+  // For example, TP1 followed by "2420 :TP2" leaves TP1 unresolved.
+  const forward = [...text.matchAll(regex)].filter(match =>
+    !REVERSED_TARGET_SUFFIX.test(text.slice(match.index! + match[0].length)));
+  const isTarget = TARGET_FIELDS.some(target => target === field);
+  const reversed = isTarget
+    ? [...text.matchAll(new RegExp(REVERSED_TARGET_PREFIX + "(" + NUMBER + ")" + INLINE_SPACE + "[:=]" + INLINE_SPACE + LABELS[field] + END, "giu"))]
+    : [];
+  const values = [
+    ...forward.map(match => normalizeNumeric(match[1] + (match[2]?.trim() || ""), field === "riskPercent")),
+    ...reversed.map(match => normalizeNumeric(match[1])),
+  ];
+  const reversedRange = isTarget && new RegExp(REVERSED_TARGET_PREFIX + NUMBER + INLINE_SPACE + RANGE_SEPARATOR
+    + INLINE_SPACE + NUMBER + INLINE_SPACE + "[:=]" + INLINE_SPACE + LABELS[field] + END, "iu").test(text);
+  const matches = [...forward, ...reversed];
+  const range = reversedRange || matches.some(match => /^\s*(?:[-–—]|to\b|الى|إلى)\s*\d/iu.test(text.slice(match.index! + match[0].length)));
+  const distinctValues = new Map<number, string>();
+  for (const value of values) {
+    if (!value) continue;
+    const numeric = Number(value.replace(/%$/, ""));
+    if (!distinctValues.has(numeric)) distinctValues.set(numeric, value);
+  }
+  const unique = [...distinctValues.values()];
   const ambiguousSeparator = matches.some(match => /^\d{1,3},\d{3}$/.test(match[1]));
   return { value: !range && unique.length === 1 && values.every(Boolean) ? unique[0] : undefined, ambiguous: range || unique.length > 1 || ambiguousSeparator };
 }

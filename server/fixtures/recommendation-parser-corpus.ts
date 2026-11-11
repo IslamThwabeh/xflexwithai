@@ -45,6 +45,13 @@ for (const side of ['BUY', 'SELL'] as const) {
     ['arabic-decimal-separator', 'unicode-numbers', toArabicDigits(`XAUUSD ${side} 2400٫00\nSL ${stop}٫00\nTP1 ${targets[0]}٫00\nTP2 ${targets[1]}٫00\nTP3 ${targets[2]}٫00\nRisk 1٪`)],
     ['bidi-marks', 'punctuation', `\u200fXAUUSD ${side}\nEntry \u200e2400\nSL \u200e${stop}\nTP1 \u200e${targets[0]}\nTP2 \u200e${targets[1]}\nTP3 \u200e${targets[2]}\nRisk \u200e1%`],
   ];
+  formats.push(
+    ['reversed-target-mixed', 'reversed-target', 'XAUUSD\n\n' + side + ' NOW 2400\n\nSL: ' + stop + '\n\n' + targets[0] + ' :TP1\nTP2: ' + targets[1] + '\n' + targets[2] + ' :TP3\nRisk 1%'],
+    ['reversed-target-lines', 'reversed-target', 'XAUUSD ' + side + ' 2400\nSL ' + stop + '\n' + targets[0] + ' :TP1\n' + targets[1] + ' :TP2\n' + targets[2] + ' :TP3\nRisk 1%'],
+    ['reversed-target-inline', 'reversed-target', 'XAUUSD ' + side + ' 2400 / SL ' + stop + ' / ' + targets[0] + ' :TP1 / ' + targets[1] + ' = TP2 / ' + targets[2] + ' : TP(3) / Risk 1%'],
+    ['reversed-target-arabic-digits', 'reversed-target', toArabicDigits('XAUUSD ' + arSide + ' 2400\nوقف الخسارة ' + stop + '\n' + targets[0] + ' :TP1\n' + targets[1] + ' :TP2\n' + targets[2] + ' :TP3\nالمخاطرة 1%')],
+    ['reversed-target-arabic-labels', 'reversed-target', 'XAUUSD ' + side + ' 2400\nSL ' + stop + '\n' + targets[0] + ' :الهدف الأول\n' + targets[1] + ' = الهدف الثاني\n' + targets[2] + ' :الهدف الثالث\nRisk 1%'],
+  );
   for (const [format, category, text] of formats) {
     recommendationParserCorpus.push({ id: `${format}-${side.toLowerCase()}`, category, text, expected: { ...expected } });
   }

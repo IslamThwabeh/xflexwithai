@@ -1,5 +1,8 @@
 # Recommendation auto-fill and Live order correction — 9 November 2026
 
+Follow-up: [price-first targets and audit closeout](recommendation-parser-price-first-targets.md)
+records the 11 November findings, disabled capture and direct target extraction.
+
 ## Parser benchmark
 
 The same 48 synthetic cases compare the original and repaired rules. The
