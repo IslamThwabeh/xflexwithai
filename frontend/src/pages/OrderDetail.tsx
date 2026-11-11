@@ -373,11 +373,19 @@ export default function OrderDetail() {
         {order.status === 'completed' && (
           <div className="bg-green-50 border border-green-200 rounded-2xl p-6 text-center">
             <CheckCircle className="w-10 h-10 text-green-500 mx-auto mb-2" />
-            {(order as any).activationKeys?.length ? (
+            {(order as any).fulfillment?.keyStatus === 'issuance_pending' ? (
               <>
-                <p className="font-medium">{isRtl ? 'تم تأكيد الدفع ومفتاحك جاهز' : 'Payment confirmed and your key is ready'}</p>
+                <p className="font-medium">{isRtl ? 'الدفع مؤكد — مفتاح التفعيل قيد التجهيز' : 'Payment confirmed — activation key pending'}</p>
+                <p className="text-sm text-gray-600 mb-4">{isRtl ? 'لا تحتاج إلى الدفع مرة أخرى. سيتابع الفريق إصدار مفتاحك، ويمكنك متابعة الحالة هنا أو التواصل مع الدعم.' : 'You do not need to pay again. The team will complete key issuance; check this page or contact support.'}</p>
+                <Link href="/support"><Button>{isRtl ? 'التواصل مع الدعم' : 'Contact Support'}</Button></Link>
+              </>
+            ) : (order as any).activationKeys?.length ? (
+              <>
+                <p className="font-medium">{isRtl ? 'الدفع مؤكد — تفاصيل مفتاحك' : 'Payment confirmed — your key details'}</p>
                 <p className="text-sm text-gray-600 mb-4">
-                  {isRtl ? 'المفتاح مربوط ببريدك. أدخله مرة واحدة فقط لبدء الباقة.' : 'The key is bound to your email. Enter it once to start the package.'}
+                  {['closed', 'redemption_expired'].includes((order as any).fulfillment?.keyStatus)
+                    ? (isRtl ? 'راجع حالة المفتاح أدناه أو تواصل مع الدعم للمساعدة.' : 'Review the key status below or contact support for help.')
+                    : (isRtl ? 'المفتاح مربوط ببريدك. أدخله مرة واحدة فقط لبدء الباقة.' : 'The key is bound to your email. Enter it once to start the package.')}
                 </p>
                 <div className="space-y-2 mb-4">
                   {(order as any).activationKeys.map((key: any) => (
@@ -386,18 +394,23 @@ export default function OrderDetail() {
                       {key.activatedAt && (
                         <p className="mt-1 text-xs text-emerald-700">{isRtl ? 'تم التفعيل' : 'Activated'}</p>
                       )}
+                      {!key.activatedAt && (!key.isActive || (key.expiresAt && Date.parse(key.expiresAt) <= Date.now())) && (
+                        <p className="mt-1 text-xs text-amber-800">{!key.isActive
+                          ? (isRtl ? 'هذا المفتاح مغلق ولا يمكن استخدامه.' : 'This key is closed and cannot be used.')
+                          : (isRtl ? 'انتهت مهلة استخدام المفتاح. تواصل مع الدعم للمراجعة.' : 'The redemption deadline has expired. Contact support for review.')}</p>
+                      )}
                     </div>
                   ))}
                 </div>
-                {(order as any).activationKeys.some((key: any) => !key.activatedAt) ? (
+                {(order as any).activationKeys.some((key: any) => !key.activatedAt && key.isActive && (!key.expiresAt || Date.parse(key.expiresAt) > Date.now())) ? (
                   <Link href="/activate-key">
                     <Button>{isRtl ? 'تفعيل المفتاح' : 'Activate Key'}</Button>
                   </Link>
-                ) : (
+                ) : (order as any).activationKeys.every((key: any) => !!key.activatedAt) ? (
                   <Link href="/courses">
                     <Button>{isRtl ? 'إلى الكورسات' : 'Go to Courses'}</Button>
                   </Link>
-                )}
+                ) : <Link href="/support"><Button>{isRtl ? 'التواصل مع الدعم' : 'Contact Support'}</Button></Link>}
               </>
             ) : (
               <>

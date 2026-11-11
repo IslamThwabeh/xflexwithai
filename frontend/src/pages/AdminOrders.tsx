@@ -55,6 +55,15 @@ const purposeLabels: Record<string, { en: string; ar: string }> = {
   copier_subscription: { en: 'Trade copier', ar: 'اشتراك الناسخ' },
 };
 
+const keyStatusLabels: Record<string, { en: string; ar: string }> = {
+  issuance_pending: { en: 'Payment confirmed — key issuance pending', ar: 'الدفع مؤكد — إصدار المفتاح معلّق' },
+  key_ready: { en: 'Key ready — awaiting redemption', ar: 'المفتاح جاهز — بانتظار التفعيل' },
+  redeemed: { en: 'Key redeemed', ar: 'تم استخدام المفتاح' },
+  closed: { en: 'Unused key closed', ar: 'المفتاح غير المستخدم مغلق' },
+  redemption_expired: { en: 'Key redemption deadline expired — review required', ar: 'انتهت مهلة استخدام المفتاح — يلزم المراجعة' },
+  historical_review: { en: 'Historical order — review separately', ar: 'طلب سابق — يُراجع بشكل منفصل' },
+};
+
 export default function AdminOrders() {
   const { language } = useLanguage();
   const utils = trpc.useUtils();
@@ -100,7 +109,12 @@ export default function AdminOrders() {
         setFinancialPayment({ paidAt: '', baseAmountIls: '', rationale: '' });
       }
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error) => {
+      // A late issuance failure can follow a committed cash confirmation.
+      // Refresh the persisted state so the recovery action remains reachable.
+      utils.orders.adminList.invalidate();
+      toast.error(error.message);
+    },
   });
   const correctRecipientMutation = trpc.orders.adminCorrectActivationRecipient.useMutation({
     onSuccess: () => {
@@ -254,7 +268,8 @@ export default function AdminOrders() {
     }
     const paidAt = new Date(financialPayment.paidAt);
     const baseAmountIlsMinor = Math.round(Number(financialPayment.baseAmountIls) * 100);
-    if (Number.isNaN(paidAt.getTime()) || !Number.isSafeInteger(baseAmountIlsMinor) || baseAmountIlsMinor <= 0 || financialPayment.rationale.trim().length < 5) {
+    const isRetry = issueOrder.fulfillment?.paymentConfirmed === true && issueOrder.status === 'completed';
+    if (!isRetry && (Number.isNaN(paidAt.getTime()) || !Number.isSafeInteger(baseAmountIlsMinor) || baseAmountIlsMinor <= 0 || financialPayment.rationale.trim().length < 5)) {
       toast.error(language === 'ar'
         ? 'أدخل تاريخ الدفع والمبلغ المؤكد بالشيكل وسبب الاعتماد (5 أحرف على الأقل).'
         : 'Enter the paid date, confirmed ILS amount, and an approval rationale (at least 5 characters).');
@@ -264,7 +279,7 @@ export default function AdminOrders() {
       orderId: issueOrder.id,
       status: 'completed',
       keyConfigurations: configurations,
-      financialPayment: {
+      financialPayment: isRetry ? undefined : {
         paidAt: paidAt.toISOString(),
         baseAmountIlsMinor,
         rationale: financialPayment.rationale.trim(),
@@ -338,6 +353,9 @@ export default function AdminOrders() {
                       {(order as any).isUpgrade ? <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">⬆ Upgrade</Badge> : null}
                       {order.transactionPurpose && <Badge variant="outline" className="text-xs text-blue-700 border-blue-300">{purposeLabels[order.transactionPurpose]?.[language] || order.transactionPurpose}</Badge>}
                     </div>
+                    {keyStatusLabels[order.fulfillment?.keyStatus] && <p className={`mb-2 text-sm font-medium ${order.fulfillment.keyStatus === 'issuance_pending' ? 'text-amber-800' : 'text-slate-600'}`}>
+                      {keyStatusLabels[order.fulfillment.keyStatus][language]}
+                    </p>}
 
                     {!order.transactionPurpose && ['pending', 'awaiting_confirmation', 'paid'].includes(order.status) && canConfirmPayment && <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3"><p className="mb-2 text-sm font-semibold text-amber-950">{language === 'ar' ? 'يجب تصنيف غرض المعاملة مرة واحدة قبل تأكيد الدفع.' : 'Classify the immutable transaction purpose before confirming payment.'}</p><div className="grid gap-2 md:grid-cols-[180px_1fr_auto]"><select className="h-10 rounded-md border bg-white px-3" value={(purposeDrafts[order.id]?.purpose || (order.isUpgrade ? 'upgrade' : 'new_sale'))} onChange={e => setPurposeDrafts({ ...purposeDrafts, [order.id]: { purpose: e.target.value as any, reason: purposeDrafts[order.id]?.reason || '' } })}><option value="new_sale">{purposeLabels.new_sale[language]}</option><option value="renewal">{purposeLabels.renewal[language]}</option><option value="upgrade">{purposeLabels.upgrade[language]}</option></select><Input placeholder={language === 'ar' ? 'سبب التصنيف (5 أحرف على الأقل)' : 'Classification reason (at least 5 characters)'} value={purposeDrafts[order.id]?.reason || ''} onChange={e => setPurposeDrafts({ ...purposeDrafts, [order.id]: { purpose: purposeDrafts[order.id]?.purpose || (order.isUpgrade ? 'upgrade' : 'new_sale'), reason: e.target.value } })} /><Button variant="outline" disabled={classifyPurpose.isPending} onClick={() => classifyPurpose.mutate({ orderId: order.id, purpose: purposeDrafts[order.id]?.purpose || (order.isUpgrade ? 'upgrade' : 'new_sale'), reason: purposeDrafts[order.id]?.reason || '' })}>{language === 'ar' ? 'تثبيت التصنيف' : 'Lock classification'}</Button></div></div>}
                     <p className="text-sm text-gray-500">
@@ -517,6 +535,16 @@ export default function AdminOrders() {
                           <CheckCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'إصدار المفتاح' : 'Issue key'}
                         </Button>
                       )}
+                      {canConfirmPayment && order.fulfillment?.keyStatus === 'issuance_pending' && (
+                        <Button size="sm" disabled={updateMutation.isPending} onClick={() => openIssueDialog(order)}>
+                          <RefreshCw className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'إعادة محاولة إصدار المفتاح' : 'Retry key issuance'}
+                        </Button>
+                      )}
+                      {canManageOperationalOrders && order.fulfillment?.keyStatus === 'key_ready' && (
+                        <Button size="sm" variant="outline" onClick={() => { window.location.href = '/admin/package-keys'; }}>
+                          {language === 'ar' ? 'عرض مفاتيح الباقات' : 'View package keys'}
+                        </Button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -580,7 +608,9 @@ export default function AdminOrders() {
           <DialogContent className="max-w-2xl" dir={language === 'ar' ? 'rtl' : 'ltr'}>
             <DialogHeader>
               <DialogTitle>
-                {language === 'ar'
+                {issueOrder?.fulfillment?.paymentConfirmed && issueOrder?.status === 'completed'
+                  ? (language === 'ar' ? `إعادة إصدار مفتاح الطلب #${issueOrder?.id}` : `Retry key issuance for order #${issueOrder?.id}`)
+                  : language === 'ar'
                   ? `اعتماد الطلب #${issueOrder?.id ?? ''} وإصدار المفتاح`
                   : `Approve order #${issueOrder?.id ?? ''} and issue key`}
               </DialogTitle>
@@ -592,7 +622,11 @@ export default function AdminOrders() {
             </DialogHeader>
 
             <div className="max-h-[60vh] space-y-4 overflow-y-auto py-2">
-              <div className="space-y-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+              {issueOrder?.fulfillment?.paymentConfirmed && issueOrder?.status === 'completed' ? (
+                <p className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950">
+                  {language === 'ar' ? 'الدفع مؤكد مسبقًا. ستُستخدم عملية التأكيد الأصلية دون تسجيل دفعة أخرى أو تغيير تاريخها. تبقى المفاتيح الموجودة ومددها كما هي.' : 'Payment is already confirmed. This uses the original confirmation without recording another payment or changing its date. Existing keys and their durations are preserved.'}
+                </p>
+              ) : <div className="space-y-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
                 <div>
                   <p className="font-semibold text-emerald-950">{language === 'ar' ? 'تأكيد مالي غير قابل للتعديل' : 'Immutable financial confirmation'}</p>
                   <p className="text-xs text-emerald-800">
@@ -622,7 +656,7 @@ export default function AdminOrders() {
                   <Label>{language === 'ar' ? 'سبب اعتماد الدفع *' : 'Payment-approval rationale *'}</Label>
                   <Textarea minLength={5} maxLength={500} value={financialPayment.rationale} onChange={(event) => setFinancialPayment((current) => ({ ...current, rationale: event.target.value }))} placeholder={language === 'ar' ? 'مثال: تمت مطابقة التحويل مع الإيصال وكشف البنك.' : 'Example: Transfer matched to the receipt and bank statement.'} />
                 </div>
-              </div>
+              </div>}
               {(issueOrder?.packageItems ?? []).map((item: any) => {
                 const configuration = keyConfigurations[item.packageId] ?? {
                   entitlementDays: '',
@@ -715,7 +749,9 @@ export default function AdminOrders() {
                 <CheckCircle className="me-1 h-4 w-4" />
                 {updateMutation.isPending
                   ? (language === 'ar' ? 'جاري الإصدار...' : 'Issuing...')
-                  : (language === 'ar' ? 'تأكيد الدفع وإصدار المفتاح' : 'Confirm payment and issue key')}
+                  : issueOrder?.fulfillment?.paymentConfirmed && issueOrder?.status === 'completed'
+                    ? (language === 'ar' ? 'إعادة محاولة إصدار المفتاح' : 'Retry key issuance')
+                    : (language === 'ar' ? 'تأكيد الدفع وإصدار المفتاح' : 'Confirm payment and issue key')}
               </Button>
             </DialogFooter>
           </DialogContent>

@@ -9,6 +9,9 @@ vi.mock('../backend/db', async () => {
     hasAnyRole: vi.fn(),
     getOrderById: vi.fn(),
     getOrderActivationKeys: vi.fn(),
+    getOrderPaymentConfirmation: vi.fn(),
+    getOrderRenewalDetail: vi.fn(),
+    assertRenewalKeyIssuanceReady: vi.fn(),
     updatePendingOrderActivationRecipient: vi.fn(),
     logAdminAction: vi.fn(),
     createOrder: vi.fn(),
@@ -82,6 +85,8 @@ describe('package activation routes', () => {
     vi.mocked(db.isFinanceOwnerAdmin).mockResolvedValue(true);
     vi.mocked(db.getUnusedMatchingPackageKey).mockResolvedValue(undefined);
     vi.mocked(db.ensureStudentSupportWelcome).mockResolvedValue(false);
+    vi.mocked(db.getOrderPaymentConfirmation).mockResolvedValue(undefined);
+    vi.mocked(db.assertRenewalKeyIssuanceReady).mockResolvedValue(undefined);
   });
 
   it.each([false, true])('checks the one-time welcome after fresh activation (retry=%s)', async alreadyActivated => {
@@ -222,6 +227,7 @@ describe('package activation routes', () => {
       actorType: 'admin',
       actorId: 1,
       configurations: keyConfigurations,
+      preserveExistingKeys: false,
     });
     expect(db.confirmOrderPayment).toHaveBeenCalledWith(expect.objectContaining({
       order,
@@ -241,6 +247,66 @@ describe('package activation routes', () => {
     expect(sendPaymentReceivedEmail).toHaveBeenCalledWith(user.email, expect.objectContaining({
       activationKeys: ['XFLEX-TEST1-TEST2-TEST3'],
     }));
+  });
+
+  function prepareRenewal(status: string, confirmed: boolean) {
+    const order = { id: 173, userId: user.id, status, transactionPurpose: 'renewal', isUpgrade: false,
+      currency: 'ILS', totalAmount: 35000, paymentMethod: 'bank_transfer',
+      paymentProofUrl: 'https://videos.xflexacademy.com/payment-proofs/test-proof.jpg',
+      termsAcceptedAt: '2026-11-11T11:00:00Z', termsAcceptedVersion: 'v2' } as any;
+    vi.mocked(db.getOrderById).mockResolvedValue(order);
+    vi.mocked(db.getOrderPaymentConfirmation).mockResolvedValue(confirmed ? { id: 67, orderId: 173 } as any : undefined);
+    vi.mocked(db.getOrderItems).mockResolvedValue([{ itemType: 'package', packageId: 2 }] as any);
+    vi.mocked(db.getPackageById).mockResolvedValue({ id: 2, slug: 'comprehensive', nameEn: 'Comprehensive' } as any);
+    vi.mocked(db.getOrderRenewalDetail).mockResolvedValue({ packageId: 2, entitlementDays: 30 } as any);
+    vi.mocked(db.getUserById).mockResolvedValue(user as any);
+    vi.mocked(db.getUserByEmail).mockResolvedValue(user as any);
+    vi.mocked(db.createNotification).mockResolvedValue({ id: 1 } as any);
+    vi.mocked(db.createOrderActivationKeys).mockResolvedValue([{ id: 210, packageId: 2, keyCode: 'XFLEX-RETRY' }]);
+    return order;
+  }
+
+  it('blocks an unused renewal conflict before cash confirmation or key creation', async () => {
+    prepareRenewal('awaiting_confirmation', false);
+    vi.mocked(db.assertRenewalKeyIssuanceReady).mockRejectedValue(new Error('Unused renewal key #184 from order #109 must be reviewed'));
+    await expect(createCaller().orders.adminUpdateStatus({ orderId: 173, status: 'completed', financialPayment: {
+      paidAt: '2026-11-11T09:10:00Z', baseAmountIlsMinor: 35000, rationale: 'Matched genuine receipt',
+    } })).rejects.toMatchObject({ code: 'CONFLICT', message: expect.stringContaining('#184') });
+    expect(db.confirmOrderPayment).not.toHaveBeenCalled();
+    expect(db.createOrderActivationKeys).not.toHaveBeenCalled();
+    expect(sendPaymentReceivedEmail).not.toHaveBeenCalled();
+  });
+
+  it('recovers a confirmed renewal without new payment details, cash, entitlement grants or configuration changes', async () => {
+    const order = prepareRenewal('completed', true);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const result = await createCaller().orders.adminUpdateStatus({ orderId: 173, status: 'completed' });
+      expect(result.activationKeys).toEqual([{ id: 210, packageId: 2, keyCode: 'XFLEX-RETRY' }]);
+    }
+    expect(db.confirmOrderPayment).not.toHaveBeenCalled();
+    expect(db.updateOrderStatus).not.toHaveBeenCalled();
+    expect(db.fulfillPackageEntitlements).not.toHaveBeenCalled();
+    expect(db.createOrderActivationKeys).toHaveBeenCalledWith({ order, actorType: 'admin', actorId: 1,
+      configurations: [{ packageId: 2, entitlementDays: 30, expiresAt: null, configurationNotes: 'Paid renewal order #173; duration fixed at checkout' }],
+      preserveExistingKeys: true });
+  });
+
+  it('keeps a late issuance failure recoverable and does not announce a key that was never created', async () => {
+    prepareRenewal('awaiting_confirmation', false);
+    vi.mocked(db.createOrderActivationKeys).mockRejectedValue(new Error('duplicate active unused package key'));
+    await expect(createCaller().orders.adminUpdateStatus({ orderId: 173, status: 'completed', financialPayment: {
+      paidAt: '2026-11-11T09:10:00Z', baseAmountIlsMinor: 35000, rationale: 'Matched genuine receipt',
+    } })).rejects.toThrow('Payment is confirmed, but key issuance needs a safe retry');
+    expect(db.confirmOrderPayment).toHaveBeenCalledTimes(1);
+    expect(sendPaymentReceivedEmail).not.toHaveBeenCalled();
+    expect(db.createNotification).not.toHaveBeenCalled();
+  });
+
+  it('does not reapprove a historical completed order without immutable confirmation', async () => {
+    prepareRenewal('completed', false);
+    await expect(createCaller().orders.adminUpdateStatus({ orderId: 173, status: 'completed' })).rejects.toMatchObject({ code: 'CONFLICT', message: expect.stringContaining('historical') });
+    expect(db.confirmOrderPayment).not.toHaveBeenCalled();
+    expect(db.createOrderActivationKeys).not.toHaveBeenCalled();
   });
 
   it('passes request evidence into activation auditing', async () => {

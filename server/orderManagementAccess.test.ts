@@ -5,6 +5,7 @@ vi.mock('../backend/db', async () => ({
   ...await vi.importActual<typeof import('../backend/db')>('../backend/db'),
   getAdminByEmail: vi.fn(), hasAnyRole: vi.fn(), getAllOrders: vi.fn(),
   getOrderPackageConfigurationSummaries: vi.fn(), getOrderById: vi.fn(),
+  getOrderKeyFulfillmentRows: vi.fn(),
   updateOrderStatus: vi.fn(), confirmOrderPayment: vi.fn(), createOrderActivationKeys: vi.fn(),
 }));
 import { appRouter } from '../backend/routers';
@@ -23,6 +24,7 @@ beforeEach(() => {
   vi.mocked(db.getAdminByEmail).mockResolvedValue(null as any);
   vi.mocked(db.hasAnyRole).mockImplementation(async (_id, requested) => requested.some(role => roles.includes(role)));
   vi.mocked(db.getOrderPackageConfigurationSummaries).mockResolvedValue([] as any);
+  vi.mocked(db.getOrderKeyFulfillmentRows).mockResolvedValue([]);
   vi.mocked(db.getAllOrders).mockResolvedValue([{
     id: 135, userId: 42, status: 'awaiting_confirmation', totalAmount: 200000, currency: 'ILS',
     subtotal: 172414, vatAmount: 27586, discountAmount: 0,

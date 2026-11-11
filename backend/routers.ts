@@ -42,6 +42,7 @@ import { filterRecipientsByMutedThreads } from "./services/recommendation-thread
 import { protectRecommendationAuthors } from "./services/recommendation-privacy.service";
 import { parseDraftWithDiagnostics, recordParserSubmission, listParserDiagnostics } from "./services/recommendation-parser-diagnostics.service";
 import { retireReplacedLiveOrder, getRenewalCreditBalances, findRetiredOrder } from "./services/live-order-retirement.service";
+import { describeOrderKeyFulfillment } from './services/order-key-fulfillment.service';
 import {
   PACKAGE_KEY_ISSUANCE_PURPOSES,
   PACKAGE_KEY_KINDS,
@@ -8082,7 +8083,10 @@ export const appRouter = router({
         const items = await db.getOrderItems(input.id);
         const activationKeys = await db.getOrderActivationKeys(input.id);
         const packageItems = await db.getOrderPackageConfigurationSummaries([input.id]);
-        return { ...attachOrderDisplayPricing(order, packageItems), items, activationKeys };
+        const fulfillmentRows = await db.getOrderKeyFulfillmentRows([input.id]);
+        return { ...attachOrderDisplayPricing(order, packageItems), items, activationKeys,
+          fulfillment: describeOrderKeyFulfillment({ status: order.status, transactionPurpose: order.transactionPurpose,
+            packageIds: [...new Set(packageItems.map(item => item.packageId))], rows: fulfillmentRows }) };
       }),
 
     // User: upload payment proof (bank transfer)
@@ -8109,6 +8113,13 @@ export const appRouter = router({
         const canReadRequestEvidence = !!ctx.admin || await db.hasAnyRole(ctx.user.id, ['key_manager', 'finance_manager']);
         const packageItems = await db.getOrderPackageConfigurationSummaries(orders.map((order) => order.id));
         const itemsByOrder = new Map<number, typeof packageItems>();
+        const fulfillmentRows = await db.getOrderKeyFulfillmentRows(orders.map(order => order.id));
+        const fulfillmentByOrder = new Map<number, typeof fulfillmentRows>();
+        for (const row of fulfillmentRows) {
+          const rows = fulfillmentByOrder.get(row.orderId) ?? [];
+          rows.push(row);
+          fulfillmentByOrder.set(row.orderId, rows);
+        }
         const renewalCredits = await getRenewalCreditBalances(orders.map(order => order.userId));
         for (const item of packageItems) {
           const existing = itemsByOrder.get(item.orderId) ?? [];
@@ -8116,7 +8127,9 @@ export const appRouter = router({
           itemsByOrder.set(item.orderId, existing);
         }
         return orders.map((order) => attachOrderDisplayPricing(
-          { ...(canReadRequestEvidence ? order : { ...order, termsAcceptedIpAddress: null, termsAcceptedUserAgent: null }), renewalCreditIlsMinor: renewalCredits.get(order.userId) ?? 0 },
+          { ...(canReadRequestEvidence ? order : { ...order, termsAcceptedIpAddress: null, termsAcceptedUserAgent: null }), renewalCreditIlsMinor: renewalCredits.get(order.userId) ?? 0,
+            fulfillment: describeOrderKeyFulfillment({ status: order.status, transactionPurpose: order.transactionPurpose,
+              packageIds: [...new Set((itemsByOrder.get(order.id) ?? []).map(item => item.packageId))], rows: fulfillmentByOrder.get(order.id) ?? [] }) },
           itemsByOrder.get(order.id) ?? [],
         ));
       }),
@@ -8247,6 +8260,7 @@ export const appRouter = router({
         const actorId = ctx.admin?.id ?? ctx.user.id;
         let activationKeys: Array<{ id: number; keyCode: string; packageId: number }> = [];
         let resolvedKeyConfigurations = input.keyConfigurations ?? [];
+        let preserveExistingKeys = false;
 
         // Financial confirmation is persisted before the email-bound
         // entitlement credential. Redemption remains operational only.
@@ -8262,6 +8276,7 @@ export const appRouter = router({
           // Never turn a historical completed order into revenue merely because
           // someone revisits it. Those rows are handled through reconciliation.
           const existingConfirmation = await db.getOrderPaymentConfirmation(order.id);
+          preserveExistingKeys = !!existingConfirmation;
           if (order.status === 'completed' && !existingConfirmation) {
             throw new TRPCError({
               code: 'CONFLICT',
@@ -8321,6 +8336,14 @@ export const appRouter = router({
               message: 'Bank-transfer payment evidence must be uploaded before this order can be approved.',
             });
           }
+          // Check the known renewal conflict before recognizing cash. Keep the
+          // DB duplicate guard for concurrent requests and legacy email forms;
+          // any later failure remains recoverable from the saved confirmation.
+          try {
+            await db.assertRenewalKeyIssuanceReady(order, approvalPackages.filter(Boolean).map(pkg => pkg!.id));
+          } catch (error) {
+            throw new TRPCError({ code: 'CONFLICT', message: error instanceof Error ? error.message : 'Renewal key review is required.' });
+          }
         } else if (!ctx.admin && !await db.hasAnyRole(ctx.user.id, ['key_manager'])) {
           // Finance managers can confirm cash without inheriting unrelated
           // cancellation, refund-status, or operational key-manager powers.
@@ -8362,6 +8385,7 @@ export const appRouter = router({
               actorType,
               actorId,
               configurations: resolvedKeyConfigurations,
+              preserveExistingKeys,
             });
           } catch (error) {
             throw new TRPCError({

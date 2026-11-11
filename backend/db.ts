@@ -10222,6 +10222,32 @@ export async function getPackageKeyConfigurationHistory(keyId: number, limit: nu
     .limit(Math.max(1, Math.min(limit, 100)));
 }
 
+export async function getOrderKeyFulfillmentRows(orderIds: number[]) {
+  const db = await getDb();
+  if (!db || !orderIds.length) return [];
+  const { orderKeyFulfillmentQuery } = await import('./services/order-key-fulfillment.service');
+  return collectChunkedRows(orderIds, async chunk => await db.all(orderKeyFulfillmentQuery(chunk)) as
+    import('./services/order-key-fulfillment.service').OrderKeyFulfillmentRow[]);
+}
+
+export async function assertRenewalKeyIssuanceReady(order: Order, packageIds: number[]) {
+  if (order.transactionPurpose !== 'renewal') return;
+  const db = await getDb();
+  if (!db) throw new Error('Database not available');
+  const email = normalizeEmailAddress(order.isGift && order.giftEmail
+    ? order.giftEmail : (await getUserById(order.userId))?.email ?? '');
+  if (!isLikelyValidEmail(email)) throw new Error('The order does not have a valid activation email');
+  const { renewalKeyConflictQuery } = await import('./services/order-key-fulfillment.service');
+  for (const packageId of new Set(packageIds)) {
+    const [conflict] = await db.all(renewalKeyConflictQuery(order.id, packageId, email)) as
+      Array<{ id: number; orderId: number | null; expiresAt: string | null }>;
+    if (conflict) {
+      const expired = !!conflict.expiresAt && Date.parse(conflict.expiresAt) <= Date.now();
+      throw new Error(`Unused renewal key #${conflict.id}${conflict.orderId ? ` from order #${conflict.orderId}` : ''} must be reviewed before issuing another renewal.${expired ? ' Its redemption deadline has expired, but its entitlement has not been consumed.' : ''} Redeem the existing key, or have an authorized operator close it with a documented reason. Payment will not be recorded again on retry.`);
+    }
+  }
+}
+
 export async function getOrderActivationKeys(orderId: number) {
   const db = await getDb();
   if (!db) return [];
@@ -10261,6 +10287,7 @@ export async function createOrderActivationKeys(input: {
   actorType: 'admin' | 'staff';
   actorId: number;
   configurations: PackageKeyConfigurationInput[];
+  preserveExistingKeys?: boolean;
 }) {
   const db = await getDb();
   if (!db) throw new Error('Database not available');
@@ -10327,7 +10354,10 @@ export async function createOrderActivationKeys(input: {
           isNull(registrationKeys.activatedAt),
         ));
       }
-      if (!existing.activatedAt) {
+      if (input.preserveExistingKeys && !existing.activatedAt && !existing.isActive) {
+        throw new Error(`Key #${existing.id} was closed. Review its audit history; issuance retry cannot reopen it.`);
+      }
+      if (!existing.activatedAt && !input.preserveExistingKeys) {
         await updateUnusedPackageKeyConfiguration({
           keyId: existing.id,
           entitlementDays,

@@ -172,8 +172,8 @@ export async function sendOrderConfirmationEmail(to: string, data: {
   }
 }
 
-/** Sent when admin marks order as completed / paid */
-export async function sendPaymentReceivedEmail(to: string, data: {
+/** Shared payload for normal approval and audited recovery through the outbox. */
+export async function buildPaymentReceivedEmail(to: string, data: {
   orderId: number;
   packageName: string;
   activationKeys: string[];
@@ -199,12 +199,24 @@ export async function sendPaymentReceivedEmail(to: string, data: {
       </a>
     </div>`;
   
-  try {
-    await sendBrandedEmail(to, subject, body, {
+  return buildBrandedEmailPayload(to, subject, body, {
       eventType: 'payment_received',
       templateId: 'payment_received',
       metadata: { orderId: data.orderId },
-    });
+  });
+}
+
+/** Sent when admin marks order as completed / paid. */
+export async function sendPaymentReceivedEmail(to: string, data: {
+  orderId: number;
+  packageName: string;
+  activationKeys: string[];
+}) {
+  try {
+    const payload = await buildPaymentReceivedEmail(to, data);
+    await sendEmail({ to, ...payload, audit: {
+      eventType: 'payment_received', templateId: 'payment_received', metadata: { orderId: data.orderId },
+    } });
   } catch (e) {
     logger.warn("[ORDER_EMAIL] Failed to send payment received", { orderId: data.orderId, error: String(e) });
   }
