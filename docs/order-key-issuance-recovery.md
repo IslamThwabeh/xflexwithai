@@ -62,8 +62,51 @@ payment evidence, and recorded the owner's instruction in the audit. It did not
 fabricate a redemption timestamp. It issued one current 30-day renewal key from
 the existing confirmed order and queued its ordinary notification/email. Before
 and after snapshots matched for payment history, service dates, account identity
-and existing Live access. Customer redemption remains outstanding.
+and existing Live access at the repair checkpoint. During final read-only
+verification, the customer's account normally redeemed the delivered key.
+The activation audit confirms success, and both existing timed services now
+have renewal activation with exactly the current 30-day period, expiring
+11 December 2026, Palestine time. The old key remains closed. No additional
+payment or previous-key entitlement was applied.
 
 Private recovery snapshots, guarded SQL, schema rehearsal, Time Travel bookmark
 and operational evidence are under ignored `tmp/private-handoffs/`. They are not
 support-AI knowledge or student-facing content.
+
+## Production release — 2026-11-11
+
+- Implementation `9d31178` is pushed to `origin/codex/live-package-phase-a`.
+- Worker `522d3cc3-6a68-4b14-93e2-1f65fd44f548` was published before
+  Pages `0e88c2fb-bb53-4b28-8d2c-799bb1fe1671` (production branch `main`,
+  source `9d31178`). Preview: <https://0e88c2fb.xflexwithai.pages.dev>.
+- Worker deployment preserved live variables, all existing D1/R2 bindings and
+  the four schedules. There was no schema migration or new recurring work.
+- Seven live route checks passed, including API/database health, public/private
+  pages and anonymous rejection of order list/detail APIs. Private order pages
+  retain noindex and private/no-store headers. Entry, Admin Orders and Order
+  Detail assets matched the exact tested local SHA-256 hashes. The preview
+  serves the same release entry.
+- Previous recovery targets are Worker
+  `fedec938-3564-46c6-a1ee-4c40319efa88` and Pages
+  `fd146426-aa2d-4b48-93d6-6e216eb8ea5a`. Code rollback must preserve the
+  owner's separate audited data correction; do not restore the entire database
+  or reopen the older key as part of an application rollback.
+
+## Production release — 2026-11-11
+
+- Implementation `9d31178` is pushed to `origin/codex/live-package-phase-a`.
+- Worker `522d3cc3-6a68-4b14-93e2-1f65fd44f548` was published before
+  Pages `0e88c2fb-bb53-4b28-8d2c-799bb1fe1671` (production branch `main`,
+  source `9d31178`). Preview: <https://0e88c2fb.xflexwithai.pages.dev>.
+- Worker deployment preserved live variables, all existing D1/R2 bindings and
+  the four schedules. There was no schema migration or new recurring work.
+- Seven live route checks passed, including API/database health, public/private
+  pages and anonymous rejection of order list/detail APIs. Private order pages
+  retain noindex and private/no-store headers. Entry, Admin Orders and Order
+  Detail assets matched the exact tested local SHA-256 hashes. The preview
+  serves the same release entry.
+- Previous recovery targets are Worker
+  `fedec938-3564-46c6-a1ee-4c40319efa88` and Pages
+  `fd146426-aa2d-4b48-93d6-6e216eb8ea5a`. Code rollback must preserve the
+  owner's separate audited data correction; do not restore the entire database
+  or reopen the older key as part of an application rollback.
