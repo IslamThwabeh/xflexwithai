@@ -60,3 +60,18 @@ customer-data correction, message publication, notification, new polling or
 scheduled job. Existing UI, delivery/access controls, bindings and schedules are
 preserved. The previous production Worker was
 522d3cc3-6a68-4b14-93e2-1f65fd44f548.
+
+## Production verification
+
+- Implementation f0ad4447e054ca6d62194c01b1db518c171a6886 is pushed to
+  origin/codex/live-package-phase-a.
+- Worker f14e5756-78d7-4dac-9779-6e97583ef336 is deployed at 100%, with the
+  implementation commit in deployment metadata. Live variables were retained;
+  the existing bindings and all four schedules remain in place.
+- API health and the recommendation page return HTTP 200. The page retains
+  noindex/nofollow. Anonymous parser and diagnostic requests return HTTP 401.
+- Production still contains zero capture activation rows and nine diagnostic
+  samples. The release did not restart capture or create any sample.
+- This is a Worker-only release; the existing frontend consumes the improved
+  parser response. No production recommendation was sent as a test. Actual
+  signed-in production auto-fill and post-release latency remain unmeasured.

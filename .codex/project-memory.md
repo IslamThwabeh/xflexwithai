@@ -2,6 +2,14 @@
 
 Last updated: 2026-11-11
 
+## Recommendation price-first targets and audit closeout — 2026-11-11
+
+- Reviewed all nine temporary parser captures: seven linked published recommendations needed no field corrections; two had no linked submission. All nine relied on AI to recover TP1/TP3 in price-first target lines. This is a small review sample, not a broad accuracy claim. The 48-hour window had already expired; the owner requested stopping unnecessary capture. Its activation row was removed. Keep capture disabled; retained samples keep their existing seven-day expiry/daily purge. Do not reactivate it during future deployments.
+- Parser version `2026-11-11.1` directly recognizes explicit price-first TP1/TP2/TP3 using colon/equals, Arabic/English labels and Arabic digits, including mixed forward/reversed and segment-separated layouts. It prevents borrowing the next reversed target's value, preserves valid multiline forward values, handles equivalent decimals, and keeps conflicts/ranges/ambiguous commas unresolved through fallback. Complete supported drafts skip AI even when a key is configured.
+- Verification passed 115 focused tests, 231 critical-cycle tests, TypeScript and the Worker build. Expanded synthetic corpus: 58/58 cases and 430/430 expected fields. Offline replay of all nine retained real drafts matched their previous final fields and was rule-only/warning-free. Raw replay input was removed and no real drafts were committed. Actual signed-in production auto-fill and post-release latency were not exercised.
+- Implementation `f0ad444` is pushed to `origin/codex/live-package-phase-a` and live on Worker `f14e5756-78d7-4dac-9779-6e97583ef336` at 100%. Health/page checks return 200, anonymous parser/diagnostics return 401, and capture remains zero activation rows/nine retained samples. No frontend release, schema migration, data correction, notification or recommendation publication. Existing live variables, bindings and four schedules were preserved.
+- Feature/release record: `docs/recommendation-parser-price-first-targets.md`. The earlier parser/Live-order history remains in `docs/recommendation-parser-investigation-2026-11-09.md`. These internal identifiers/history are not support-AI or student-facing knowledge.
+
 ## Renewal key issuance recovery — 2026-11-11
 
 - The owner verified with the team that Omar account 50's older unused renewal (order 109/key 184) was closed and no additional service days were due. This supersedes the earlier proposal to preserve two redeemable 30-day renewals. Order 109 was already completed; the scoped repair deactivated only its unused key with an explicit owner-instruction audit, preserving its payment and leaving `activatedAt` null. Do not reopen it, fabricate redemption or grant those older days.
