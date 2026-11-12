@@ -1,6 +1,15 @@
 # XFLEX Project Memory
 
-Last updated: 2026-11-11
+Last updated: 2026-11-12
+
+## Homepage QA remediation production release — 2026-11-12
+
+- User approved local Phases 2–5 after the requested preparation gate, then separately authorized deployment. All 14 findings are addressed: homepage logo, locale-preserving footer/article links, responsive navigation/pricing/menu, accessible state/labels, contrast/motion controls and bilingual customer copy. Palestine locale defaults are reused; payment/key/activation behaviour is unchanged.
+- Local verification passed TypeScript, 12 focused tests, production build, SEO and 27 browser check groups with synthetic public data. Physical phones/Safari and authenticated purchasing remain unverified.
+- Local implementation commit `325e44285b64c6be742b207f5ec4ee80615127f7` is live on Pages production `2ba29f63-e79d-4156-8718-294c23b69d6a` (project `xflexacademy`, branch `main`, source `325e442`), URL `https://2ba29f63.xflexwithai.pages.dev`. Previous Pages rollback target: `0e88c2fb-bb53-4b28-8d2c-799bb1fe1671`. No API Worker release, migration, schedule or customer-data/message write.
+- Production verification passed four exact asset SHA-256 matches, seven page checks, API health, preserved private profile noindex/no-store headers, two deployment-URL checks and 12 read-only live browser check groups in Arabic/English with real public data and no JavaScript exceptions.
+- Automatic approval review rejected the separate GitHub source push: Cloudflare deployment approval did not authorize source-code sharing to GitHub. No source push occurred. Keep the release commits local pending explicit source-push authorization; do not bypass the rejection.
+- Canonical plan/release record: `docs/homepage-qa-remediation-plan.md` and `docs/homepage-qa-remediation-verification.md`. Local browser artifacts are ignored under `output/playwright/homeqa*`. Deployment details are private project context, not support-AI/student copy.
 
 ## Recommendation price-first targets and audit closeout — 2026-11-11
 
