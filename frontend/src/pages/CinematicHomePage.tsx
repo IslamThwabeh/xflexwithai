@@ -3,7 +3,7 @@
  * Includes the premium fintech visual system, compact Gifts/Articles bridge,
  * testimonial proof sections, FAQ, and the current bilingual public-home flow.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'wouter';
 import {
   ArrowUpRight, Award, Bot, CheckCircle, ChevronDown, Clock3,
@@ -12,6 +12,8 @@ import {
 } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { getLanguageSwitchLabel } from '@/lib/languageToggle';
+import { localizePublicHref } from '@/lib/publicLocaleHref';
+import { ACADEMY_TIME_LABEL_AR, ACADEMY_TIME_LABEL_EN } from '@shared/academyLocale';
 import { formatIlsAmount, getPackageDisplayPricing } from '@/lib/packagePricing';
 import { HOMEPAGE_FEEDBACK_PROOFS } from '@/lib/homepageFeedbackProofs';
 import { PUBLIC_CATALOG_STALE_MS, PUBLIC_OFFER_STATE_STALE_MS } from '@/lib/queryCaching';
@@ -55,7 +57,9 @@ type RenewalOffer = {
 
 const EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
 const ACCENT = '#00C176';
-const BRAND_LOGO_SRC = '/xflex-logo.png';
+const BRAND_LOGO_SRC = '/xflex-logo-dark-transparent.png';
+
+const HomeMotionContext = createContext({ disabled: false, paused: false, reduced: false, toggle: () => {} });
 
 const renewalOffers: RenewalOffer[] = [
   { id: 'comp-3m',  packageId: 'comprehensive', months: 3, discountedIls: 875,  originalIls: 1050 },
@@ -66,7 +70,7 @@ const renewalOffers: RenewalOffer[] = [
 
 // ─── Hooks ────────────────────────────────────────────────────────────────────
 function usePrefersReducedMotion() {
-  const [pref, setPref] = useState(false);
+  const [pref, setPref] = useState(() => typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   useEffect(() => {
     const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
     setPref(mq.matches);
@@ -157,7 +161,9 @@ function CinematicStyles() {
           drop-shadow(0 0 28px rgba(0,193,118,0.12));
       }
       .cin-logo-header {
-        width: clamp(150px, 16vw, 236px);
+        width: clamp(156px, 16vw, 212px);
+        max-height: 56px;
+        flex-shrink: 0;
       }
       .cin-logo-footer {
         width: clamp(168px, 15vw, 220px);
@@ -423,6 +429,34 @@ function CinematicStyles() {
         height: 1px;
         background: linear-gradient(90deg, transparent, rgba(0,193,118,0.25), rgba(200,169,107,0.20), rgba(0,193,118,0.25), transparent);
       }
+
+      .cin-mobile-menu {
+        max-height: calc(100vh - var(--cin-home-header-height, 64px));
+        max-height: calc(100dvh - var(--cin-home-header-height, 64px));
+        scrollbar-gutter: stable;
+      }
+      .cin-home .cin-btn-green { color: #050505; }
+      .cin-home :is(a, button, summary):focus-visible {
+        outline: 2px solid #FFFFFF;
+        outline-offset: 4px;
+      }
+      .cin-home.cin-motion-disabled *,
+      .cin-home.cin-motion-disabled *::before,
+      .cin-home.cin-motion-disabled *::after {
+        animation: none !important;
+        transition: none !important;
+        scroll-behavior: auto !important;
+      }
+      .cin-home.cin-motion-disabled [data-reveal] {
+        opacity: 1 !important; transform: none !important; filter: none !important;
+      }
+      .cin-motion-disabled .cin-marquee { flex-wrap: wrap; justify-content: center; gap: 1rem 0; white-space: normal; }
+      .cin-motion-disabled [data-motion-duplicate] { display: none; }
+      @media (prefers-reduced-motion: reduce) {
+        .cin-home *, .cin-home *::before, .cin-home *::after {
+          animation: none !important; transition: none !important; scroll-behavior: auto !important;
+        }
+      }
     `}</style>
   );
 }
@@ -445,7 +479,7 @@ function ScrollProgress() {
 
 // ─── Particle field (subtle) ──────────────────────────────────────────────────
 function ParticleField({ count = 14 }: { count?: number }) {
-  const reduced = usePrefersReducedMotion();
+  const reduced = useContext(HomeMotionContext).disabled;
   if (reduced) return null;
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden">
@@ -528,6 +562,25 @@ function CinematicNav({ onScrollTo }: { onScrollTo: (id: string) => void }) {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const navContentRef = useRef<HTMLDivElement>(null);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMenuOpen(false);
+        menuTriggerRef.current?.focus();
+      }
+    };
+    const desktop = window.matchMedia('(min-width: 1280px)');
+    const onResize = () => { if (desktop.matches) setMenuOpen(false); };
+    document.addEventListener('keydown', onKeyDown);
+    desktop.addEventListener('change', onResize);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      desktop.removeEventListener('change', onResize);
+    };
+  }, [menuOpen]);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
@@ -558,7 +611,7 @@ function CinematicNav({ onScrollTo }: { onScrollTo: (id: string) => void }) {
   const switchLanguage = () => {
     const nextLanguage = language === 'ar' ? 'en' : 'ar';
     setLanguage(nextLanguage);
-    window.location.assign(`/${nextLanguage}${window.location.hash}`);
+    window.location.assign(`/${nextLanguage}${window.location.search}${window.location.hash}`);
   };
 
   const handleNavClick = (sectionId: string, href: string) => {
@@ -574,13 +627,13 @@ function CinematicNav({ onScrollTo }: { onScrollTo: (id: string) => void }) {
     <header className={`cin-nav sticky top-0 z-50 bg-[#050505] ${scrolled ? 'cin-nav-scrolled' : ''}`} dir={isRTL ? 'rtl' : 'ltr'}>
       <div ref={navContentRef}>
       <div className="container mx-auto flex h-16 items-center justify-between px-4 md:h-20 md:px-8">
-        <Link href={localePrefix}><a className="flex shrink-0 items-center gap-2"><img src={BRAND_LOGO_SRC} alt={APP_TITLE} className="cin-logo-img cin-logo-header" /></a></Link>
-        <nav className="hidden items-center gap-7 text-sm font-medium text-white/65 md:flex">
+        <Link href={localePrefix} className="flex shrink-0 items-center gap-2"><img src={BRAND_LOGO_SRC} alt={APP_TITLE} className="cin-logo-img cin-logo-header" /></Link>
+        <nav className="hidden items-center gap-5 whitespace-nowrap text-sm font-medium text-white/75 xl:flex">
           {navLinks.map((item) => (
             <button key={item.key} type="button" onClick={() => handleNavClick(item.sectionId, item.href)} className="transition-colors duration-200 hover:text-white">{item.label}</button>
           ))}
         </nav>
-        <div className="hidden items-center gap-4 md:flex">
+        <div className="hidden shrink-0 items-center gap-4 xl:flex">
           <button type="button" onClick={switchLanguage} className="text-xs font-semibold text-white/55 transition-colors hover:text-white">
             {getLanguageSwitchLabel(language)}
           </button>
@@ -588,13 +641,12 @@ function CinematicNav({ onScrollTo }: { onScrollTo: (id: string) => void }) {
             {isArabic ? DEFAULT_CINEMATIC_PRIMARY_ACTION.labelAr : DEFAULT_CINEMATIC_PRIMARY_ACTION.labelEn}<ArrowUpRight className="h-4 w-4" />
           </button>
         </div>
-        <button type="button" className="text-white/70 hover:text-white md:hidden" onClick={() => setMenuOpen((v) => !v)} aria-label="Toggle menu">
+        <button ref={menuTriggerRef} type="button" className="inline-flex h-11 w-11 shrink-0 items-center justify-center text-white/80 hover:text-white xl:hidden" onClick={() => setMenuOpen((v) => !v)} aria-expanded={menuOpen} aria-controls="cin-home-mobile-menu" aria-label={isArabic ? (menuOpen ? 'إغلاق القائمة' : 'فتح القائمة') : (menuOpen ? 'Close menu' : 'Open menu')}>
           {menuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
         </button>
       </div>
       </div>
-      {menuOpen && (
-        <div className="absolute inset-x-0 top-full border-t border-white/10 bg-[#0A0A0A]/96 px-4 pb-6 pt-4 backdrop-blur-2xl md:hidden">
+        <nav id="cin-home-mobile-menu" hidden={!menuOpen} aria-label={isArabic ? 'القائمة الرئيسية' : 'Main navigation'} className="cin-mobile-menu absolute inset-x-0 top-full overflow-y-auto overscroll-contain border-t border-white/10 bg-[#0A0A0A] px-4 pb-6 pt-4 xl:hidden">
           <div className="flex flex-col gap-5">
             <button
               type="button"
@@ -611,8 +663,7 @@ function CinematicNav({ onScrollTo }: { onScrollTo: (id: string) => void }) {
               {isArabic ? DEFAULT_CINEMATIC_PRIMARY_ACTION.labelAr : DEFAULT_CINEMATIC_PRIMARY_ACTION.labelEn}<ArrowUpRight className="h-4 w-4" />
             </button>
           </div>
-        </div>
-      )}
+        </nav>
     </header>
   );
 }
@@ -680,8 +731,8 @@ function FeaturedLivePackageSection() {
             <p className="mt-2 text-4xl font-extrabold text-[#00C176]">{formatIlsAmount(liveState.price / 100)}</p>
             <p className="mt-2 text-xs leading-5 text-white/48">{isArabic ? 'أسعار خاصة للمشتركين الحاليين تظهر بعد تسجيل الدخول.' : 'Existing subscribers see their special price after signing in.'}</p>
             <div className="mt-5 grid gap-3">
-              <Link href={`/${language}/packages/live-package`}><a className="cin-btn-green inline-flex items-center justify-center gap-2 rounded-full px-6 py-3.5 text-sm font-bold text-white">{isArabic ? 'اشترك الآن' : 'Register now'}<ArrowUpRight className="h-4 w-4" /></a></Link>
-              <Link href={`/${language}/packages/live-package`}><a className="text-center text-sm font-semibold text-[#E8CB8B] transition-colors hover:text-white">{isArabic ? 'اكتشف التفاصيل' : 'View package details'}</a></Link>
+              <Link href={`/${language}/packages/live-package`} className="cin-btn-green inline-flex items-center justify-center gap-2 rounded-full px-6 py-3.5 text-sm font-bold text-white">{isArabic ? 'اشترك الآن' : 'Register now'}<ArrowUpRight className="h-4 w-4" /></Link>
+              <Link href={`/${language}/packages/live-package`} className="text-center text-sm font-semibold text-[#E8CB8B] transition-colors hover:text-white">{isArabic ? 'اكتشف التفاصيل' : 'View package details'}</Link>
             </div>
           </div>
         </div>
@@ -959,6 +1010,7 @@ function TrustBadgesRow() {
 function TrustBar() {
   const { language } = useLanguage();
   const isArabic = language === 'ar';
+  const motion = useContext(HomeMotionContext);
   const items = isArabic
     ? ['محتوى عام بلغتين', '8 مراحل تعليمية', 'توصيات مباشرة', 'LexAI للتحليل الذكي', 'دعم بشري', 'محتوى مدى الحياة', 'تعليم منظم']
     : ['Bilingual public content', '8 learning stages', 'Live signals', 'LexAI intelligent analysis', 'Human support', 'Lifetime access', 'Structured learning'];
@@ -967,10 +1019,19 @@ function TrustBar() {
     <div className="overflow-hidden border-y border-white/06 bg-[#0A0A0A] py-4">
       <div className="cin-marquee flex whitespace-nowrap">
         {doubled.map((item, i) => (
-          <span key={i} className="inline-flex items-center gap-3 px-8 text-sm font-semibold text-white/45">
+          <span key={i} aria-hidden={i >= items.length ? true : undefined} data-motion-duplicate={i >= items.length ? '' : undefined} className="inline-flex items-center gap-3 px-8 text-sm font-semibold text-white/65">
             <span className="h-1 w-1 rounded-full bg-[#00C176]" style={{ boxShadow: '0 0 6px #00C176' }} />{item}
           </span>
         ))}
+      </div>
+      <div className="mt-4 text-center">
+        {motion.reduced ? (
+          <p className="text-xs text-white/65">{isArabic ? 'تقليل الحركة مفعّل حسب إعدادات جهازك' : 'Reduced motion is enabled in your device settings'}</p>
+        ) : (
+          <button type="button" onClick={motion.toggle} aria-pressed={motion.paused} className="rounded-full border border-white/30 px-4 py-2 text-xs font-semibold text-white/80 hover:text-white">
+            {isArabic ? (motion.paused ? 'استئناف الحركة' : 'إيقاف الحركة مؤقتاً') : (motion.paused ? 'Resume animations' : 'Pause animations')}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -1274,11 +1335,9 @@ function LexAISection({ onScrollTo }: { onScrollTo: (id: string) => void }) {
               <button type="button" onClick={() => onScrollTo('packages')} className="cin-btn-green inline-flex items-center gap-2 rounded-full px-7 py-3.5 text-base font-semibold text-white">
                 {conversation.ctaPrimary}<ArrowUpRight className="h-5 w-5" />
               </button>
-              <Link href={`/${isArabic ? 'ar' : 'en'}/contact`}>
-                <a className="cin-btn-ghost inline-flex items-center gap-2 rounded-full px-7 py-3.5 text-base font-semibold text-white">
+              <Link href={`/${isArabic ? 'ar' : 'en'}/contact`} className="cin-btn-ghost inline-flex items-center gap-2 rounded-full px-7 py-3.5 text-base font-semibold text-white">
                   {conversation.ctaSecondary}
-                </a>
-              </Link>
+                </Link>
             </div>
           </div>
 
@@ -1444,7 +1503,7 @@ function MentorSection() {
             </div>
 
             <div data-reveal>
-              <Link href={`/${isArabic ? 'ar' : 'en'}/contact`}><a className="cin-btn-green inline-flex items-center gap-2 rounded-full px-7 py-3.5 text-base font-semibold text-white">{isArabic ? 'تواصل مع الفريق' : 'Talk to the team'}<ArrowUpRight className="h-5 w-5" /></a></Link>
+              <Link href={`/${isArabic ? 'ar' : 'en'}/contact`} className="cin-btn-green inline-flex items-center gap-2 rounded-full px-7 py-3.5 text-base font-semibold text-white">{isArabic ? 'تواصل مع الفريق' : 'Talk to the team'}<ArrowUpRight className="h-5 w-5" /></Link>
             </div>
           </div>
         </div>
@@ -1542,7 +1601,7 @@ function ResultsSection() {
   const isArabic = language === 'ar';
   const ref = useRef<HTMLElement | null>(null);
   const [countersOn, setCountersOn] = useState(false);
-  const reduced = usePrefersReducedMotion();
+  const reduced = useContext(HomeMotionContext).disabled;
   useScrollReveal(ref);
   const proofItem = HOMEPAGE_FEEDBACK_PROOFS.find((item) => item.id === 'reported-results');
   const proofCopy = proofItem ? getFeedbackProofCopy(proofItem, isArabic) : null;
@@ -1664,7 +1723,7 @@ function TestimonialProofSection() {
   const items = HOMEPAGE_FEEDBACK_PROOFS.filter((item) => item.id === 'first-trade-confidence');
 
   const [idx, setIdx] = useState(0);
-  const reduced = usePrefersReducedMotion();
+  const reduced = useContext(HomeMotionContext).disabled;
   useEffect(() => {
     if (reduced || items.length < 2) return;
     const t = setInterval(() => setIdx((i) => (i + 1) % items.length), 6000);
@@ -1677,8 +1736,8 @@ function TestimonialProofSection() {
   const openLabel = isArabic ? 'افتح اللقطة الكاملة' : 'Open full screenshot';
   const sectionTitle = isArabic ? 'لقطة حقيقية من رحلة الطالب' : 'A real moment from the student journey';
   const sectionBody = isArabic
-    ? 'هذه اللقطة المختارة تضيف بعداً إنسانياً للصفحة: ليست أرقاماً فقط، بل لحظة يشعر فيها الطالب أن التقدم أصبح ملموساً.'
-    : 'This featured screenshot gives the page a more human proof point: not only numbers, but a moment where progress feels concrete and believable.';
+    ? 'لقطة شاركها أحد الطلاب من رحلته التعليمية. تختلف التجارب والنتائج من شخص لآخر.'
+    : 'A student-shared moment from the learning journey. Individual experiences and results vary.';
   const snapshotLabel = isArabic ? 'لقطة حقيقية' : 'Real screenshot';
   const detailLabel = isArabic ? 'لماذا هذه اللقطة مهمة' : 'Why this proof matters';
 
@@ -1769,7 +1828,7 @@ function PackagesSection() {
   });
   const ref = useRef<HTMLElement | null>(null);
   const [countersOn, setCountersOn] = useState(false);
-  const reduced = usePrefersReducedMotion();
+  const reduced = useContext(HomeMotionContext).disabled;
   useScrollReveal(ref);
 
   useEffect(() => {
@@ -1905,7 +1964,7 @@ function PackagesSection() {
                     <Clock3 className="h-3.5 w-3.5 text-[#C8A96B]" />
                     {isArabic ? 'خيارات التجديد' : 'Renewal options'}
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     {offers.map((offer) => {
                       const saving = offer.originalIls - offer.discountedIls;
                       return (
@@ -1929,19 +1988,15 @@ function PackagesSection() {
                 </div>
 
                 <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-                  <Link href={`/${isArabic ? 'ar' : 'en'}${pkg.href}`}>
-                    <a className={`flex-1 inline-flex items-center justify-center gap-2 rounded-full px-6 py-3.5 text-sm font-semibold ${
+                  <Link href={`/${isArabic ? 'ar' : 'en'}${pkg.href}`} className={`flex-1 inline-flex items-center justify-center gap-2 rounded-full px-6 py-3.5 text-sm font-semibold ${
                       pkg.featured ? 'cin-btn-green text-white' : 'cin-btn-white'
                     }`}>
                       {pkg.cta}
                       <ArrowUpRight className="h-4 w-4" />
-                    </a>
-                  </Link>
-                  <Link href={`/${isArabic ? 'ar' : 'en'}/contact`}>
-                    <a className="cin-btn-ghost flex-1 inline-flex items-center justify-center gap-2 rounded-full px-6 py-3.5 text-sm font-semibold text-white">
+                    </Link>
+                  <Link href={`/${isArabic ? 'ar' : 'en'}/contact`} className="cin-btn-ghost flex-1 inline-flex items-center justify-center gap-2 rounded-full px-6 py-3.5 text-sm font-semibold text-white">
                       {isArabic ? 'اسأل عن الأنسب' : 'Ask us first'}
-                    </a>
-                  </Link>
+                    </Link>
                 </div>
               </article>
             );
@@ -1951,7 +2006,7 @@ function PackagesSection() {
               <div className="max-w-2xl"><p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#C8A96B]">{isArabic ? 'بكج مستقل قائم على فوج' : 'Standalone cohort program'}</p><h3 className="mt-3 text-3xl font-extrabold text-white">{isArabic ? liveState.nameAr : liveState.nameEn}</h3><p className="mt-3 text-sm leading-7 text-white/60">{liveState.cohortStatus === 'completed' ? (isArabic ? 'الفوج مكتمل؛ يتاح وصول دائم إلى التسجيلات المنشورة من دون وعد بلقاءات مستقبلية.' : 'The cohort is completed; published recordings remain available without a promise of future sessions.') : liveState.cohortStatus === 'in_progress' ? (isArabic ? 'الفوج قائم ويشمل التسجيلات السابقة المنشورة واللقاءات القادمة وما تبقى من البث المباشر.' : 'The cohort is in progress and includes prior published recordings, upcoming sessions, and remaining live sessions.') : (isArabic ? 'أربع جلسات مباشرة أسبوعياً لمدة ثلاثة أشهر؛ يُعلن موعد البداية والجدول عند اعتمادهما.' : 'Four live sessions weekly for three months; the start date and schedule will be announced once approved.')}</p></div>
               <div className="text-start md:text-end"><p className="text-4xl font-extrabold text-[#00C176]">{formatIlsAmount(liveState.price / 100)}</p><p className="mt-1 text-xs text-white/45">{isArabic ? 'دفعة واحدة تشمل ضريبة القيمة المضافة' : 'One payment, VAT inclusive'}</p></div>
             </div>
-            <div className="mt-6"><Link href={`/${isArabic ? 'ar' : 'en'}/packages/live-package`}><a className="cin-btn-ghost inline-flex items-center gap-2 rounded-full px-6 py-3.5 text-sm font-semibold text-white">{liveState.purchasable ? (isArabic ? 'اشترك الآن' : 'View Live Package') : (isArabic ? 'التسجيل مغلق حالياً' : 'Registration closed')}<ArrowUpRight className="h-4 w-4" /></a></Link></div>
+            <div className="mt-6"><Link href={`/${isArabic ? 'ar' : 'en'}/packages/live-package`} className="cin-btn-ghost inline-flex items-center gap-2 rounded-full px-6 py-3.5 text-sm font-semibold text-white">{liveState.purchasable ? (isArabic ? 'اشترك الآن' : 'View Live Package') : (isArabic ? 'التسجيل مغلق حالياً' : 'Registration closed')}<ArrowUpRight className="h-4 w-4" /></Link></div>
           </article>}
         </div>
 
@@ -1959,12 +2014,12 @@ function PackagesSection() {
           <div className="grid gap-6 md:grid-cols-3">
             {(isArabic
               ? [
-                  { step: '01', title: 'تفعيل فوري',        body: 'تدخل مسارك التعليمي من أول دقيقة وتحتفظ بالمحتوى مدى الحياة.' },
+                  { step: '01', title: 'الوصول بعد الموافقة والتفعيل', body: 'أكمل طلبك وتأكيد الدفع، ثم استخدم مفتاح الباقة المعتمد لتفعيل وصولك إلى المحتوى التعليمي مدى الحياة.' },
                   { step: '02', title: 'الخدمات حسب باقتك', body: 'التوصيات والدعم وLexAI تعمل حسب الباقة التي اخترتها.' },
                   { step: '03', title: 'تجديد عند الحاجة',   body: 'التجديد للخدمات الزمنية فقط — المحتوى التعليمي لا يتجدد.' },
                 ]
               : [
-                  { step: '01', title: 'Instant activation',       body: 'You enter the learning path immediately and keep the content for life.' },
+                  { step: '01', title: 'Access after approval and activation', body: 'Complete your order and payment confirmation, then redeem your approved package key to access your learning content for life.' },
                   { step: '02', title: 'Services match your plan',  body: 'Signals, support, and LexAI work according to your chosen package.' },
                   { step: '03', title: 'Renew only when needed',    body: 'Renewal applies only to timed services — learning content is permanent.' },
                 ]
@@ -2014,8 +2069,8 @@ function ExploreMoreSection() {
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-white/58 md:text-base">
             {isArabic
-              ? 'أضفنا مسارين واضحين لا يستهلكان مساحة كبيرة: الهدايا العملية للمتداول، وأحدث المقالات التي تعطيك قراءة أعمق قبل القرار.'
-              : 'Two lightweight paths, without turning this page into a long content hub: practical gifts for traders, and recent articles for deeper context before you decide.'}
+              ? 'استكشف موارد عملية لتنظيم روتينك في التداول، ومقالات تعليمية تساعدك على فهم الأسواق.'
+              : 'Explore practical resources for your trading routine and educational articles that help you understand the markets.'}
           </p>
         </div>
 
@@ -2035,8 +2090,8 @@ function ExploreMoreSection() {
                 </h3>
                 <p className="mt-3 max-w-xl text-sm leading-7 text-white/62">
                   {isArabic
-                    ? 'صفحة مختصرة تضم أدوات تساعدك على التنظيم والانضباط والمتابعة من دون تشتيت أو ازدحام داخل الصفحة الرئيسية.'
-                    : 'A compact page with practical tools that help with structure, consistency, and follow-through without crowding the homepage itself.'}
+                    ? 'اكتشف موارد تساعدك على تنظيم تداولك، والاستعداد قبل كل صفقة، ومراجعة تقدمك.'
+                    : 'Find resources that help you organize your trading, prepare before each trade, and review your progress.'}
                 </p>
               </div>
             </div>
@@ -2050,12 +2105,10 @@ function ExploreMoreSection() {
             </div>
 
             <div className="mt-6">
-              <Link href={`/${isArabic ? 'ar' : 'en'}/gifts`}>
-                <a className="cin-btn-ghost inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-semibold text-white">
+              <Link href={`/${isArabic ? 'ar' : 'en'}/gifts`} className="cin-btn-ghost inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-semibold text-white">
                   {isArabic ? 'افتح صفحة الهدايا' : 'Open Gifts page'}
                   <ArrowUpRight className="h-4 w-4" />
-                </a>
-              </Link>
+                </Link>
             </div>
           </article>
 
@@ -2070,12 +2123,12 @@ function ExploreMoreSection() {
                   {isArabic ? 'المقالات' : 'Articles'}
                 </div>
                 <h3 className="mt-4 text-2xl font-extrabold tracking-[-0.03em] text-white">
-                  {isArabic ? 'أحدث القراءات بدون قسم كبير' : 'Recent reads without a heavy section'}
+                  {isArabic ? 'أحدث المقالات التعليمية' : 'Latest educational articles'}
                 </h3>
                 <p className="mt-3 max-w-xl text-sm leading-7 text-white/62">
                   {isArabic
-                    ? 'بدلاً من توسيع الصفحة، نعرض لك آخر ما نُشر ثم نعطيك طريقاً مباشراً لصفحة المقالات الكاملة.'
-                    : 'Instead of expanding the landing page, this keeps the latest reads visible and gives a direct path into the full articles library.'}
+                    ? 'اقرأ أحدث مقالاتنا حول التداول وإدارة المخاطر والوعي بالأسواق.'
+                    : 'Read our latest articles on trading, risk management and market awareness.'}
                 </p>
               </div>
             </div>
@@ -2090,31 +2143,27 @@ function ExploreMoreSection() {
                   const title = isArabic ? article.titleAr : article.titleEn;
                   const subject = isArabic ? article.subjectAr : article.subjectEn;
                   return (
-                    <Link key={article.slug} href={`/articles/${article.slug}`}>
-                      <a className="flex items-center justify-between gap-3 rounded-2xl border border-white/8 bg-black/22 px-4 py-3 text-sm transition-all duration-200 hover:border-[#C8A96B]/30 hover:bg-white/[0.04]">
+                    <Link key={article.slug} href={localizePublicHref(`/articles/${article.slug}`, language)} className="flex items-center justify-between gap-3 rounded-2xl border border-white/8 bg-black/22 px-4 py-3 text-sm transition-all duration-200 hover:border-[#C8A96B]/30 hover:bg-white/[0.04]">
                         <div className="min-w-0">
                           <p className="truncate font-semibold text-white">{title}</p>
                           <p className="mt-1 text-xs text-white/45">{subject}</p>
                         </div>
                         <ArrowUpRight className="h-4 w-4 shrink-0 text-[#C8A96B]" />
-                      </a>
-                    </Link>
+                      </Link>
                   );
                 })
               ) : (
                 <div className="rounded-2xl border border-white/8 bg-black/22 px-4 py-4 text-sm text-white/55">
-                  {isArabic ? 'صفحة المقالات جاهزة للعرض الكامل عند المراجعة.' : 'The full articles page remains ready for a deeper browse.'}
+                  {isArabic ? 'استكشف مكتبة المقالات التعليمية.' : 'The full articles page remains ready for a deeper browse.'}
                 </div>
               )}
             </div>
 
             <div className="mt-6">
-              <Link href={`/${isArabic ? 'ar' : 'en'}/articles`}>
-                <a className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/[0.04] px-5 py-3 text-sm font-semibold text-white transition hover:border-[#C8A96B]/30 hover:text-[#C8A96B]">
+              <Link href={`/${isArabic ? 'ar' : 'en'}/articles`} className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/[0.04] px-5 py-3 text-sm font-semibold text-white transition hover:border-[#C8A96B]/30 hover:text-[#C8A96B]">
                   {isArabic ? 'عرض جميع المقالات' : 'View all articles'}
                   <ArrowUpRight className="h-4 w-4" />
-                </a>
-              </Link>
+                </Link>
             </div>
           </article>
         </div>
@@ -2135,17 +2184,17 @@ function FAQSection() {
         { q: 'هل أحتاج خبرة سابقة في التداول؟', a: 'لا. الباقات مصممة من الصفر — نبدأ معك من الأساسيات وننتقل تدريجياً إلى التحليل المتقدم والتنفيذ الحقيقي.' },
         { q: 'ما الفرق بين الأساسية والشاملة؟',  a: 'الأساسية تعطيك المنهج الكامل والتوصيات والدعم. الشاملة تضيف LexAI — طبقة التحليل الذكية التي تساعدك على فهم السوق بشكل أعمق.' },
         { q: 'هل المحتوى التعليمي ينتهي؟',        a: 'لا. المحتوى التعليمي يبقى معك مدى الحياة. التجديد يطبق فقط على الخدمات الزمنية كالتوصيات وLexAI.' },
-        { q: 'ما طرق الدفع المتاحة؟',             a: 'حالياً ندعم الحوالة البنكية الموثوقة. كل المعاملات شاملة ضريبة القيمة المضافة 16٪.' },
+        { q: 'ما طرق الدفع المتاحة؟',             a: 'يمكنك الدفع عبر الحوالة البنكية. ويتوفر التقسيط أيضاً عبر بطاقة إيزي لايف؛ تواصل مع فريقنا لمعرفة التفاصيل وآلية الدفع. الأسعار المعلنة تشمل ضريبة القيمة المضافة بنسبة 16٪.' },
         { q: 'كم مدة الوصول للتوصيات؟',          a: 'الوصول الأولي شهر، ويمكنك التجديد لأشهر إضافية بأسعار مخفضة (3 أو 6 شهور).' },
-        { q: 'هل يوجد دعم مباشر؟',                 a: 'نعم. فريقنا متاح يومياً عبر الدردشة المباشرة والواتساب للرد على أسئلتك.' },
+        { q: 'هل يوجد دعم مباشر؟',                 a: `للاستفسار قبل الاشتراك، تواصل مع فريقنا عبر صفحة تواصل معنا. أما متابعة الطلاب المشتركين فتكون عبر دعم الموقع، من الأحد إلى الخميس، من الساعة ٣ إلى ٧ مساءً ${ACADEMY_TIME_LABEL_AR}. نتابع الرسائل الواردة خارج الدوام خلال ساعات العمل.` },
       ]
     : [
         { q: 'Do I need prior trading experience?', a: 'No. Packages are designed from scratch — we start with fundamentals and move gradually into advanced analysis and real execution.' },
         { q: 'What is the difference between Basic and Comprehensive?', a: 'Basic gives you the full curriculum, signals, and support. Comprehensive adds LexAI — the intelligent analysis layer that helps you understand the market more deeply.' },
         { q: 'Does the learning content expire?', a: 'No. Learning content stays with you for life. Renewal applies only to timed services like signals and LexAI.' },
-        { q: 'What payment methods are available?', a: 'We currently support trusted bank transfer. All transactions include 16% VAT.' },
+        { q: 'What payment methods are available?', a: 'You can pay by bank transfer. Installment payments are also available with the Easy Life card; contact our team for details and arrangements. Published prices include 16% VAT.' },
         { q: 'How long is signal access?', a: 'Initial access is one month, with discounted renewal options for 3 or 6 months.' },
-        { q: 'Is there live support?', a: 'Yes. Our team is available daily via live chat and WhatsApp to answer your questions.' },
+        { q: 'Is there live support?', a: `For questions before joining, contact our team through the Contact page. Enrolled students receive follow-up through website support, Sunday–Thursday, 3–7 pm ${ACADEMY_TIME_LABEL_EN}. Messages received outside these hours are followed up during working hours.` },
       ];
 
   return (
@@ -2210,11 +2259,9 @@ function CTASection({ onScrollTo }: { onScrollTo: (id: string) => void }) {
             <button type="button" onClick={() => onScrollTo('packages')} className="cin-btn-green inline-flex items-center gap-2 rounded-full px-8 py-4 text-base font-semibold text-white">
               {isArabic ? 'ابدأ الآن' : 'Start now'}<ArrowUpRight className="h-5 w-5" />
             </button>
-            <Link href={`/${isArabic ? 'ar' : 'en'}/contact`}>
-              <a className="cin-btn-ghost inline-flex items-center gap-2 rounded-full px-8 py-4 text-base font-semibold text-white">
+            <Link href={`/${isArabic ? 'ar' : 'en'}/contact`} className="cin-btn-ghost inline-flex items-center gap-2 rounded-full px-8 py-4 text-base font-semibold text-white">
                 {isArabic ? 'تواصل معنا' : 'Contact us'}
-              </a>
-            </Link>
+              </Link>
           </div>
         </div>
       </div>
@@ -2230,10 +2277,10 @@ function CinematicFooter() {
   return (
     <footer className="border-t border-white/06 bg-[#050505] py-14" dir={isRTL ? 'rtl' : 'ltr'}>
       <div className="container mx-auto px-4 md:px-8">
-        <div className="flex flex-col gap-10 md:flex-row md:items-start md:justify-between">
+        <div className="flex flex-col gap-10 xl:flex-row xl:items-start xl:justify-between">
           <div>
             <img src={BRAND_LOGO_SRC} alt={APP_TITLE} className="cin-logo-img cin-logo-footer" />
-            <p className="mt-3 max-w-xs text-sm text-white/40">
+            <p className="mt-3 max-w-xs text-sm text-white/70">
               {isArabic ? 'أكاديمية تعليم تداول عربية.' : 'Arabic-first trading education academy.'}
             </p>
             <CompanyStatement className="mt-3 max-w-sm text-sm leading-7 text-white/75" />
@@ -2241,7 +2288,7 @@ function CinematicFooter() {
             <EasyLifeNotice variant="footer" className="mt-4 max-w-sm" />
           </div>
 
-          <div className="grid grid-cols-2 gap-8 text-sm text-white/45 sm:grid-cols-3">
+          <div className="grid grid-cols-2 gap-8 text-sm text-white/70 sm:grid-cols-3">
             {[
               { heading: isArabic ? 'الأكاديمية' : 'Academy', links: [
                 { label: isArabic ? 'الرئيسية'        : 'Home',          href: '/'                       },
@@ -2260,16 +2307,16 @@ function CinematicFooter() {
               ] },
             ].map((col) => (
               <div key={col.heading} className="flex flex-col gap-3">
-                <p className="text-xs font-semibold uppercase tracking-widest text-white/22">{col.heading}</p>
+                <p className="text-xs font-semibold uppercase tracking-widest text-white/65">{col.heading}</p>
                 {col.links.map((link) => (
-                  <Link key={link.href} href={link.href}><a className="transition-colors hover:text-white">{link.label}</a></Link>
+                  <Link key={link.href} href={localizePublicHref(link.href, language)} className="transition-colors hover:text-white">{link.label}</Link>
                 ))}
               </div>
             ))}
           </div>
 
           <div className="flex flex-col gap-4">
-            <p className="text-xs font-semibold uppercase tracking-widest text-white/22">{isArabic ? 'تابعنا' : 'Follow us'}</p>
+            <p className="text-xs font-semibold uppercase tracking-widest text-white/65">{isArabic ? 'تابعنا' : 'Follow us'}</p>
             <div className="flex gap-3">
               {[
                 { icon: Instagram, href: 'https://www.instagram.com/xflex.academy?igsh=NG9jZng1emlxM3I3', label: 'Instagram' },
@@ -2277,7 +2324,7 @@ function CinematicFooter() {
                 { icon: Phone,     href: 'https://wa.me/972597596030',                                      label: 'WhatsApp'  },
               ].map(({ icon: Icon, href, label }) => (
                 <a key={label} href={href} target="_blank" rel="noopener noreferrer" aria-label={label}
-                  className="flex h-9 w-9 items-center justify-center rounded-full border border-white/12 text-white/45 transition-all hover:border-[#00C176]/40 hover:text-[#00C176]"
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-white/12 text-white/70 transition-all hover:border-[#00C176]/40 hover:text-[#00C176]"
                   style={{ transition: 'all 240ms var(--cin-ease)' }}>
                   <Icon className="h-4 w-4" />
                 </a>
@@ -2286,7 +2333,7 @@ function CinematicFooter() {
           </div>
         </div>
 
-        <div className="mt-10 flex flex-col gap-2 border-t border-white/05 pt-6 text-xs text-white/26 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mt-10 flex flex-col gap-2 border-t border-white/05 pt-6 text-xs text-white/65 sm:flex-row sm:items-center sm:justify-between">
           <p>© {new Date().getFullYear()} {APP_TITLE}. {isArabic ? 'جميع الحقوق محفوظة.' : 'All rights reserved.'}</p>
           <p>{isArabic ? 'جميع الأسعار بالشيكل وتشمل ضريبة القيمة المضافة 16٪.' : 'All prices in ILS and include 16% VAT.'}</p>
         </div>
@@ -2298,6 +2345,9 @@ function CinematicFooter() {
 // ─── Page root ────────────────────────────────────────────────────────────────
 export default function CinematicHomePage() {
   const showAnnouncement = useEasyLifeAnnouncement();
+  const reduced = usePrefersReducedMotion();
+  const [paused, setPaused] = useState(false);
+  const motionDisabled = reduced || paused;
   const scrollTo = (id: string) => {
     const el = document.getElementById(id);
     if (!el) return;
@@ -2306,11 +2356,12 @@ export default function CinematicHomePage() {
       || (window.innerWidth >= 768 ? 80 : 64);
     const headerOffset = headerHeight + 8;
     const top = el.getBoundingClientRect().top + window.scrollY - headerOffset;
-    window.scrollTo({ top, behavior: 'smooth' });
+    window.scrollTo({ top, behavior: motionDisabled ? 'auto' : 'smooth' });
   };
 
   return (
-    <div className="min-h-screen overflow-x-clip bg-[#050505] text-white">
+    <HomeMotionContext.Provider value={{ disabled: motionDisabled, paused, reduced, toggle: () => setPaused(value => !value) }}>
+    <div className={`cin-home min-h-screen overflow-x-clip bg-[#050505] text-white ${motionDisabled ? 'cin-motion-disabled' : ''}`}>
       <CinematicStyles />
       <ScrollProgress />
       <CinematicNav onScrollTo={scrollTo} />
@@ -2337,5 +2388,6 @@ export default function CinematicHomePage() {
       </main>
       <CinematicFooter />
     </div>
+    </HomeMotionContext.Provider>
   );
 }
