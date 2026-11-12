@@ -1,6 +1,6 @@
 # Homepage QA fix verification
 
-12 November 2026. Local implementation of the approved Phases 2–5. The user subsequently authorized production deployment; release verification is pending.
+12 November 2026. Approved Phases 2–5 and the separately authorized production release are complete. Live verification passed.
 
 ## What changed
 
@@ -68,7 +68,20 @@ node scripts/verify-homepage-qa.mjs
 
 Testing uses isolated Chrome and synthetic data. Physical iOS/Android devices and Safari were not available. The 200% check verifies equivalent CSS reflow at 720px; it is not a native browser-zoom or physical-device claim. Real purchases, authenticated student journeys, support response times and production after-release behaviour were not exercised.
 
-The user reviewed the local results and separately authorized production deployment on 12 November. The release will use the normal Pages workflow followed by production checks. Deployment evidence will be recorded below after verification.
+The user reviewed the local results and separately authorized production deployment on 12 November. The tested frontend is now live. A separate GitHub source push was rejected by automatic approval review because Cloudflare deployment authorization did not authorize source sharing to GitHub. The source commit is local; no GitHub push was performed. Further source sharing needs separate authorization.
+
+## Production release — 12 November 2026
+
+- Implementation commit: `325e44285b64c6be742b207f5ec4ee80615127f7`, on local branch `codex/live-package-phase-a`.
+- Cloudflare Pages production deployment: `2ba29f63-e79d-4156-8718-294c23b69d6a`, project `xflexacademy`, production branch `main`, recorded source `325e442`.
+- Deployment URL: https://2ba29f63.xflexwithai.pages.dev. Live localized homes: https://xflexacademy.com/ar and https://xflexacademy.com/en.
+- Previous Pages production deployment: `0e88c2fb-bb53-4b28-8d2c-799bb1fe1671`. This remains the frontend rollback target if required.
+- Deployed the already-tested `dist/public` output. Existing Pages middleware was included. No API Worker deployment, database migration, schedule change, customer write, support message, order or payment was performed.
+- Exact SHA-256 matches on the live domain: `assets/index-jPoTkbPN.js`, `assets/index-DwDND2-z.css`, `assets/Home-BOPRfQU9.js` and `xflex-logo-dark-transparent.png`.
+- Seven production page checks returned 200: `/ar`, `/en`, both Contact pages, both Basic package pages and `/profile`. The private profile page retained its noindex/no-store headers. API `/health` returned 200. Both localized homes on the deployment URL returned 200.
+- **12 live browser check groups passed**, using anonymous real public data without API mocks. These covered both languages' footer Contact/Basic journeys and article previews, FAQ corrections, landscape menus/localized accessibility state, 320px stacked renewal pricing, tablet navigation, reduced motion/pause/resume and absence of JavaScript exceptions.
+- Browser writes were blocked in the verification context. Physical-device/Safari and authenticated purchasing remain outside this verification.
+- [Live machine-readable results](../output/playwright/homeqa-production/results.json), [deployment record](../output/playwright/homeqa-production/deployments.json), [English live screenshot](../output/playwright/homeqa-production/en-desktop.png), [Arabic live screenshot](../output/playwright/homeqa-production/ar-desktop.png).
 
 ## Logo asset provenance
 

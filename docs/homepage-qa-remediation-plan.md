@@ -118,4 +118,4 @@ Keep the previous frontend deployment available for rollback. Revert the fronten
 | 13 — Activation expectations | 4 | Copy consistent with approval/key redemption |
 | 14 — Internal editorial wording | 4 | Customer-focused bilingual copy review |
 
-**Current next action:** Phases 2–5 are complete locally and production deployment is authorized. Publish the tested frontend build and verify the live pages.
+**Current next action:** Phases 2–5 and the authorized production deployment are complete. Production verification is recorded in the verification report. The GitHub source push remains pending separate authorization after automatic approval review rejected that source-sharing action.
