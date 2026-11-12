@@ -2,6 +2,8 @@
 
 12 November 2026. Approved Phases 2–5 and the separately authorized production release are complete. Live verification passed.
 
+Owner closeout: the owner acknowledged satisfaction with the deployed changes and requested the project memory update on 12 November. The 14-finding remediation batch is complete. The separately pending GitHub push and the verification limits below remain recorded; no additional implementation or deployment is required for this batch.
+
 ## What changed
 
 - Homepage footer and article-preview destinations retain the selected language. Existing global legacy redirects remain intact.
