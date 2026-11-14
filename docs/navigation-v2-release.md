@@ -1,6 +1,6 @@
 # Navigation V2 and workspace announcement
 
-Status: live on xflexacademy.com after the owner's explicit migration/deployment approval. Implementation `a92e2d0` and reviewed source/memory revision `f0c63d7` are pushed to `origin/codex/live-package-phase-a`.
+Status: live on xflexacademy.com. The initial release was `a92e2d0`/`f0c63d7`; signed-in QA corrections `ce919e5` are now pushed and deployed on Pages `88a66b00-3dda-4626-bf10-5d648b5f407e`. Worker `31364cc0-2688-44bb-acc7-ccbd01889a44` and migration 135 remain in place.
 
 ## Result and scope
 
@@ -85,7 +85,7 @@ The QA round identified three navigation corrections within the approved release
 2. A changed language could revert when another routed layout mounted with an older account cache. The client updates only the cached language preference immediately, scopes in-flight intent to that account, keeps the intent through delayed saves/revalidation, and then refreshes the existing account query once. Other preferences and account fields are preserved; stale completions cannot overwrite a different account. There is no role, login, session-expiry or server authorization change.
 3. Admin page search was mounted inside the mobile drawer, so the top-bar search could not open it with the drawer closed. The dialog now stays mounted outside the drawer. Search and sidebar share the same account-scoped favorites, authorized destinations, notification-read callback and full-admin record-search restriction. Opening search from the drawer closes the drawer.
 
-Focused verification passes 11 client-layout lifecycle tests and 33 navigation/catalog/badge tests. TypeScript, application build and SEO/middleware checks pass. Eighteen browser regression groups cover both language-switch directions with delayed acknowledgements and refreshes, student/admin dialogs in Arabic/English at 320/390/1024/1440 px, header/close geometry, localized close labels, keyboard closure, mobile top-bar/drawer search and shared favorites. The full 75-group navigation regression is repeated before publication.
+Focused verification passes 11 client-layout lifecycle tests and 33 navigation/catalog/badge tests. TypeScript, application build and SEO/middleware checks pass. Eighteen browser regression groups cover both language-switch directions with delayed acknowledgements and refreshes, student/admin dialogs in Arabic/English at 320/390/1024/1440 px, header/close geometry, localized close labels, keyboard closure, mobile top-bar/drawer search and shared favorites. The full 75-group navigation regression also passed, with zero JavaScript exceptions across all 93 groups.
 
 The language correction adds one existing `auth.me` refresh per successful explicit language change. It does not poll. The actual unchanged `getUserById` SQL was executed against an isolated production-schema fixture; local and read-only production query plans select the users integer primary key without a scan, with at most one account result. Existing context/session checks and ordinary activity handling remain unchanged. The dialog/favorites changes add zero SQL reads. No Worker deployment or migration is required for these frontend corrections.
 
@@ -98,3 +98,11 @@ Remaining findings in pages unchanged by this navigation follow-up:
 | English dashboard singular grammar | Low | One completed lesson renders “1 lessons completed” in `StudentDashboardOverview.tsx`. Use the singular form for one. |
 
 These three findings are recorded for a separate copy/localization cleanup; this QA follow-up does not change them. Authenticated admin/support accounts, paid actions, physical phones and Safari remain outside this real-account round. Native screenshots and private account details were not added to tracked source. Operational/synthetic evidence remains ignored under `output/playwright/navigation-v2/signed-in-qa/`.
+
+### Corrective frontend release and live closeout
+
+The verified corrections are committed and pushed as `ce919e5`. Pages production deployment `88a66b00-3dda-4626-bf10-5d648b5f407e` is active on `main`, source `ce919e5`, at `https://88a66b00.xflexwithai.pages.dev`. This follow-up makes no Worker deployment, migration, role change or financial/account adjustment. Frontend rollback target is `90bdc9cb-734c-4e96-99b5-1330769fbafd`; it retains the original V2 functionality but also the three corrected navigation issues.
+
+Post-release checks passed nine exact asset hashes, 16 route checks, API health and anonymous 401 responses for both announcement endpoints. All 18 targeted regression groups also passed against the published assets with simulated account/API responses and zero JavaScript exceptions.
+
+The real signed-in account was then refreshed onto the new release. The Arabic page-search heading and close button are separated, and the localized close control works. English persisted from Documents to Dashboard; Arabic then persisted from Dashboard to Documents and back again. The account's original Arabic preference was restored and Chrome was left on the Arabic dashboard. The deferred announcement stayed hidden through these fresh loads and navigations. No next-login cycle, permanent announcement dismissal, paid action or administrative write was performed during this account round.
