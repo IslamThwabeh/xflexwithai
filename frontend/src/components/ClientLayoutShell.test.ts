@@ -7,6 +7,11 @@ const mockTrack = vi.fn();
 const mockLogout = vi.fn();
 const mockSetLanguage = vi.fn();
 const access = vi.hoisted(() => ({ isStaff: false, isAdmin: false, staffRoles: [] as string[] }));
+vi.mock("./navigation/InterfaceAnnouncement", () => ({ default: () => null }));
+vi.mock("./navigation/ClientNavigation", () => ({
+  default: ({ items, subHeader }: { items: Array<{ href: string; label: string }>; subHeader?: React.ReactNode }) =>
+    React.createElement("nav", null, ...items.map(item => React.createElement("a", { key: item.href, href: item.href }, item.label)), subHeader),
+}));
 
 vi.mock("@/_core/hooks/useAuth", () => ({
   useAuth: () => ({
@@ -141,10 +146,13 @@ describe("ClientLayout shell", () => {
       ),
     );
 
-    expect(html).toContain("max-w-[1440px]");
-    expect(html).toContain("min-w-0 flex-1 items-center justify-between gap-3");
-    expect(html).toContain("hidden min-w-0 flex-1 flex-wrap items-center justify-center gap-x-1 gap-y-1 lg:flex");
     expect(html).toContain("flex-1 min-w-0");
+    expect(html).toContain("nv2-client-main");
+    expect(html).toContain("Dashboard body");
+    for (const path of ["/courses", "/documents", "/lexai", "/recommendations", "/guides", "/support", "/quiz", "/my-packages", "/activate-key", "/broker-onboarding", "/notifications", "/my-points", "/calculators"]) {
+      expect(html).toContain(`href="${path}"`);
+    }
+    for (const path of ["/community", "/surveys", "/job-opportunities", "/live-package"]) expect(html).not.toContain(`href="${path}"`);
   });
 
   it.each([
@@ -156,7 +164,6 @@ describe("ClientLayout shell", () => {
     Object.assign(access, account);
     const html = renderToStaticMarkup(React.createElement(ClientLayout, null, "Page body"));
     const inboxLinks = html.match(/href="\/admin\/live-expert"/g) ?? [];
-    // The shared items render in both the desktop bar and mobile menu.
-    expect(inboxLinks).toHaveLength(visible ? 2 : 0);
+    expect(inboxLinks).toHaveLength(visible ? 1 : 0);
   });
 });

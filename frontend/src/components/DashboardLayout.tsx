@@ -1,3 +1,6 @@
+import AdminNavigation from "./navigation/AdminNavigation";
+import InterfaceAnnouncement from "./navigation/InterfaceAnnouncement";
+import { findActiveNavigationPath } from "@/lib/navigationV2";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -18,9 +21,6 @@ import {
   SidebarProvider,
   SidebarTrigger,
   useSidebar,
-  SidebarGroup,
-  SidebarGroupLabel,
-  SidebarGroupContent,
 } from "@/components/ui/sidebar";
 import { APP_LOGO, APP_TITLE, getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
@@ -28,7 +28,6 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import {
   LayoutDashboard,
   LogOut,
-  PanelLeft,
   Users,
   BookOpen,
   Key,
@@ -59,7 +58,6 @@ import {
   Moon,
   Sun,
   ChevronDown,
-  ChevronRight,
   BarChart3,
   Megaphone,
   GraduationCap,
@@ -69,6 +67,7 @@ import {
   Mail,
   Boxes,
   Sparkles,
+  X,
   User,
 } from "lucide-react";
 import {
@@ -456,13 +455,15 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const [sidebarWidth, setSidebarWidth] = useState(() => {
-    const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);
-    return saved ? parseInt(saved, 10) : DEFAULT_WIDTH;
+    try {
+      const saved = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY));
+      return saved >= MIN_WIDTH && saved <= MAX_WIDTH ? saved : DEFAULT_WIDTH;
+    } catch { return DEFAULT_WIDTH; }
   });
   const { loading, user } = useAuth();
 
   useEffect(() => {
-    localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString());
+    try { localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString()); } catch { /* Storage is optional. */ }
   }, [sidebarWidth]);
 
   if (loading) {
@@ -471,7 +472,7 @@ export default function DashboardLayout({
 
   if (!user) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[#faf7f2] dark:bg-[#0b1120]">
+      <div className="flex items-center justify-center min-h-screen bg-[#f6f8f8] dark:bg-[#0b1120]">
         <div className="flex flex-col items-center gap-8 p-8 max-w-md w-full">
           <div className="flex flex-col items-center gap-6">
             <div className="relative group">
@@ -554,6 +555,7 @@ function DashboardLayoutContent({
   const isCollapsed = state === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
   const [showAdminSearch, setShowAdminSearch] = useState(false);
+  const [showPageSearch, setShowPageSearch] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
 
@@ -766,44 +768,33 @@ function DashboardLayoutContent({
     staffRolesForAvailability,
   ]);
 
-  // Find active menu item across all sections
-  const activeMenuItem = visibleSections
-    .flatMap(section => section.items)
-    .find(item => item.path === location);
-
-  // Find which section contains the active item
-  const activeSectionIndex = visibleSections.findIndex(section =>
-    section.items.some(item => item.path === location)
-  );
-
-  // Track which sections are expanded — auto-expand the active one
-  const [expandedSections, setExpandedSections] = useState<Set<number>>(() => {
-    const initial = new Set<number>();
-    if (activeSectionIndex >= 0) initial.add(activeSectionIndex);
-    return initial;
+  const navigationItems = visibleSections.flatMap(section => section.items).map(item => {
+    const feature = getAdminFeatureByPath(item.path);
+    const Icon = item.icon;
+    return {
+      path: item.path,
+      label: menuLabel(item),
+      keywords: `${item.label?.en ?? ""} ${item.label?.ar ?? ""} ${item.path} ${item.descKey ? t(item.descKey) : ""}`,
+      icon: <Icon className="h-4 w-4" />,
+      badge: routeBadges?.[item.path] ?? 0,
+      featureEnabled: feature && adminCheck?.isAdmin && featureOverview ? featureOverview.modules[feature.overviewKey].enabled : undefined,
+    };
   });
-
-  // Keep active section expanded when navigating
-  useEffect(() => {
-    if (activeSectionIndex >= 0) {
-      setExpandedSections(prev => {
-        if (prev.has(activeSectionIndex)) return prev;
-        const next = new Set(prev);
-        next.add(activeSectionIndex);
-        return next;
-      });
-    }
-  }, [activeSectionIndex]);
-
-  const toggleSection = (index: number) => {
-    setExpandedSections(prev => {
-      const next = new Set(prev);
-      if (next.has(index)) next.delete(index);
-      else next.add(index);
-      return next;
-    });
+  const activePath = findActiveNavigationPath(navigationItems, location);
+  const activeMenuItem = visibleSections.flatMap(section => section.items).find(item => item.path === activePath);
+  const onNavigation = (path: string) => {
+    setOpenMobile(false);
+    if ((routeBadges?.[path] ?? 0) > 0) markReadByRoute.mutate({ actionUrl: path });
   };
-
+  useEffect(() => {
+    const key = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault(); setShowPageSearch(previous => !previous);
+      }
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, []);
   useEffect(() => {
     if (isCollapsed) {
       setIsResizing(false);
@@ -820,8 +811,8 @@ function DashboardLayoutContent({
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing) return;
 
-      const sidebarLeft = sidebarRef.current?.getBoundingClientRect().left ?? 0;
-      const newWidth = e.clientX - sidebarLeft;
+      const bounds = sidebarRef.current?.getBoundingClientRect();
+      const newWidth = isRTL ? (bounds?.right ?? window.innerWidth) - e.clientX : e.clientX - (bounds?.left ?? 0);
       if (newWidth >= MIN_WIDTH && newWidth <= MAX_WIDTH) {
         setSidebarWidth(newWidth);
       }
@@ -844,218 +835,27 @@ function DashboardLayoutContent({
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
     };
-  }, [isResizing, setSidebarWidth]);
+  }, [isResizing, setSidebarWidth, isRTL]);
 
   return (
-    <div className="relative flex w-full" ref={sidebarRef} dir="ltr">
+    <div className="nv2-admin-shell relative flex w-full min-w-0" ref={sidebarRef} dir={isRTL ? "rtl" : "ltr"}>
       <Sidebar
         collapsible="icon"
+        side={isRTL ? "right" : "left"}
         className="no-print border-r-0"
         disableTransition={isResizing}
       >
-        <SidebarHeader className="h-16 justify-center border-b border-white/[0.06]">
-          <div className="flex items-center gap-3 pl-2 group-data-[collapsible=icon]:px-0 transition-all w-full">
-            {isCollapsed ? (
-              <div className="relative h-8 w-8 shrink-0 group">
-                <img
-                  src={APP_LOGO}
-                  className="h-8 w-8 rounded-md object-cover ring-1 ring-emerald-500/30"
-                  alt="Logo"
-                />
-                <button
-                  onClick={toggleSidebar}
-                  className="absolute inset-0 flex items-center justify-center bg-emerald-500/10 rounded-md ring-1 ring-emerald-500/30 opacity-0 group-hover:opacity-100 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-                >
-                  <PanelLeft className="h-4 w-4 text-emerald-400" />
-                </button>
-              </div>
-            ) : (
-              <>
-                <div className="flex items-center gap-3 min-w-0">
-                  <img
-                    src={APP_LOGO}
-                    className="h-8 w-8 rounded-md object-cover ring-1 ring-emerald-500/30 shrink-0"
-                    alt="Logo"
-                  />
-                  <span className="font-semibold tracking-tight truncate text-white">
-                    {APP_TITLE}
-                  </span>
-                </div>
-              </>
-            )}
+        <SidebarHeader className="h-20 justify-center border-b border-white/10 px-4">
+          <div className="flex items-center justify-between gap-2">
+            <Link href={navigationItems[0]?.path ?? "/profile"} className="min-w-0 rounded-lg bg-white p-2" aria-label={APP_TITLE}>
+              <img src={APP_LOGO} className={isCollapsed && !isMobile ? "h-6 w-6 object-contain" : "h-8 w-28 object-contain"} alt={APP_TITLE} />
+            </Link>
+            {isMobile && <button type="button" className="flex h-10 w-10 items-center justify-center rounded-lg text-white hover:bg-white/10" onClick={() => setOpenMobile(false)} aria-label={language === "ar" ? "إغلاق القائمة" : "Close menu"}><X size={20} /></button>}
           </div>
         </SidebarHeader>
 
         <SidebarContent>
-          {visibleSections.map((section, sectionIndex) => {
-            const isSingleItem = section.items.length === 1;
-            const sectionHasActive = section.items.some(
-              item => item.path === location
-            );
-            const isExpanded = expandedSections.has(sectionIndex);
-            const SectionIcon = section.icon;
-            const singleItemPath = isSingleItem ? section.items[0].path : null;
-            const singleItemBadgeCount = singleItemPath
-              ? (routeBadges?.[singleItemPath] ?? 0)
-              : 0;
-
-            return (
-              <SidebarGroup key={sectionIndex} className="shrink-0 py-0.5 px-2">
-                {/* Section header row — clickable */}
-                <button
-                  onClick={() => {
-                    if (isSingleItem) {
-                      if (isMobile) {
-                        setOpenMobile(false);
-                      }
-                      setLocation(section.items[0].path);
-                      if (singleItemBadgeCount > 0) {
-                        markReadByRoute.mutate({
-                          actionUrl: section.items[0].path,
-                        });
-                      }
-                    } else {
-                      toggleSection(sectionIndex);
-                    }
-                  }}
-                  className={`flex items-center gap-3 w-full px-3 py-2 rounded-xl text-[13px] font-medium transition-all group/section ${
-                    isSingleItem && location === section.items[0].path
-                      ? "bg-gradient-to-l from-emerald-600/20 to-emerald-500/10 text-white border border-emerald-500/20"
-                      : sectionHasActive
-                        ? "text-emerald-400"
-                        : "text-gray-400 hover:text-white hover:bg-white/[0.04]"
-                  }`}
-                >
-                  <div
-                    className={`relative w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
-                      (isSingleItem && location === section.items[0].path) ||
-                      sectionHasActive
-                        ? "bg-emerald-500/15"
-                        : "bg-white/[0.04] group-hover/section:bg-white/[0.06]"
-                    }`}
-                  >
-                    <SectionIcon
-                      className={`w-4 h-4 ${
-                        (isSingleItem && location === section.items[0].path) ||
-                        sectionHasActive
-                          ? "text-emerald-400"
-                          : ""
-                      }`}
-                    />
-                    {singleItemBadgeCount > 0 && (
-                      <span className="absolute -end-1 -top-1 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                        {singleItemBadgeCount > 99
-                          ? "99+"
-                          : singleItemBadgeCount}
-                      </span>
-                    )}
-                  </div>
-                  {!isCollapsed && (
-                    <>
-                      <span className="flex-1 text-start truncate">
-                        {menuLabel(section)}
-                      </span>
-                      {isSingleItem && singleItemBadgeCount > 0 && (
-                        <span className="min-w-[20px] h-5 px-1.5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                          {singleItemBadgeCount > 99
-                            ? "99+"
-                            : singleItemBadgeCount}
-                        </span>
-                      )}
-                      {!isSingleItem && (
-                        <ChevronRight
-                          className={`w-3.5 h-3.5 text-gray-500 transition-transform duration-200 ${isExpanded ? "rotate-90" : ""}`}
-                        />
-                      )}
-                    </>
-                  )}
-                </button>
-
-                {/* Sub-items — collapsible */}
-                {!isSingleItem && isExpanded && !isCollapsed && (
-                  <SidebarGroupContent className="mt-0.5">
-                    <SidebarMenu>
-                      {section.items.map(item => {
-                        const isActive = location === item.path;
-                        const label = menuLabel(item);
-                        const badgeCount = routeBadges?.[item.path] ?? 0;
-                        const featureDefinition = getAdminFeatureByPath(
-                          item.path
-                        );
-                        const featureStatus =
-                          featureDefinition &&
-                          adminCheck?.isAdmin &&
-                          featureOverview
-                            ? featureOverview.modules[
-                                featureDefinition.overviewKey
-                              ].enabled
-                            : null;
-                        const featureStatusLabel =
-                          featureStatus === null
-                            ? null
-                            : featureStatus
-                              ? language === "ar"
-                                ? "مفعّل"
-                                : "Enabled"
-                              : language === "ar"
-                                ? "غير مفعّل"
-                                : "Disabled";
-                        return (
-                          <SidebarMenuItem key={item.path}>
-                            <SidebarMenuButton
-                              isActive={isActive}
-                              onClick={() => {
-                                if (isMobile) {
-                                  setOpenMobile(false);
-                                }
-                                setLocation(item.path);
-                                if (badgeCount > 0) {
-                                  markReadByRoute.mutate({
-                                    actionUrl: item.path,
-                                  });
-                                }
-                              }}
-                              tooltip={
-                                featureStatusLabel
-                                  ? `${label} — ${featureStatusLabel}`
-                                  : label
-                              }
-                              className={`transition-all font-normal ps-12 py-1.5 text-[13px] ${
-                                isActive
-                                  ? "text-emerald-400 bg-emerald-500/[0.08] font-medium"
-                                  : "text-gray-500 hover:text-white hover:bg-white/[0.04]"
-                              }`}
-                            >
-                              <span
-                                className={`w-1.5 h-1.5 rounded-full shrink-0 ${isActive ? "bg-emerald-400" : "bg-gray-600"}`}
-                              />
-                              <span className="flex-1">{label}</span>
-                              {featureStatusLabel && (
-                                <span
-                                  className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${
-                                    featureStatus
-                                      ? "bg-emerald-500/15 text-emerald-300"
-                                      : "bg-amber-500/15 text-amber-300"
-                                  }`}
-                                >
-                                  {featureStatusLabel}
-                                </span>
-                              )}
-                              {badgeCount > 0 && (
-                                <span className="min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                                  {badgeCount > 99 ? "99+" : badgeCount}
-                                </span>
-                              )}
-                            </SidebarMenuButton>
-                          </SidebarMenuItem>
-                        );
-                      })}
-                    </SidebarMenu>
-                  </SidebarGroupContent>
-                )}
-              </SidebarGroup>
-            );
-          })}
+          <AdminNavigation key={user?.id} items={navigationItems} accountId={user?.id ?? 0} language={language} searchOpen={showPageSearch} onSearchOpen={setShowPageSearch} onNavigate={onNavigation} onSearchRecords={adminCheck?.isAdmin ? () => setShowAdminSearch(true) : undefined} />
         </SidebarContent>
 
         <SidebarFooter className="p-3 border-t border-white/[0.06]">
@@ -1078,7 +878,7 @@ function DashboardLayoutContent({
           if (isCollapsed) return;
           setIsResizing(true);
         }}
-        style={{ zIndex: 50, left: "var(--sidebar-width)", width: "4px" }}
+        style={{ zIndex: 50, insetInlineStart: "var(--sidebar-width)", width: "4px" }}
       />
 
       <SidebarInset>
@@ -1104,16 +904,7 @@ function DashboardLayoutContent({
             <div className="flex items-center gap-1">
               {/* ── Group 1: Utilities (Search + Dark mode) ── */}
               <div className="flex items-center gap-0.5 bg-gray-100/70 dark:bg-white/[0.04] rounded-xl p-1">
-                {adminCheck?.isAdmin && (
-                  <button
-                    onClick={() => setShowAdminSearch(true)}
-                    className="flex h-11 w-11 items-center justify-center rounded-lg transition hover:bg-white sm:h-8 sm:w-8 dark:hover:bg-white/[0.08]"
-                    title={t("admin.sidebar.search")}
-                  >
-                    <Search className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                  </button>
-                )}
-                {toggleTheme && (
+                <button type="button" onClick={() => setShowPageSearch(true)} className="flex h-11 w-11 items-center justify-center rounded-lg transition hover:bg-white sm:h-8 sm:w-8 dark:hover:bg-white/10" aria-label={language === "ar" ? "ابحث عن صفحة" : "Find a page"} title="Ctrl / Cmd + K"><Search className="h-4 w-4" /></button>                {toggleTheme && (
                   <button
                     onClick={toggleTheme}
                     className="flex h-11 w-11 items-center justify-center rounded-lg transition hover:bg-white sm:h-8 sm:w-8 dark:hover:bg-white/[0.08]"
@@ -1201,14 +992,15 @@ function DashboardLayoutContent({
         </header>
 
         <main
-          className="flex-1 p-4 md:p-6 bg-[#faf7f2] dark:bg-[#0b1120]"
+          className="flex-1 p-4 md:p-6 bg-[#f6f8f8] dark:bg-[#0b1120]"
           dir={isRTL ? "rtl" : "ltr"}
         >
+          {user && <InterfaceAnnouncement key={user.id} user={user} audience={adminCheck?.isAdmin ? "admin" : "staff"} />}
           {children}
         </main>
       </SidebarInset>
       {showAdminSearch && (
-        <AdminSearchDialogLazy onClose={() => setShowAdminSearch(false)} />
+        <Suspense fallback={null}><AdminSearchDialogLazy onClose={() => setShowAdminSearch(false)} /></Suspense>
       )}
     </div>
   );

@@ -3,6 +3,7 @@ import { trpc } from '@/lib/trpc';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Search, X, User, ShoppingCart, BookOpen, FileText, Key, Loader2 } from 'lucide-react';
 import { useLocation } from 'wouter';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 
 export default function AdminSearchDialog({ onClose }: { onClose: () => void }) {
   const { language } = useLanguage();
@@ -14,6 +15,7 @@ export default function AdminSearchDialog({ onClose }: { onClose: () => void }) 
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
+  useEffect(() => () => clearTimeout(timerRef.current), []);
 
   const handleChange = useCallback((value: string) => {
     setQuery(value);
@@ -30,15 +32,17 @@ export default function AdminSearchDialog({ onClose }: { onClose: () => void }) 
   const hasResults = data && (data.users.length || data.orders.length || data.courses.length || data.articles.length || data.keys.length);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-start justify-center pt-[12vh]" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden" onClick={e => e.stopPropagation()} dir={isRtl ? 'rtl' : 'ltr'}>
+    <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-lg overflow-hidden p-0 [&>button]:hidden" dir={isRtl ? 'rtl' : 'ltr'}>
+        <DialogTitle className="sr-only">{isRtl ? 'البحث في السجلات' : 'Search records'}</DialogTitle>
+        <DialogDescription className="sr-only">{isRtl ? 'ابحث عن مستخدم أو طلب أو دورة أو مقال أو مفتاح.' : 'Find a user, order, course, article or key.'}</DialogDescription>
         <div className="flex items-center gap-3 px-4 py-3 border-b">
           <Search className="w-5 h-5 text-muted-foreground shrink-0" />
-          <input ref={inputRef} type="text" value={query} onChange={e => handleChange(e.target.value)}
+          <input ref={inputRef} type="text" aria-label={isRtl ? 'البحث في السجلات' : 'Search records'} value={query} onChange={e => handleChange(e.target.value)}
             placeholder={isRtl ? 'بحث عن المستخدمين، الطلبات، المفاتيح...' : 'Search users, orders, keys...'}
             className="flex-1 outline-none text-sm bg-transparent" />
           {isLoading && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded"><X className="w-4 h-4" /></button>
+          <button onClick={onClose} aria-label={isRtl ? 'إغلاق' : 'Close'} className="p-3 hover:bg-gray-100 rounded"><X className="w-4 h-4" /></button>
         </div>
 
         <div className="max-h-[50vh] overflow-y-auto">
@@ -55,7 +59,7 @@ export default function AdminSearchDialog({ onClose }: { onClose: () => void }) 
             <div className="p-2">
               <p className="px-2 py-1 text-xs font-medium text-muted-foreground uppercase">{isRtl ? 'المستخدمون' : 'Users'}</p>
               {data.users.map((u: any) => (
-                <button key={u.id} onClick={() => go('/admin/users')}
+                <button key={u.id} onClick={() => go('/admin/students')}
                   className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 text-start">
                   <User className="w-4 h-4 text-emerald-500 shrink-0" />
                   <div className="min-w-0">
@@ -110,7 +114,7 @@ export default function AdminSearchDialog({ onClose }: { onClose: () => void }) 
             <div className="p-2">
               <p className="px-2 py-1 text-xs font-medium text-muted-foreground uppercase">{isRtl ? 'المفاتيح' : 'Keys'}</p>
               {data.keys.map((k: any) => (
-                <button key={k.id} onClick={() => go('/admin/keys')}
+                <button key={k.id} onClick={() => go('/admin/package-keys')}
                   className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 text-start">
                   <Key className="w-4 h-4 text-amber-500 shrink-0" />
                   <div className="min-w-0">
@@ -124,7 +128,7 @@ export default function AdminSearchDialog({ onClose }: { onClose: () => void }) 
         </div>
 
         <div className="px-4 py-2 border-t text-xs text-muted-foreground text-center">Esc</div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

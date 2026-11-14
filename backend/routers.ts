@@ -36,6 +36,7 @@ import { authenticatedProcedure, publicProcedure, protectedProcedure, router } f
 import { CURRENT_TERMS_VERSION } from "../shared/legal";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import { getInterfaceAnnouncementStatus, recordInterfaceAnnouncementAction } from "./services/interface-announcement.service";
 import { logger } from "./_core/logger";
 import * as db from "./db";
 import { filterRecipientsByMutedThreads } from "./services/recommendation-thread.service";
@@ -2458,6 +2459,22 @@ export const appRouter = router({
       }),
   }),
   
+  interfaceAnnouncements: router({
+    // Client identity/login fields separate cache entries; persistence always uses authenticated server values.
+    status: protectedProcedure
+      .input(z.object({ accountId: z.number().int(), loginAt: z.string().max(100) }))
+      .query(({ ctx, input }) => {
+        if (input.accountId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN" });
+        return getInterfaceAnnouncementStatus(ctx.user.id, String(ctx.user.lastSignedIn ?? "legacy-session"));
+      }),
+    respond: protectedProcedure
+      .input(z.object({ accountId: z.number().int(), action: z.enum(["dismiss", "later"]) }))
+      .mutation(({ ctx, input }) => {
+        if (input.accountId !== ctx.user.id) throw new TRPCError({ code: "FORBIDDEN" });
+        return recordInterfaceAnnouncementAction(ctx.user.id, String(ctx.user.lastSignedIn ?? "legacy-session"), input.action);
+      }),
+  }),
+
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
 

@@ -1,4 +1,4 @@
-import { index, int, sqliteTable, text, integer, unique, real } from "drizzle-orm/sqlite-core";
+import { index, int, sqliteTable, text, integer, unique, real, primaryKey, check } from "drizzle-orm/sqlite-core";
 import { relations, sql } from "drizzle-orm";
 
 /**
@@ -75,6 +75,17 @@ export const admins = sqliteTable("admins", {
 
 export type Admin = typeof admins.$inferSelect;
 export type InsertAdmin = typeof admins.$inferInsert;
+
+export const interfaceAnnouncementStates = sqliteTable("interface_announcement_states", {
+  announcementId: text("announcement_id").notNull(),
+  accountId: integer("account_id").notNull(),
+  dismissedAt: text("dismissed_at"),
+  deferredLogin: text("deferred_login"),
+  updatedAt: text("updated_at").notNull(),
+}, table => [
+  primaryKey({ columns: [table.announcementId, table.accountId] }),
+  check("interface_announcement_account_nonzero", sql`${table.accountId} <> 0`),
+]);
 
 /**
  * Shared SEO/business-owner intake. Full admins collaborate on one response set;
