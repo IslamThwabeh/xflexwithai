@@ -52,8 +52,13 @@ function getPreferredLanguageFromNotificationPrefs(notificationPrefs: string | n
   }
 }
 
+// Only in-flight language choices live here, scoped to the authenticated account.
+// Routed layout remounts must not hydrate an older preference while saving it.
+const pendingClientLanguages = new Map<number, { language: "ar" | "en" }>();
+
 export default function ClientLayout({ children, subHeader }: ClientLayoutProps) {
   const { user, logout } = useAuth();
+  const utils = trpc.useUtils();
   const { track } = useEngagementTracker();
   const { t, language, setLanguage, isRTL } = useLanguage();
   const [location] = useLocation();
@@ -69,7 +74,36 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
   const { data: jobEligibilityAvailability } = trpc.studentJobEligibility.availability.useQuery(undefined, { retry: false });
   const { data: livePackageAccess } = trpc.livePackage.myWorkspace.useQuery(undefined, { retry: false });
   const touchInteractionMutation = trpc.users.touchInteraction.useMutation();
-  const updateNotificationPrefsMutation = trpc.users.updateNotificationPrefs.useMutation();
+  const cacheLanguage = (accountId: number, nextLanguage: "ar" | "en") => {
+    utils.auth.me.setData(undefined, current => {
+      if (!current || current.id !== accountId) return current;
+      let preferences: Record<string, unknown> = {};
+      try {
+        const parsed: unknown = JSON.parse(current.notificationPrefs || "{}");
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          preferences = parsed as Record<string, unknown>;
+        }
+      } catch { /* Invalid legacy preferences are treated like an empty object. */ }
+      return { ...current, notificationPrefs: JSON.stringify({ ...preferences, language: nextLanguage }) };
+    });
+  };
+  const updateNotificationPrefsMutation = trpc.users.updateNotificationPrefs.useMutation({
+    onMutate: () => ({ accountId: user?.id, intent: user ? pendingClientLanguages.get(user.id) : undefined }),
+    onSuccess: async (_result, _input, context) => {
+      if (!context?.accountId || !context.intent) return;
+      // Revalidate once after saving, keeping the intent until stale reads settle.
+      // Identity/permissions still come from the normal authenticated endpoint.
+      await utils.auth.me.invalidate();
+      if (pendingClientLanguages.get(context.accountId) !== context.intent) return;
+      cacheLanguage(context.accountId, context.intent.language);
+      pendingClientLanguages.delete(context.accountId);
+    },
+    onError: (_error, _input, context) => {
+      if (context?.accountId && pendingClientLanguages.get(context.accountId) === context.intent) {
+        pendingClientLanguages.delete(context.accountId);
+      }
+    },
+  });
   const unreadNotifCount = unreadNotifData?.count ?? 0;
   const showStudentSurveysNav = surveyAvailability?.enabled === true && surveyAvailability.access === "student";
   const showCommunityNav =
@@ -92,7 +126,8 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
       return;
     }
 
-    const preferredLanguage = getPreferredLanguageFromNotificationPrefs((user as any)?.notificationPrefs);
+    const preferredLanguage = pendingClientLanguages.get(user.id)?.language
+      ?? getPreferredLanguageFromNotificationPrefs((user as any)?.notificationPrefs);
     if (preferredLanguage && preferredLanguage !== language) {
       setLanguage(preferredLanguage);
     }
@@ -151,11 +186,15 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
 
   const toggleLanguagePreference = () => {
     const nextLanguage = language === "ar" ? "en" : "ar";
-    setLanguage(nextLanguage);
 
     if (user) {
+      // A newly mounted layout hydrates language from auth.me. Keep that cache
+      // in sync immediately so navigation cannot restore the previous language.
+      pendingClientLanguages.set(user.id, { language: nextLanguage });
+      cacheLanguage(user.id, nextLanguage);
       updateNotificationPrefsMutation.mutate({ language: nextLanguage });
     }
+    setLanguage(nextLanguage);
   };
 
   const navItems = [

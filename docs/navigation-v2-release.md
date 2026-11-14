@@ -70,3 +70,31 @@ No package, order, payment, accounting balance, customer message or role assignm
 - Code rollback targets: Worker `ac7fbae3-7516-4454-bdf7-fe7cd0961439` and Pages `d717e4cf-1434-46c7-8a73-6d62633699c1`. Keep the additive table and legitimate user choices; do not restore the whole database for a code rollback.
 
 The initial automatic approval-review attempt failed because its reviewer hit a usage limit, before any deployment command executed. The owner repeated the instruction to proceed; the normal approval retry succeeded. No approval bypass was used. Live verification and private operational evidence are under ignored `output/playwright/navigation-v2/production-release/`.
+
+## Signed-in student verification and navigation corrections
+
+The owner supplied the developer test student session. Native Chrome verification opened all 18 available destinations: dashboard, LexAI, Recommendations, documents, guides, support, community, jobs, quizzes, surveys, package, Live Package, activation, brokers, notifications, points, calculators and profile. Both language versions of page search listed the same permitted set and filtering opened the correct destination. No admin or staff-only route appeared for the student.
+
+The initial guidance rendered correctly in Arabic and English. Remind me next login saved through the real API, disappeared, and remained hidden after full refreshes and navigation across the workspace. Actual next-sign-in return and permanent dismissal on this account were not exercised; those paths retain their earlier actual-SQL and synthetic browser coverage.
+
+The existing course played and paused successfully; the dashboard retained its accurate 3%/one-lesson progress and exemption distinction. The library displayed ten documents, and the authenticated overview PDF rendered in Chrome's viewer with 20 pages. The entitled Live workspace and its protected recording also played and paused successfully. LexAI and Recommendations correctly presented this account's expired-service gates while course/documents remained accessible. Support, notifications, points, calculator updates, community, job eligibility, submitted-survey status, package details, profile and broker status loaded. The activation form was inspected without submitting a key. No order, payment, package, credit, refund, role, support message, community post or application was submitted. Only normal viewing/engagement, the announcement deferral and language-preference test actions occurred.
+
+The QA round identified three navigation corrections within the approved release:
+
+1. The Arabic page-search close button overlapped the heading. Its position now mirrors to the left, the header reserves space, its accessible label is localized, and its target is 44 × 44 px.
+2. A changed language could revert when another routed layout mounted with an older account cache. The client updates only the cached language preference immediately, scopes in-flight intent to that account, keeps the intent through delayed saves/revalidation, and then refreshes the existing account query once. Other preferences and account fields are preserved; stale completions cannot overwrite a different account. There is no role, login, session-expiry or server authorization change.
+3. Admin page search was mounted inside the mobile drawer, so the top-bar search could not open it with the drawer closed. The dialog now stays mounted outside the drawer. Search and sidebar share the same account-scoped favorites, authorized destinations, notification-read callback and full-admin record-search restriction. Opening search from the drawer closes the drawer.
+
+Focused verification passes 11 client-layout lifecycle tests and 33 navigation/catalog/badge tests. TypeScript, application build and SEO/middleware checks pass. Eighteen browser regression groups cover both language-switch directions with delayed acknowledgements and refreshes, student/admin dialogs in Arabic/English at 320/390/1024/1440 px, header/close geometry, localized close labels, keyboard closure, mobile top-bar/drawer search and shared favorites. The full 75-group navigation regression is repeated before publication.
+
+The language correction adds one existing `auth.me` refresh per successful explicit language change. It does not poll. The actual unchanged `getUserById` SQL was executed against an isolated production-schema fixture; local and read-only production query plans select the users integer primary key without a scan, with at most one account result. Existing context/session checks and ordinary activity handling remain unchanged. The dialog/favorites changes add zero SQL reads. No Worker deployment or migration is required for these frontend corrections.
+
+Remaining findings in pages unchanged by this navigation follow-up:
+
+| Finding | Priority | Reproduction and expected behavior |
+| --- | --- | --- |
+| Quiz interface remains Arabic in English mode | Medium | Open Quizzes with the shell in English. The static page headings and controls in `QuizLevels.tsx` remain Arabic. Quiz content can retain its authored language, but interface labels should follow the selected locale. |
+| Broker completion overstates service access | Medium | An account with completed broker onboarding and expired timed services sees “You now have access to LexAI and Recommendations” in `BrokerOnboarding.tsx`, while both services correctly show expired access. Completion copy should reflect actual service status. |
+| English dashboard singular grammar | Low | One completed lesson renders “1 lessons completed” in `StudentDashboardOverview.tsx`. Use the singular form for one. |
+
+These three findings are recorded for a separate copy/localization cleanup; this QA follow-up does not change them. Authenticated admin/support accounts, paid actions, physical phones and Safari remain outside this real-account round. Native screenshots and private account details were not added to tracked source. Operational/synthetic evidence remains ignored under `output/playwright/navigation-v2/signed-in-qa/`.

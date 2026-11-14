@@ -43,7 +43,7 @@ export default function NavigationSearchDialog({
   const matches = items.filter(item => matchNavigationQuery(item, query));
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="nv2-search-dialog" dir={ar ? "rtl" : "ltr"}>
+      <DialogContent className="nv2-search-dialog" dir={ar ? "rtl" : "ltr"} closeLabel={ar ? "إغلاق" : "Close"}>
         <DialogHeader>
           <DialogTitle>{ar ? "ابحث عن صفحة" : "Find a page"}</DialogTitle>
           <DialogDescription>

@@ -174,6 +174,21 @@
   border-radius: 20px;
   overflow-y: auto;
 }
+.nv2-search-dialog > [data-slot="dialog-header"] {
+  padding-inline-end: 36px;
+}
+.nv2-search-dialog > [data-slot="dialog-close"] {
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+}
+.nv2-search-dialog[dir="rtl"] > [data-slot="dialog-close"] {
+  right: auto;
+  left: 8px;
+}
 .nv2-search-results {
   max-height: 45dvh;
   overflow-y: auto;

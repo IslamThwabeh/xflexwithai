@@ -21,7 +21,6 @@ import {
   type NavigationDestination,
 } from "@/lib/navigationV2";
 import { useSidebar } from "@/components/ui/sidebar";
-import NavigationSearchDialog from "./NavigationSearchDialog";
 import "./navigation-v2.css";
 
 export type AdminDestination = NavigationDestination & {
@@ -32,10 +31,10 @@ type Props = {
   items: AdminDestination[];
   accountId: number;
   language: "ar" | "en";
-  searchOpen: boolean;
   onSearchOpen: (open: boolean) => void;
   onNavigate: (path: string) => void;
-  onSearchRecords?: () => void;
+  favorites: string[];
+  onToggleFavorite: (path: string) => void;
 };
 const icons = {
   overview: LayoutDashboard,
@@ -50,14 +49,26 @@ const icons = {
   other: LayoutDashboard,
 };
 
+export function useAdminNavigationFavorites(accountId: number) {
+  const key = `xflex-navigation-v2:${accountId}:favorites`;
+  const [favorites, setFavorites] = useState(() => readNavigationPreference(key));
+  useEffect(() => { setFavorites(readNavigationPreference(key)); }, [key]);
+  const toggleFavorite = (path: string) => setFavorites(previous => {
+    const next = previous.includes(path) ? previous.filter(value => value !== path) : [...previous, path];
+    saveNavigationPreference(key, next);
+    return next;
+  });
+  return { favorites, toggleFavorite };
+}
+
 export default function AdminNavigation({
   items,
   accountId,
   language,
-  searchOpen,
   onSearchOpen,
   onNavigate,
-  onSearchRecords,
+  favorites,
+  onToggleFavorite: toggleFavorite,
 }: Props) {
   const [location] = useLocation();
   const { state, isMobile, setOpen } = useSidebar();
@@ -74,9 +85,6 @@ export default function AdminNavigation({
       activeGroup ? [activeGroup] : []
     )
   );
-  const [favorites, setFavorites] = useState(() =>
-    readNavigationPreference(`${prefix}:favorites`)
-  );
   const ar = language === "ar";
   useEffect(() => {
     setExpanded(
@@ -85,7 +93,6 @@ export default function AdminNavigation({
         activeGroup ? [activeGroup] : []
       )
     );
-    setFavorites(readNavigationPreference(`${prefix}:favorites`));
   }, [prefix]);
   useEffect(() => {
     if (activeGroup)
@@ -104,14 +111,6 @@ export default function AdminNavigation({
       return next;
     });
   };
-  const toggleFavorite = (path: string) =>
-    setFavorites(previous => {
-      const next = previous.includes(path)
-        ? previous.filter(value => value !== path)
-        : [...previous, path];
-      saveNavigationPreference(`${prefix}:favorites`, next);
-      return next;
-    });
   const pinned = favorites.flatMap(path => {
     const item = items.find(candidate => candidate.path === path);
     return item ? [item] : [];
@@ -252,16 +251,6 @@ export default function AdminNavigation({
           })}
         </nav>
       </div>
-      <NavigationSearchDialog
-        open={searchOpen}
-        onOpenChange={onSearchOpen}
-        items={items}
-        language={language}
-        onNavigate={onNavigate}
-        favorites={favorites}
-        onToggleFavorite={toggleFavorite}
-        onSearchRecords={onSearchRecords}
-      />
     </>
   );
 }

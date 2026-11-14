@@ -1,4 +1,5 @@
-import AdminNavigation from "./navigation/AdminNavigation";
+import AdminNavigation, { useAdminNavigationFavorites } from "./navigation/AdminNavigation";
+import NavigationSearchDialog from "./navigation/NavigationSearchDialog";
 import InterfaceAnnouncement from "./navigation/InterfaceAnnouncement";
 import { findActiveNavigationPath } from "@/lib/navigationV2";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -556,6 +557,8 @@ function DashboardLayoutContent({
   const [isResizing, setIsResizing] = useState(false);
   const [showAdminSearch, setShowAdminSearch] = useState(false);
   const [showPageSearch, setShowPageSearch] = useState(false);
+  const { favorites, toggleFavorite } = useAdminNavigationFavorites(user?.id ?? 0);
+  const openPageSearch = () => { setOpenMobile(false); setShowPageSearch(true); };
   const sidebarRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
 
@@ -789,7 +792,7 @@ function DashboardLayoutContent({
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault(); setShowPageSearch(previous => !previous);
+        event.preventDefault(); setOpenMobile(false); setShowPageSearch(previous => !previous);
       }
     };
     window.addEventListener("keydown", key);
@@ -855,7 +858,7 @@ function DashboardLayoutContent({
         </SidebarHeader>
 
         <SidebarContent>
-          <AdminNavigation key={user?.id} items={navigationItems} accountId={user?.id ?? 0} language={language} searchOpen={showPageSearch} onSearchOpen={setShowPageSearch} onNavigate={onNavigation} onSearchRecords={adminCheck?.isAdmin ? () => setShowAdminSearch(true) : undefined} />
+          <AdminNavigation key={user?.id} items={navigationItems} accountId={user?.id ?? 0} language={language} onSearchOpen={open => { if (open) openPageSearch(); }} onNavigate={onNavigation} favorites={favorites} onToggleFavorite={toggleFavorite} />
         </SidebarContent>
 
         <SidebarFooter className="p-3 border-t border-white/[0.06]">
@@ -904,7 +907,8 @@ function DashboardLayoutContent({
             <div className="flex items-center gap-1">
               {/* ── Group 1: Utilities (Search + Dark mode) ── */}
               <div className="flex items-center gap-0.5 bg-gray-100/70 dark:bg-white/[0.04] rounded-xl p-1">
-                <button type="button" onClick={() => setShowPageSearch(true)} className="flex h-11 w-11 items-center justify-center rounded-lg transition hover:bg-white sm:h-8 sm:w-8 dark:hover:bg-white/10" aria-label={language === "ar" ? "ابحث عن صفحة" : "Find a page"} title="Ctrl / Cmd + K"><Search className="h-4 w-4" /></button>                {toggleTheme && (
+                <button type="button" onClick={openPageSearch} className="flex h-11 w-11 items-center justify-center rounded-lg transition hover:bg-white sm:h-8 sm:w-8 dark:hover:bg-white/10" aria-label={language === "ar" ? "ابحث عن صفحة" : "Find a page"} title="Ctrl / Cmd + K"><Search className="h-4 w-4" /></button>
+                {toggleTheme && (
                   <button
                     onClick={toggleTheme}
                     className="flex h-11 w-11 items-center justify-center rounded-lg transition hover:bg-white sm:h-8 sm:w-8 dark:hover:bg-white/[0.08]"
@@ -999,6 +1003,8 @@ function DashboardLayoutContent({
           {children}
         </main>
       </SidebarInset>
+      {/* Closed mobile drawers unmount their content; top-bar search must stay mounted. */}
+      <NavigationSearchDialog open={showPageSearch} onOpenChange={setShowPageSearch} items={navigationItems} language={language} onNavigate={onNavigation} favorites={favorites} onToggleFavorite={toggleFavorite} onSearchRecords={adminCheck?.isAdmin ? () => setShowAdminSearch(true) : undefined} />
       {showAdminSearch && (
         <Suspense fallback={null}><AdminSearchDialogLazy onClose={() => setShowAdminSearch(false)} /></Suspense>
       )}
