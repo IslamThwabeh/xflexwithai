@@ -1,8 +1,8 @@
 # Student dashboard and public-page QA release
 
-The owner approved the reviewed dashboard and production deployment on 14 November 2026. Authenticated verification will follow deployment using the student Chrome session the owner provides.
+The owner approved the reviewed dashboard and production deployment on 14 November 2026. A subsequent owner-provided student Chrome session supported partial authenticated verification, recorded below.
 
-Automatic approval review rejected the GitHub push because the owner's go-ahead did not explicitly authorize sharing the repository source and private project-memory commits with GitHub. The implementation commit is local. A separate source-push decision is pending.
+Automatic approval review initially rejected the GitHub push because the deployment go-ahead did not explicitly authorize sharing source and private project-memory commits with GitHub. The owner then explicitly approved pushing the reviewed source, tracked memory and earlier homepage commits. The push succeeded through `9c0af6b` on `origin/codex/live-package-phase-a` (`8d74c67..9c0af6b`). No source-push decision remains pending for that release.
 
 The student dashboard now emphasizes the next unfinished course, learning progress, course documents and existing subscription states. It uses the installed Framer Motion package and a small adaptation of React Bits SpotlightCard. Reduced-motion preferences and native page scrolling are supported. The upstream copyright and license ship at `/licenses/react-bits-LICENSE.md`.
 
@@ -14,8 +14,22 @@ Local validation passed TypeScript, the production build, SEO checks, 18 focused
 
 The current release targets Cloudflare Pages project `xflexacademy`, production branch `main`. The previous frontend deployment is `2ba29f63-e79d-4156-8718-294c23b69d6a`, which is the rollback target for this frontend release. Rollback consists of restoring that Pages deployment and verifying the live localized pages. This work changes frontend assets and Pages routing output.
 
-The implementation is committed locally as `de1779c`. Source-push approval status is recorded in `16d1ff3`, which is the source revision attached to Cloudflare Pages production deployment `f7e08460-0913-43b7-b903-e2244d463542`. The deployment URL is `https://f7e08460.xflexwithai.pages.dev`. Publication completed on 14 November 2026 and the release is live on `https://xflexacademy.com`.
+The implementation commit is `de1779c`. The historical pre-authorization status is recorded in `16d1ff3`, which is the source revision attached to Cloudflare Pages production deployment `f7e08460-0913-43b7-b903-e2244d463542`. The deployment URL is `https://f7e08460.xflexwithai.pages.dev`. Publication completed on 14 November 2026 and the release is live on `https://xflexacademy.com`. The subsequent source push includes the release closeout commit `9c0af6b`.
 
 Production verification passed eight exact asset SHA-256 matches, including the dashboard, public layout and React Bits notice. Eleven public/private route checks and API health returned 200. `/courses` and `/profile` retained private noindex/no-store headers. Eighteen live browser groups passed against real public data in Arabic and English, covering shared logos, Contact, FAQ state, visible package prices, responsive menus, Escape/focus return, reduced motion, homepage anchors, registration routes and mode preservation, and legal/resource locales. The browser recorded zero JavaScript exceptions. Normal telemetry writes were blocked in the isolated anonymous QA browser.
 
-Machine-readable evidence and screenshots are under ignored `output/playwright/dashboard-public-release/`. Signed-in student verification is pending the owner-provided Chrome session. Physical devices and Safari are pending. Internal release identifiers and this document belong to project records.
+Machine-readable evidence and screenshots are under ignored `output/playwright/dashboard-public-release/`. Physical devices and Safari are pending. Internal release identifiers and this document belong to project records.
+
+## Signed-in QA and local follow-up — 14 November 2026
+
+The developer test account verified dashboard navigation, the course page, course video playback and the ten-document library. Opening a PDF stopped Computer Use because the browser URL could not be determined; PDF viewing remains unverified. Active-service workflows remain pending. The owner authorized complimentary packages on this developer account and explicitly prohibited adding funds to accounting. No package, order, payment or accounting change was made during this round.
+
+The session exposed a learning-completion display at 3% progress because an administrative course exemption had set `completedAt`. Local follow-up requires actual 100% lesson progress plus completion confirmation for congratulations and Review-course labels, preserves the next learning action, and explains the waived requirement. The enrollment API projection now includes the existing Arabic course title and exemption flag; Arabic dashboard course labels use that title. Free-video deep links now preserve the selected language.
+
+This follow-up passed TypeScript, 29 focused tests, four targeted bilingual browser groups, application/SEO and Worker builds, and diff hygiene. Its isolated SQLite/D1 query test exercises the actual enrollment query, user isolation and indexed query plan. A further rehearsal used read-only production schema definitions, and the exact live query plan selected `idx_enrollments_user_course`, the course primary key and covering `idx_episodes_course_order_id`. The earlier test fixture's episode-index name was corrected to match production. The additional projected fields reuse the existing query and row selection, with zero added queries or recurring reads.
+
+The owner approved proceeding with the next actions. Implementation `074b642` is pushed to `origin/codex/live-package-phase-a` and live on Worker `ac7fbae3-7516-4454-bdf7-fe7cd0961439` and Pages `d717e4cf` at `https://d717e4cf.xflexwithai.pages.dev`. Worker bindings, runtime settings and all four schedules were verified. Production verification passed eight exact asset hashes, twelve route/API checks, eighteen bilingual browser groups and zero JavaScript exceptions. Anonymous enrollment access returns 401. A signed-in post-release dashboard check remains pending.
+
+For this follow-up release, the previous frontend deployment is `f7e08460-0913-43b7-b903-e2244d463542` and previous Worker version is `f14e5756-78d7-4dac-9779-6e97583ef336`. Restore the prior code deployments if rollback is required and verify the localized pages, protected enrollment API and service health.
+
+The subsequent public SEO crawl, lab measurements and owner-authorized Search Console/GA4 review are recorded privately under ignored `output/seo-audit-2026-11-14/SEO-AUDIT.md`. Following the owner's go-ahead, GA4 acquisition key-event configuration was completed as recorded in `docs/organic-measurement-plan.md`. Account metrics and generated audit artifacts are retained locally. Mobile performance is the next approval phase.

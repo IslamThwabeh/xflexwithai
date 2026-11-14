@@ -1,6 +1,10 @@
 # XFlex Organic Acquisition Measurement Contract
 
-Status: Phase 1 implementation
+Status: Acquisition events deployed and GA4 key-event configuration verified on 14 November 2026
+
+The owner approved proceeding with the audit's first phase. Native Chrome review verified the XFlex web stream and configured `generate_lead`, `sign_up` and `order_request` as key events. Registration and order-request events already appear as received from that stream. The accepted-contact event is registered using the existing coded event, once-per-event counting and no default monetary value. Its next genuine receipt and prospective reporting remain to be verified.
+
+The web stream's history-based page views were already disabled during review. Remaining account checks include event-scoped custom dimensions, Search Console linkage, network-level duplicate/private-route verification and landing-page outcome reporting. Private account metrics and audit artifacts are retained in the ignored local audit directory.
 
 Scope: acquisition journeys only. Admin, student dashboard, courses, support, orders, community, recommendations, and other authenticated application routes are excluded from application-owned GA4 events.
 
