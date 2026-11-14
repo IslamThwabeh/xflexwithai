@@ -2,7 +2,7 @@
 
 Search-budget follow-up (2026-11-14): the owner paused broader QA and requested Free-plan-compatible tuning. Page search remains entirely local. Separate full-admin record search now requires Enter/Search and disables automatic fetches/retries. See [Navigation search and D1 budget](navigation-search-d1-budget.md) for verification, current D1 caution/storage evidence and downgrade gates.
 
-Status: live on xflexacademy.com. The initial release was `a92e2d0`/`f0c63d7`; signed-in QA corrections `ce919e5` are now pushed and deployed on Pages `88a66b00-3dda-4626-bf10-5d648b5f407e`. Worker `31364cc0-2688-44bb-acc7-ccbd01889a44` and migration 135 remain in place.
+Status: live on xflexacademy.com. The initial release was `a92e2d0`/`f0c63d7`, followed by signed-in QA corrections `ce919e5`. Latest search-budget safeguard `2b2165a` is pushed and deployed on Pages `8a2eb4f7-af71-487a-aeda-d7363375e637`. Worker `31364cc0-2688-44bb-acc7-ccbd01889a44` and migration 135 remain in place.
 
 ## Result and scope
 

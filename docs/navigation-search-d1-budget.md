@@ -40,4 +40,6 @@ Before a billing change, follow `d1-free-plan-guardrail-runbook.md` and `d1-free
 
 ## Release
 
-Frontend-only safeguard prepared for the existing production Pages project. Worker `31364cc0-2688-44bb-acc7-ccbd01889a44`, migration 135 and announcement choices remain in place. Previous frontend for rollback: Pages `88a66b00-3dda-4626-bf10-5d648b5f407e`. Reverting to it restores automatic record-search typing requests, so prefer a forward fix for UI regressions. No financial/accounting action, package, customer message or billing-plan change is part of this work.
+Source `2b2165a` is committed and pushed to `origin/codex/live-package-phase-a`. The frontend safeguard is live on production Pages `8a2eb4f7-af71-487a-aeda-d7363375e637` (main, source `2b2165a`, preview `https://8a2eb4f7.xflexwithai.pages.dev`). Post-release checks passed four exact asset hashes, four route responses/current entry/private headers, the preview entry and API health. All ten narrow browser groups also passed on deployed assets with zero JavaScript exceptions or unknown API fixtures; eight record requests were intercepted, with no production record search or account write.
+
+Worker `31364cc0-2688-44bb-acc7-ccbd01889a44`, migration 135 and announcement choices remain in place. Previous frontend for rollback: Pages `88a66b00-3dda-4626-bf10-5d648b5f407e`. Reverting to it restores automatic record-search typing requests, so prefer a forward fix for UI regressions. No financial/accounting action, package, customer message or billing-plan change is part of this work.
