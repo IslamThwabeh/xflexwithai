@@ -2,6 +2,8 @@
 
 Use this runbook after the combined deployment and during the observation window before switching Cloudflare billing back to Free.
 
+Latest search-specific assessment: [Navigation search and D1 budget](navigation-search-d1-budget.md), 2026-11-14. The rolling report is **CAUTION**: 1,832,902 reads, 12,098 writes and 461,357,056 bytes (88.0% of the internal Free database ceiling). Local page search adds zero SQL; the separate admin record search now requires explicit submission. This sample does not approve a billing downgrade; complete UTC-day, storage-growth and Worker-limit checks still apply. The October cleanup size below is historical, not current capacity.
+
 ## Command
 
 ```bash
