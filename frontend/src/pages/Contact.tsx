@@ -1,3 +1,4 @@
+import { localizePublicHref } from '@/lib/publicLocaleHref';
 import { useState } from 'react';
 import { Link } from 'wouter';
 import { Send, CheckCircle, Loader2, Phone, Mail, MessageCircle, ArrowUpRight, MapPin } from 'lucide-react';
@@ -74,7 +75,7 @@ export default function Contact() {
                 </div>
                 <h2 className="text-lg font-semibold text-white">{isRtl ? 'واتساب' : 'WhatsApp'}</h2>
                 <p className="mt-2 text-sm leading-6 text-white/58">
-                  {isRtl ? 'للاستفسارات السريعة قبل التسجيل أو بعده.' : 'For quick questions before or after registration.'}
+                  {isRtl ? 'للاستفسارات عن الباقات قبل الاشتراك.' : 'For package enquiries before subscribing.'}
                 </p>
                 <p className="mt-4 text-sm font-semibold text-[#00C176]">+972 59 759 6030</p>
               </a>
@@ -100,8 +101,7 @@ export default function Contact() {
                 {isRtl && <p className="mt-3 text-sm font-semibold text-[#C8A96B]">الزيارات متاحة بموعد مسبق فقط.</p>}
               </div>
 
-              <Link href="/auth?next=/support">
-                <a className="rounded-[1.8rem] border border-white/10 bg-white/[0.04] p-6 text-center backdrop-blur-sm transition hover:border-[#00C176]/22 hover:bg-white/[0.06]">
+              <Link href={localizePublicHref("/auth?next=/support", language)} className="rounded-[1.8rem] border border-white/10 bg-white/[0.04] p-6 text-center backdrop-blur-sm transition hover:border-[#00C176]/22 hover:bg-white/[0.06]">
                   <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#C8A96B]/14">
                     <MessageCircle className="h-5 w-5 text-[#C8A96B]" />
                   </div>
@@ -113,7 +113,6 @@ export default function Contact() {
                     {isRtl ? 'تسجيل الدخول للدعم' : 'Sign in for support'}
                     <ArrowUpRight className="h-4 w-4" />
                   </span>
-                </a>
               </Link>
             </div>
           </div>
@@ -142,8 +141,8 @@ export default function Contact() {
                   </div>
                   <div className="rounded-[1.4rem] border border-white/8 bg-white/[0.03] p-4">
                     {isRtl
-                      ? 'إذا كنت تفضّل سرعة أعلى، استخدم واتساب مباشرة. وإذا أردت شرحًا مرتبًا، استخدم النموذج أدناه.'
-                      : 'If you want the fastest reply, use WhatsApp directly. If you want a structured explanation, use the form on this page.'}
+                      ? 'إذا كنت طالبًا مشتركًا، تابع طلبك من خلال الدعم داخل حسابك على الموقع.'
+                      : 'Enrolled students can follow up through website support inside their account.'}
                   </div>
                 </div>
               </div>
@@ -158,7 +157,7 @@ export default function Contact() {
                       {isRtl ? 'تم إرسال رسالتك بنجاح' : 'Your message was sent successfully'}
                     </h2>
                     <p className="max-w-md text-sm leading-7 text-white/62">
-                      {isRtl ? 'وصلت رسالتك إلى الفريق. إذا كان الموضوع عاجلًا، يمكنك أيضًا مراسلتنا عبر واتساب.' : 'Your message reached the team. If the matter is urgent, you can also message us on WhatsApp.'}
+                      {isRtl ? 'وصلت رسالتك إلى الفريق. إذا كنت طالبًا مشتركًا، تابع طلبك من خلال الدعم داخل حسابك.' : 'Your message reached the team. Enrolled students can follow up through in-account support.'}
                     </p>
                     <Button
                       variant="outline"
@@ -181,10 +180,12 @@ export default function Contact() {
                     </div>
 
                     <div>
-                      <label className="mb-2 block text-sm font-medium text-white/76">
+                      <label htmlFor="contact-email" className="mb-2 block text-sm font-medium text-white/76">
                         {isRtl ? 'البريد الإلكتروني' : 'Your email'}
                       </label>
                       <Input
+                        id="contact-email"
+                        autoComplete="email"
                         type="email"
                         dir="ltr"
                         value={email}
@@ -196,10 +197,11 @@ export default function Contact() {
                     </div>
 
                     <div>
-                      <label className="mb-2 block text-sm font-medium text-white/76">
+                      <label htmlFor="contact-message" className="mb-2 block text-sm font-medium text-white/76">
                         {isRtl ? 'رسالتك' : 'Your message'}
                       </label>
                       <textarea
+                        id="contact-message"
                         className="min-h-[180px] w-full resize-y rounded-[1.4rem] border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-white placeholder:text-white/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                         value={message}
                         onChange={(e) => setMessage(e.target.value)}

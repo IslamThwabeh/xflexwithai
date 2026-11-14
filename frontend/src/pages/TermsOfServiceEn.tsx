@@ -135,7 +135,7 @@ export function TermsOfServiceEn() {
       <div className="mt-8 p-4 bg-emerald-50 rounded-lg border border-emerald-200">
         <p className="font-semibold text-gray-900">📋 Subscription & Refund Policy</p>
         <p>To view the full subscription and refund policy, please visit:</p>
-        <Link href="/refund-policy">
+        <Link href="/en/refund-policy">
           <span className="text-emerald-600 hover:underline cursor-pointer font-medium">Refund Policy →</span>
         </Link>
       </div>

@@ -1,3 +1,4 @@
+import { localizePublicHref } from '@/lib/publicLocaleHref';
 import { Link } from 'wouter';
 import { ArrowLeft, GraduationCap, Target, Users, Award, Instagram, Facebook, Send, Phone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -129,7 +130,7 @@ export default function About() {
                 <Phone className="h-5 w-5" />
               </a>
             </div>
-            <Link href="/">
+            <Link href={localizePublicHref("/", language)}>
               <Button variant="outline" className="border-white/12 bg-white/[0.04] text-white hover:bg-white/[0.08] hover:text-white">
                 <ArrowLeft className="me-1 h-4 w-4" />
                 {t('home.footer.home')}

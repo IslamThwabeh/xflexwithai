@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'wouter';
 import {
   ArrowUpRight,
@@ -13,6 +13,7 @@ import {
 import { APP_TITLE } from '@/const';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { getLanguageSwitchLabel } from '@/lib/languageToggle';
+import { localizePublicHref as localeHref } from '@/lib/publicLocaleHref';
 import CompanyStatement from './CompanyStatement';
 import EasyLifeNotice from './EasyLifeNotice';
 import { COMPANY_PUBLIC_INFO } from '@shared/companyPublicInfo';
@@ -22,7 +23,7 @@ import {
 } from '@/components/public/cinematicPublicNav';
 
 const EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
-const BRAND_LOGO_SRC = '/xflex-logo.png';
+const BRAND_LOGO_SRC = '/xflex-logo-dark-transparent.png';
 
 type LayoutAction = {
   href: string;
@@ -60,7 +61,8 @@ function CinematicPublicStyles() {
           drop-shadow(0 0 28px rgba(0,193,118,0.12));
       }
       .cin-public-logo-header {
-        width: clamp(150px, 16vw, 236px);
+        width: 180px;
+        max-height: 56px;
       }
       .cin-public-logo-footer {
         width: clamp(168px, 15vw, 220px);
@@ -130,17 +132,12 @@ function CinematicPublicStyles() {
         transform: translate3d(0,-2px,0);
       }
 
-      @keyframes cin-public-glow-pulse {
-        0%, 100% { opacity: 0.42; transform: scale(1); }
-        50% { opacity: 0.72; transform: scale(1.08); }
-      }
-
       .cin-public-orb {
         position: absolute;
         border-radius: 9999px;
         filter: blur(80px);
         pointer-events: none;
-        animation: cin-public-glow-pulse 8s ease-in-out infinite;
+        opacity: 0.5;
       }
       .cin-public-orb-green {
         background: radial-gradient(circle, rgba(0,193,118,0.44) 0%, rgba(0,193,118,0) 70%);
@@ -154,6 +151,20 @@ function CinematicPublicStyles() {
       }
       .cin-public-footer-link:hover {
         color: white;
+      }
+      .cin-public-layout .cin-btn-green { color: #050505; }
+      .cin-public-layout :is(a, button, input, textarea):focus-visible {
+        outline: 2px solid #00D17F;
+        outline-offset: 4px;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .cin-public-layout *, .cin-public-layout *::after {
+          animation: none !important;
+          transition: none !important;
+          scroll-behavior: auto !important;
+        }
+        .cin-public-layout .cin-btn-green:hover,
+        .cin-public-layout .cin-btn-ghost:hover { transform: none; }
       }
     `}</style>
   );
@@ -170,14 +181,9 @@ export default function CinematicPublicLayout({
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
   const localePrefix = `/${language}`;
-  const localizePublicHref = (href: string) => {
-    if (href === '/') return localePrefix;
-    if (href.startsWith('/#')) return `${localePrefix}${href.slice(1)}`;
-    if (href.startsWith('/auth') || href.startsWith('/register')) return href;
-    if (/^\/(ar|en)(?:\/|$)/.test(href)) return href;
-    return `${localePrefix}${href}`;
-  };
+  const localizePublicHref = (href: string) => localeHref(href, language);
   const switchLanguage = () => {
     const nextLanguage = language === 'ar' ? 'en' : 'ar';
     const nextPath = window.location.pathname.match(/^\/(ar|en)(?=\/|$)/)
@@ -200,6 +206,24 @@ export default function CinematicPublicLayout({
   useEffect(() => {
     setMenuOpen(false);
   }, [location]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setMenuOpen(false);
+      menuButton.current?.focus();
+    };
+    const onResize = () => {
+      if (window.innerWidth >= 1280) setMenuOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('resize', onResize);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('resize', onResize);
+    };
+  }, [menuOpen]);
 
   const navItems = CINEMATIC_PRIMARY_NAV_ITEMS.map((item) => ({
     ...item,
@@ -227,7 +251,7 @@ export default function CinematicPublicLayout({
 
     const headerOffset = window.innerWidth >= 768 ? 88 : 72;
     const top = element.getBoundingClientRect().top + window.scrollY - headerOffset;
-    window.scrollTo({ top, behavior: 'smooth' });
+    window.scrollTo({ top, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
     return true;
   };
 
@@ -251,12 +275,12 @@ export default function CinematicPublicLayout({
   };
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white" dir={isRTL ? 'rtl' : 'ltr'}>
+    <div className="cin-public-layout min-h-screen bg-[#050505] text-white" dir={isRTL ? 'rtl' : 'ltr'}>
       <CinematicPublicStyles />
 
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="cin-public-orb cin-public-orb-green" style={{ width: 420, height: 420, top: '-8%', right: '-8%' }} />
-        <div className="cin-public-orb cin-public-orb-gold" style={{ width: 320, height: 320, bottom: '-10%', left: '-6%', animationDelay: '2.4s' }} />
+        <div className="cin-public-orb cin-public-orb-gold" style={{ width: 320, height: 320, bottom: '-10%', left: '-6%' }} />
       </div>
 
       <header className={`cin-public-nav fixed inset-x-0 top-0 z-50 ${scrolled ? 'cin-public-nav-scrolled' : ''}`}>
@@ -265,7 +289,7 @@ export default function CinematicPublicLayout({
             <img src={BRAND_LOGO_SRC} alt={APP_TITLE} className="cin-public-logo cin-public-logo-header" />
           </Link>
 
-          <nav className="hidden items-center gap-7 text-sm font-medium text-white/65 md:flex">
+          <nav className="hidden items-center gap-7 text-sm font-medium text-white/65 xl:flex">
             {navItems.map((item) => (
               <button
                 key={item.key}
@@ -278,7 +302,7 @@ export default function CinematicPublicLayout({
             ))}
           </nav>
 
-          <div className="hidden items-center gap-4 md:flex">
+          <div className="hidden items-center gap-4 xl:flex">
             <button
               type="button"
               onClick={switchLanguage}
@@ -299,18 +323,19 @@ export default function CinematicPublicLayout({
           </div>
 
           <button
+            ref={menuButton}
             type="button"
             onClick={() => setMenuOpen((value) => !value)}
-            className="text-white/70 transition hover:text-white md:hidden"
+            className="inline-flex h-11 w-11 items-center justify-center text-white/70 transition hover:text-white xl:hidden"
             aria-label={menuOpen ? (isArabic ? 'إغلاق القائمة' : 'Close menu') : (isArabic ? 'فتح القائمة' : 'Open menu')}
             aria-expanded={menuOpen}
+            aria-controls="cin-public-mobile-menu"
           >
             {menuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
           </button>
         </div>
 
-        {menuOpen ? (
-          <div className="border-t border-white/10 bg-[#0A0A0A]/96 px-4 pb-6 pt-4 backdrop-blur-2xl md:hidden" dir={isRTL ? 'rtl' : 'ltr'}>
+          <div id="cin-public-mobile-menu" hidden={!menuOpen} className="max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain border-t border-white/10 bg-[#0A0A0A]/96 px-4 pb-6 pt-4 backdrop-blur-2xl md:max-h-[calc(100dvh-5rem)] xl:hidden" dir={isRTL ? 'rtl' : 'ltr'}>
             <div className="flex flex-col gap-5">
               <button
                 type="button"
@@ -344,17 +369,16 @@ export default function CinematicPublicLayout({
               ) : null}
             </div>
           </div>
-        ) : null}
       </header>
 
       <main className={`relative z-10 pt-16 md:pt-20 ${mainClassName}`}>{children}</main>
 
       <footer className="relative z-10 border-t border-white/06 bg-[#050505] py-14" dir={isRTL ? 'rtl' : 'ltr'}>
         <div className="container mx-auto px-4 md:px-8">
-          <div className="flex flex-col gap-10 md:flex-row md:items-start md:justify-between">
+          <div className="flex flex-col gap-10 xl:flex-row xl:items-start xl:justify-between">
             <div>
               <img src={BRAND_LOGO_SRC} alt={APP_TITLE} className="cin-public-logo cin-public-logo-footer max-w-full" />
-              <p className="mt-3 max-w-sm text-sm leading-7 text-white/42">
+              <p className="mt-3 max-w-sm text-sm leading-7 text-white/70">
                 {isArabic
                   ? 'أكاديمية تداول عربية تجمع بين التعليم العملي، التحليل الواضح، والدعم المستمر للمتداول الجاد.'
                   : 'An Arabic-first trading academy built around practical education, clear analysis, and ongoing support for serious traders.'}
@@ -364,9 +388,9 @@ export default function CinematicPublicLayout({
               <EasyLifeNotice variant="footer" className="mt-4 max-w-sm" />
             </div>
 
-            <div className="grid grid-cols-2 gap-8 text-sm text-white/46 sm:grid-cols-3">
+            <div className="grid grid-cols-2 gap-8 text-sm text-white/70 sm:grid-cols-3">
               <div className="flex flex-col gap-3">
-                <p className="text-xs font-semibold uppercase tracking-widest text-white/22">{isArabic ? 'التصفح' : 'Browse'}</p>
+                <p className="text-xs font-semibold uppercase tracking-widest text-white/70">{isArabic ? 'التصفح' : 'Browse'}</p>
                 {footerLinks.slice(0, 3).map((link) => (
                   <Link key={link.href} href={localizePublicHref(link.href)} className="cin-public-footer-link">
                     {link.label}
@@ -374,7 +398,7 @@ export default function CinematicPublicLayout({
                 ))}
               </div>
               <div className="flex flex-col gap-3">
-                <p className="text-xs font-semibold uppercase tracking-widest text-white/22">{isArabic ? 'المحتوى' : 'Content'}</p>
+                <p className="text-xs font-semibold uppercase tracking-widest text-white/70">{isArabic ? 'المحتوى' : 'Content'}</p>
                 {footerLinks.slice(3, 6).map((link) => (
                   <Link key={link.href} href={localizePublicHref(link.href)} className="cin-public-footer-link">
                     {link.label}
@@ -382,7 +406,7 @@ export default function CinematicPublicLayout({
                 ))}
               </div>
               <div className="flex flex-col gap-3">
-                <p className="text-xs font-semibold uppercase tracking-widest text-white/22">{isArabic ? 'الحساب' : 'Account'}</p>
+                <p className="text-xs font-semibold uppercase tracking-widest text-white/70">{isArabic ? 'الحساب' : 'Account'}</p>
                 {footerLinks.slice(6).map((link) => (
                   <Link key={link.href} href={localizePublicHref(link.href)} className="cin-public-footer-link">
                     {link.label}
@@ -392,7 +416,7 @@ export default function CinematicPublicLayout({
             </div>
 
             <div className="flex flex-col gap-4">
-              <p className="text-xs font-semibold uppercase tracking-widest text-white/22">{isArabic ? 'تابعنا' : 'Follow us'}</p>
+              <p className="text-xs font-semibold uppercase tracking-widest text-white/70">{isArabic ? 'تابعنا' : 'Follow us'}</p>
               <div className="flex gap-3">
                 {[
                   { icon: Instagram, href: 'https://www.instagram.com/xflex.academy?igsh=NG9jZng1emlxM3I3', label: 'Instagram' },
@@ -405,7 +429,7 @@ export default function CinematicPublicLayout({
                     target="_blank"
                     rel="noopener noreferrer"
                     aria-label={label}
-                    className="flex h-9 w-9 items-center justify-center rounded-full border border-white/12 text-white/45 transition-all hover:border-[#00C176]/40 hover:text-[#00C176]"
+                    className="flex h-9 w-9 items-center justify-center rounded-full border border-white/12 text-white/70 transition-all hover:border-[#00C176]/40 hover:text-[#00C176]"
                   >
                     <Icon className="h-4 w-4" />
                   </a>
@@ -414,7 +438,7 @@ export default function CinematicPublicLayout({
             </div>
           </div>
 
-          <div className="mt-10 flex flex-col gap-2 border-t border-white/05 pt-6 text-xs text-white/26 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mt-10 flex flex-col gap-2 border-t border-white/05 pt-6 text-xs text-white/70 sm:flex-row sm:items-center sm:justify-between">
             <p>© {new Date().getFullYear()} {APP_TITLE}. {isArabic ? 'جميع الحقوق محفوظة.' : 'All rights reserved.'}</p>
             <p>{isArabic ? 'تعليم واضح. تحليل منضبط. دعم مستمر.' : 'Clear education. Disciplined analysis. Ongoing support.'}</p>
           </div>
@@ -424,7 +448,7 @@ export default function CinematicPublicLayout({
       {showScrollTop ? (
         <button
           type="button"
-          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          onClick={() => window.scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' })}
           className="cin-btn-green fixed bottom-6 right-6 z-50 inline-flex h-11 w-11 items-center justify-center rounded-full text-white"
           aria-label={isArabic ? 'العودة للأعلى' : 'Back to top'}
         >

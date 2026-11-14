@@ -1,3 +1,4 @@
+import { localizePublicHref } from '@/lib/publicLocaleHref';
 import { useEffect, useRef } from 'react';
 import { useParams, Link } from 'wouter';
 import { CheckCircle, ChevronRight, ArrowLeft, X, Star, BookOpen, ShoppingCart, MessageSquareQuote, Trophy } from 'lucide-react';
@@ -70,7 +71,7 @@ export default function PackageDetails() {
       <CinematicPublicLayout>
         <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4 bg-[#050505] px-4" dir={isRTL ? 'rtl' : 'ltr'}>
           <p className="text-white/58">{language === 'ar' ? 'الباقة غير موجودة' : 'Package not found'}</p>
-          <Link href="/">
+          <Link href={localizePublicHref("/", language)}>
             <Button variant="outline" size="sm" className="border-white/12 bg-white/[0.04] text-white hover:bg-white/[0.08] hover:text-white">
               <ArrowLeft className="w-4 h-4 me-1" />
               {language === 'ar' ? 'الرئيسية' : 'Home'}
@@ -109,7 +110,7 @@ export default function PackageDetails() {
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <div className="mb-3 flex items-center gap-2 text-sm text-gray-400">
-                  <Link href="/"><span className="cursor-pointer hover:text-emerald-600">{t('home.footer.home')}</span></Link>
+                  <Link href={localizePublicHref("/", language)}><span className="cursor-pointer hover:text-emerald-600">{t('home.footer.home')}</span></Link>
                   <ChevronRight className="h-3.5 w-3.5" />
                   <span className="text-gray-700">{isRTL ? pkg.nameAr : pkg.nameEn}</span>
                 </div>
@@ -128,7 +129,7 @@ export default function PackageDetails() {
                   {isRTL ? pkg.descriptionAr : pkg.descriptionEn}
                 </p>
               </div>
-              <Link href="/">
+              <Link href={localizePublicHref("/", language)}>
                 <Button variant="outline" size="sm" className="rounded-full border-slate-200 bg-white px-4 text-slate-700 hover:bg-slate-50 hover:text-slate-950">
                   <ArrowLeft className="w-4 h-4 me-1" />
                   {language === 'ar' ? 'العودة للرئيسية' : 'Back Home'}
@@ -230,7 +231,7 @@ export default function PackageDetails() {
                 : 'bg-white border-2 border-gray-200 shadow-lg'
             }`}>
               <div className="text-center mb-6">
-                <div className="text-4xl font-extrabold mb-1">{priceFormatted}</div>
+                <div className={`text-4xl font-extrabold mb-1 ${isComprehensive ? 'text-white' : 'text-slate-900'}`}>{priceFormatted}</div>
                 <p className={`text-sm ${isComprehensive ? 'text-emerald-100' : 'text-gray-500'}`}>
                   {isLive ? (language === 'ar' ? 'دفعة واحدة • بكج مؤقت ومحدود' : 'One-time purchase • limited cohort') : `${t('home.packages.price')} • ${t('home.packages.lifetime')}`}
                 </p>
@@ -255,7 +256,7 @@ export default function PackageDetails() {
               {isComprehensive && <UpgradeCallout />}
               {isLive && !liveState?.purchasable ? <Button size="lg" disabled className="w-full font-bold">
                 {language === 'ar' ? 'التسجيل مغلق حالياً' : 'Registration is closed'}
-              </Button> : <Link href={upgradeEligibility?.isUpgrade ? '/upgrade' : `/checkout/${pkg.slug}`}>
+              </Button> : <Link href={upgradeEligibility?.isUpgrade ? '/upgrade' : localizePublicHref(`/checkout/${pkg.slug}`, language)}>
                 <Button
                   size="lg"
                   className={`w-full font-bold ${

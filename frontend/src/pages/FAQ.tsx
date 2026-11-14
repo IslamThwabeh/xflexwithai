@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { localizePublicHref } from '@/lib/publicLocaleHref';
+import { useId, useState } from 'react';
 import { Link } from 'wouter';
 import { HelpCircle, ChevronDown, ArrowUpRight } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -123,9 +124,13 @@ const faqItems: FAQItem[] = [
 ];
 
 function FAQAccordionItem({ item, isRtl, isOpen, toggle }: { item: FAQItem; isRtl: boolean; isOpen: boolean; toggle: () => void }) {
+  const answerId = useId();
   return (
     <div className={`overflow-hidden rounded-[1.6rem] border transition-all duration-300 ${isOpen ? 'border-[#00C176]/24 bg-white/[0.07]' : 'border-white/10 bg-white/[0.04] hover:bg-white/[0.06]'}`}>
       <button
+        type="button"
+        aria-expanded={isOpen}
+        aria-controls={answerId}
         onClick={toggle}
         className="flex w-full items-center justify-between gap-3 p-5 text-start transition-colors hover:bg-white/[0.03] md:p-6"
       >
@@ -134,11 +139,9 @@ function FAQAccordionItem({ item, isRtl, isOpen, toggle }: { item: FAQItem; isRt
         </span>
         <ChevronDown className={`h-5 w-5 shrink-0 text-white/42 transition-transform duration-200 ${isOpen ? 'rotate-180 text-[#00C176]' : ''}`} />
       </button>
-      {isOpen && (
-        <div className="border-t border-white/8 px-5 pb-5 pt-4 text-sm leading-7 text-white/62 md:px-6 md:pb-6">
+      <div id={answerId} hidden={!isOpen} className="border-t border-white/8 px-5 pb-5 pt-4 text-sm leading-7 text-white/62 md:px-6 md:pb-6">
           {isRtl ? item.aAr : item.aEn}
         </div>
-      )}
     </div>
   );
 }
@@ -207,10 +210,8 @@ export default function FAQ() {
                 WhatsApp
                 <ArrowUpRight className="h-4 w-4" />
               </a>
-              <Link href="/contact">
-                <a className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/[0.04] px-6 py-3 text-sm font-semibold text-white transition hover:border-[#00C176]/30 hover:bg-white/[0.08]">
+              <Link href={localizePublicHref("/contact", language)} className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/[0.04] px-6 py-3 text-sm font-semibold text-white transition hover:border-[#00C176]/30 hover:bg-white/[0.08]">
                   {isRtl ? 'اذهب إلى صفحة التواصل' : 'Go to contact page'}
-                </a>
               </Link>
             </div>
           </div>

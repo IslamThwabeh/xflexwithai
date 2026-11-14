@@ -1,3 +1,4 @@
+import { localizePublicHref } from '@/lib/publicLocaleHref';
 import { Link } from 'wouter';
 import { ArrowLeft, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -15,7 +16,7 @@ export default function TermsOfService() {
       <div className="min-h-screen bg-[#050505] py-16 text-white md:py-20" dir={isRtl ? 'rtl' : 'ltr'}>
         <div className="container mx-auto max-w-5xl px-4 md:px-8">
           <div className="mb-8 rounded-[2rem] border border-white/10 bg-white/[0.04] p-6 backdrop-blur-sm md:p-8">
-            <Link href="/">
+            <Link href={localizePublicHref("/", language)}>
               <Button variant="ghost" size="sm" className="mb-4 text-white/70 hover:bg-white/[0.06] hover:text-white">
                 <ArrowLeft className={`h-4 w-4 ${isRtl ? 'ms-2 rotate-180' : 'me-2'}`} />
                 {isRtl ? 'الرئيسية' : 'Home'}

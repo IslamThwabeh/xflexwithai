@@ -120,7 +120,7 @@ export function RefundPolicyEn() {
 
       <div className="mt-8 p-4 bg-gray-50 rounded-lg border">
         <p className="text-gray-600">To view the general Terms and Conditions:</p>
-        <Link href="/terms">
+        <Link href="/en/terms">
           <span className="text-emerald-600 hover:underline cursor-pointer font-medium">Terms & Conditions →</span>
         </Link>
       </div>

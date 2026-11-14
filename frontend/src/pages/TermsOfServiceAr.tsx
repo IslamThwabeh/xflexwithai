@@ -135,7 +135,7 @@ export function TermsOfServiceAr() {
       <div className="mt-8 p-4 bg-emerald-50 rounded-lg border border-emerald-200">
         <p className="font-semibold text-gray-900">📋 سياسة الاشتراك والاسترجاع</p>
         <p>للاطلاع على سياسة الاشتراك والاسترجاع الكاملة، يرجى زيارة:</p>
-        <Link href="/refund-policy">
+        <Link href="/ar/refund-policy">
           <span className="text-emerald-600 hover:underline cursor-pointer font-medium">سياسة الاسترجاع ←</span>
         </Link>
       </div>

@@ -1,3 +1,4 @@
+import { localizePublicHref } from '@/lib/publicLocaleHref';
 import { Link, useLocation } from 'wouter';
 import { Badge } from '@/components/ui/badge';
 import { Lock, Play, Sparkles, ArrowUpRight } from 'lucide-react';
@@ -75,8 +76,8 @@ export default function FreeContent() {
                 </h2>
                 <p className="mx-auto mt-4 max-w-3xl text-base leading-7 text-white/62 md:text-lg">
                   {isRtl
-                    ? 'هذا القسم يجمع المواد المجانية الجديدة بشكل مرتب: شاهد الفيديو من داخل الصفحة، ثم افتح المقال المرتبط بالفكرة نفسها حتى تقرأها كاملة بدل الاكتفاء بملخص سريع.'
-                    : 'This section brings the new free material together in a cleaner format: watch the video inside the page, then open the article tied to that idea so you can read it in full rather than settle for a quick summary.'}
+                    ? 'شاهد الدروس المجانية داخل الصفحة، ثم اقرأ المقالات المرتبطة للتوسع في كل موضوع.'
+                    : 'Watch the free lessons on this page, then explore the related articles to learn more about each topic.'}
                 </p>
               </div>
 
@@ -109,7 +110,7 @@ export default function FreeContent() {
                               : 'Pick the topic you care about, then open the full read directly without downloading one bundled file.'}
                           </p>
                         </div>
-                        <Link href="/articles">
+                        <Link href={localizePublicHref("/articles", language)}>
                           <button className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/[0.04] px-5 py-2.5 text-sm font-semibold text-white transition hover:border-[#00C176]/30 hover:bg-white/[0.08]">
                             {isRtl ? 'عرض كل المقالات' : 'View all articles'}
                             <ArrowUpRight className="h-4 w-4" />
@@ -197,7 +198,7 @@ export default function FreeContent() {
                   <Lock className="mx-auto mb-4 h-10 w-10 text-[#00C176]" />
                   <h3 className="text-2xl font-extrabold tracking-[-0.03em]">{t('freeContent.wantMore')}</h3>
                   <p className="mx-auto mt-3 max-w-lg text-sm leading-7 text-white/68">{t('freeContent.upgradeMsg')}</p>
-                  <Link href="/#packages">
+                  <Link href={localizePublicHref("/#packages", language)}>
                     <button className="mt-6 inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 px-8 py-3 text-base font-semibold text-white shadow-[0_14px_36px_rgba(0,193,118,0.28)] transition hover:translate-y-[-2px]">
                       {t('freeContent.viewPackages')}
                       <ArrowUpRight className="h-4 w-4" />

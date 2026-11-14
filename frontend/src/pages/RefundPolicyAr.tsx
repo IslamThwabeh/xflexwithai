@@ -120,7 +120,7 @@ export function RefundPolicyAr() {
 
       <div className="mt-8 p-4 bg-gray-50 rounded-lg border">
         <p className="text-gray-600">للاطلاع على الشروط والأحكام العامة:</p>
-        <Link href="/terms">
+        <Link href="/ar/terms">
           <span className="text-emerald-600 hover:underline cursor-pointer font-medium">الشروط والأحكام ←</span>
         </Link>
       </div>

@@ -1,3 +1,5 @@
+import { localizePublicHref } from '@/lib/publicLocaleHref';
+import { opensRegistration } from '@/lib/authEntryMode';
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LoginForm } from "@/components/LoginForm";
 import { PasswordRecoveryForm, readSupportRecoveryLink } from "@/components/PasswordRecoveryForm";
@@ -17,16 +19,7 @@ import { trackRegistrationStart } from "@/lib/analytics";
 function shouldOpenRegisterByDefault() {
   if (typeof window === "undefined") return false;
 
-  const params = new URLSearchParams(window.location.search);
-  const mode = params.get("mode");
-  const hasReferral = !!params.get("ref");
-  const path = window.location.pathname;
-
-  if (path === "/register") return true;
-  if (mode === "register") return true;
-  if (hasReferral) return true;
-
-  return false;
+  return opensRegistration(window.location.pathname, window.location.search);
 }
 
 export default function Auth() {
@@ -69,20 +62,15 @@ export default function Auth() {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const params = new URLSearchParams(window.location.search);
-    const mode = params.get("mode");
-    const hasReferral = !!params.get("ref");
-    const path = window.location.pathname;
-
-    if (path === "/register" || mode === "register" || hasReferral) {
-      setShowLogin(false);
-      return;
-    }
-
-    if (mode === "login") {
-      setShowLogin(true);
-    }
+    setShowLogin(!shouldOpenRegisterByDefault());
   }, [location]);
+
+  const toggleAuthMode = () => {
+    const params = new URLSearchParams(window.location.search);
+    params.set('mode', showLogin ? 'register' : 'login');
+    window.history.replaceState(window.history.state, '', `${window.location.pathname}?${params}${window.location.hash}`);
+    setShowLogin(!showLogin);
+  };
 
   useEffect(() => {
     if (showLogin || registrationStartTracked.current) return;
@@ -284,7 +272,7 @@ export default function Auth() {
               <div className="rounded-[2rem] border border-white/10 bg-white/[0.96] p-1 shadow-[0_28px_90px_rgba(0,0,0,0.34)] backdrop-blur-xl">
                 <div className="rounded-[1.7rem] bg-white px-4 py-6 sm:px-6 sm:py-8">
                   <div className="mb-8 text-center">
-                    <Link href="/">
+                    <Link href={localizePublicHref("/", language)}>
                       <h2 className="cursor-pointer text-3xl font-bold tracking-tight text-[var(--color-xf-dark)] transition-colors hover:text-[var(--color-xf-primary)]">
                         {APP_TITLE}
                       </h2>
@@ -457,7 +445,7 @@ export default function Auth() {
                   <div className="mt-6 text-center">
                     <button
                       type="button"
-                      onClick={() => setShowLogin(!showLogin)}
+                      onClick={toggleAuthMode}
                       className="text-sm text-[var(--color-xf-dark)]/40 transition-colors hover:text-[var(--color-xf-dark)]/70"
                     >
                       {showLogin ? (
@@ -473,7 +461,7 @@ export default function Auth() {
                   </div>
 
                   <div className="mt-4 text-center">
-                    <Link href="/" className="inline-flex items-center gap-1.5 text-sm text-[var(--color-xf-dark)]/30 transition-colors hover:text-[var(--color-xf-dark)]/60">
+                    <Link href={localizePublicHref("/", language)} className="inline-flex items-center gap-1.5 text-sm text-[var(--color-xf-dark)]/30 transition-colors hover:text-[var(--color-xf-dark)]/60">
                       <ArrowLeft className={`h-4 w-4 ${isRtl ? "rotate-180" : ""}`} />
                       {t("auth.page.backToHome")}
                     </Link>

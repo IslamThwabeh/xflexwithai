@@ -1,4 +1,5 @@
-import { Gift, FileText, Download, ExternalLink, CalendarClock, ShieldCheck } from "lucide-react";
+import { localizePublicHref } from '@/lib/publicLocaleHref';
+import { Gift, FileText, Play, ExternalLink, CalendarClock, ShieldCheck } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,23 +8,23 @@ import CinematicPublicLayout from "@/components/public/CinematicPublicLayout";
 
 const gifts = [
   {
-    id: "journal",
+    id: "articles",
     icon: FileText,
-    titleEn: "Trading Journal Template",
-    titleAr: "قالب دفتر التداول",
-    descriptionEn: "A clean template to track entries, exits, emotions, and lessons.",
-    descriptionAr: "قالب منظم لتوثيق الدخول والخروج والمشاعر والدروس.",
+    titleEn: "Trading education articles",
+    titleAr: "مقالات تعليم التداول",
+    descriptionEn: "Explore educational articles on trading concepts and risk management.",
+    descriptionAr: "اقرأ مقالات تعليمية عن مفاهيم التداول وإدارة المخاطر.",
     actionHref: "/articles",
     actionLabelEn: "Open Articles",
     actionLabelAr: "افتح المقالات",
   },
   {
-    id: "checklist",
-    icon: Download,
-    titleEn: "Pre-Trade Checklist",
-    titleAr: "قائمة ما قبل الصفقة",
-    descriptionEn: "Quick checklist to reduce impulsive trades and keep consistency.",
-    descriptionAr: "قائمة سريعة لتقليل القرارات العشوائية والحفاظ على الانضباط.",
+    id: "videos",
+    icon: Play,
+    titleEn: "Free video lessons",
+    titleAr: "دروس فيديو مجانية",
+    descriptionEn: "Watch introductory trading lessons from the open library.",
+    descriptionAr: "شاهد دروسًا تمهيدية في التداول من المكتبة المفتوحة.",
     actionHref: "/free-content",
     actionLabelEn: "Open Free Content",
     actionLabelAr: "افتح المحتوى المجاني",
@@ -86,8 +87,8 @@ export default function Gifts() {
               </h1>
               <p className="mt-5 text-base leading-8 text-white/62 md:text-lg">
                 {isRtl
-                  ? 'هذه الصفحة تجمع موارد سريعة ومباشرة تساعدك على التنظيم والانضباط والمتابعة من دون أن تتحول الصفحة الرئيسية إلى مساحة طويلة ومزدحمة.'
-                  : 'This page keeps a few practical resources close at hand without forcing the homepage itself to become a long utility hub.'}
+                  ? 'استكشف الدروس المجانية والمقالات التعليمية وفعاليات الأكاديمية القادمة.'
+                  : 'Explore free lessons, educational articles and upcoming academy events.'}
               </p>
             </div>
           </div>
@@ -112,7 +113,7 @@ export default function Gifts() {
                       <p className="mb-5 text-sm leading-7 text-white/60">
                         {isRtl ? item.descriptionAr : item.descriptionEn}
                       </p>
-                      <Link href={item.actionHref}>
+                      <Link href={localizePublicHref(item.actionHref, language)}>
                         <Button variant="outline" className="w-full rounded-full border-white/12 bg-white/[0.04] text-white hover:border-[#00C176]/30 hover:bg-white/[0.08] hover:text-white">
                           <ExternalLink className="h-4 w-4" />
                           {isRtl ? item.actionLabelAr : item.actionLabelEn}

@@ -2051,8 +2051,8 @@ function ExploreMoreSection() {
     ?.filter((article) => isArticleAvailableInLanguage(article, isArabic ? 'ar' : 'en'))
     .slice(0, 2) ?? [];
   const giftItems = isArabic
-    ? ['قالب دفتر التداول', 'قائمة ما قبل الصفقة', 'الوصول للفعاليات المباشرة']
-    : ['Trading journal template', 'Pre-trade checklist', 'Live event access'];
+    ? ['مقالات تعليم التداول', 'دروس فيديو مجانية', 'الوصول للفعاليات المباشرة']
+    : ['Trading education articles', 'Free video lessons', 'Live event access'];
 
   return (
     <section ref={ref} className="relative overflow-hidden bg-[#050505] py-16 md:py-20" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -2348,6 +2348,21 @@ export default function CinematicHomePage() {
   const reduced = usePrefersReducedMotion();
   const [paused, setPaused] = useState(false);
   const motionDisabled = reduced || paused;
+  useEffect(() => {
+    const scrollToAnchor = () => {
+      const id = window.location.hash.slice(1);
+      const element = document.getElementById(id);
+      if (!element) return;
+      const headerHeight = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cin-home-header-height')) || 80;
+      window.scrollTo({ top: element.getBoundingClientRect().top + window.scrollY - headerHeight - 8, behavior: 'instant' });
+    };
+    const frame = requestAnimationFrame(scrollToAnchor);
+    window.addEventListener('hashchange', scrollToAnchor);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('hashchange', scrollToAnchor);
+    };
+  }, []);
   const scrollTo = (id: string) => {
     const el = document.getElementById(id);
     if (!el) return;

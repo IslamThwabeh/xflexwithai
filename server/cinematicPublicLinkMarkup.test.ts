@@ -14,7 +14,7 @@ describe("cinematic public navigation markup", () => {
   });
 
   it("does not prepend a locale to links that are already localized", () => {
-    expect(layoutSource).toContain("if (/^\\/(ar|en)(?:\\/|$)/.test(href)) return href;");
+    expect(layoutSource).toContain("const localizePublicHref = (href: string) => localeHref(href, language)");
     expect(layoutSource).not.toContain("href.startsWith('/ar/') || href.startsWith('/en/')");
   });
 });
