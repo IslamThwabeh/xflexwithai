@@ -1,6 +1,6 @@
 # Navigation V2 and workspace announcement
 
-Status: implementation `a92e2d0` is pushed to `origin/codex/live-package-phase-a`. Production is pending the separate migration approval below. Not deployed.
+Status: live on xflexacademy.com after the owner's explicit migration/deployment approval. Implementation `a92e2d0` and reviewed source/memory revision `f0c63d7` are pushed to `origin/codex/live-package-phase-a`.
 
 ## Result and scope
 
@@ -47,12 +47,26 @@ The browser harness uses synthetic responses on normal application routes and cr
 
 ## Release gate and recovery
 
-Project memory requires separate explicit approval for a production D1 migration. Finish local/browser verification and present migration 135 for that approval before applying it. Source push authorization already exists in this conversation.
+The owner explicitly approved migration 135 and deployment after the completed local verification. The earlier migration approval gate is resolved. Existing authorization covers pushing the reviewed source and tracked release/memory records.
 
 The reviewed migration SHA-256 is `00029300b7562e2b16ef0632522f8e7f48db15b46445cacbf3762ca1913d5cc6`. The schema-only rehearsal snapshot SHA-256 is `f7c280b37d27196a4306033399eed95fc0f2f7800d1b0ba83e619195d87a1d7f`. Production read-only metadata confirmed the receipt table is absent and the existing migration ledger format is compatible. Live receipt-table metadata and query-plan verification follow the approved creation.
 
-After approval: verify Cloudflare authentication, capture a fresh Time Travel bookmark and deployment baselines, reconcile live schema/ledger metadata, apply only migration 135 and record it once in `schema_migrations`. Verify live table columns/PK and exact status-query plan, then deploy Worker before Pages. Preserve live variables, four schedules and all storage bindings. Verify production routes, anonymous denials and exact asset hashes.
+The rollout verified Cloudflare authentication, captured the recovery bookmark and deployment baselines, applied only migration 135, reconciled its live schema/ledger/PK/query plan, and deployed Worker before Pages. Do not rerun the migration or clear announcement choices during routine follow-up.
 
 Routine rollback restores the prior frontend and Worker. The additive receipt table may remain; do not restore the whole database or erase choices as a routine code rollback. Emergency Time Travel recovery requires a separately reviewed incident plan because it affects unrelated concurrent business activity.
 
 No package, order, payment, accounting balance, customer message or role assignment is created by QA. Live authenticated student/admin/support workflows and physical-device/Safari verification must be reported separately from synthetic Chrome coverage.
+
+## Production release — 14 November 2026
+
+- Migration 135 is recorded exactly once as `schema_migrations.id = 79`, applied at `2026-11-14 18:17:38` UTC. The live table/columns/composite PK match the rehearsed structure. `EXPLAIN QUERY PLAN` selects `SEARCH interface_announcement_states USING PRIMARY KEY (announcement_id=? AND account_id=?)`, without a scan. The table had zero receipt rows before the Worker/frontend rollout.
+- Pre-migration Time Travel bookmark: `00001924-00000e8c-00005123-fbfc7e6a6f14cadd58a3088fe856bf4d`. Migration bookmark: `00001924-00000e94-00005123-a3b47ff768cfc61ad246717917a01b7d`; ledger bookmark: `00001924-00000e9a-00005123-338d5d3963cd0a80fe52c9abeffd5ddb`.
+- Worker `31364cc0-2688-44bb-acc7-ccbd01889a44` is active at 100%. Its 31 bindings, including live variables/secrets and all storage targets, and runtime settings match the previous version. All four schedules are preserved: `* * * * *`, `*/5 * * * *`, `30 23 * * *`, `0 5 * * *`.
+- Pages production deployment `90bdc9cb-734c-4e96-99b5-1330769fbafd`, source `f0c63d7`, is active on branch `main`. Deployment URL: `https://90bdc9cb.xflexwithai.pages.dev`.
+- Live HTTP verification passed nine exact asset SHA-256 comparisons, 16 canonical/deployment route checks, API health and anonymous 401 denials for both new announcement endpoints. Private workspace pages retain `noindex` and `no-store` headers.
+- Isolated Chrome passed eight bilingual public check groups using actual public API responses, and all 75 navigation check groups using synthetic account/API responses with the deployed assets. There were zero JavaScript exceptions. The nine simulated announcement action requests were intercepted and created no production receipts. This verifies production assets and navigation behavior without impersonating a production account.
+- The measured release SQL commands reported 1,198 rows read and six rows written in total. Table creation reported one read/two writes; migration-ledger insertion reported 61 reads/four writes. Remaining measured reads are schema/ledger/index/query-plan/empty-table verification. These figures exclude normal concurrent application traffic and Cloudflare metadata/Time Travel operations. No new polling, scheduled work or recurring catalog query was added; no production CPU benchmark was performed.
+- The existing owner Chrome academy tab was inspected and is on `/auth`, signed out. A request to sign in to the developer test student account is pending. Actual authenticated student, support and admin production workflows, PDF/active-service follow-ups, and physical-device/Safari verification remain unverified in this release. No funds, packages, payments or customer messages were added during deployment/QA.
+- Code rollback targets: Worker `ac7fbae3-7516-4454-bdf7-fe7cd0961439` and Pages `d717e4cf-1434-46c7-8a73-6d62633699c1`. Keep the additive table and legitimate user choices; do not restore the whole database for a code rollback.
+
+The initial automatic approval-review attempt failed because its reviewer hit a usage limit, before any deployment command executed. The owner repeated the instruction to proceed; the normal approval retry succeeded. No approval bypass was used. Live verification and private operational evidence are under ignored `output/playwright/navigation-v2/production-release/`.
