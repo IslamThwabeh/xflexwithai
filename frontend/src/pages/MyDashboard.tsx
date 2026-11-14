@@ -1,4 +1,5 @@
 import StudentDashboardOverview from '@/components/dashboard/StudentDashboardOverview';
+import { hasCompletedCourseLearning } from '@/lib/courseLearningProgress';
 import { localizePublicHref } from '@/lib/publicLocaleHref';
 import { ACADEMY_TIME_ZONE } from '@shared/academyLocale';
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -76,7 +77,7 @@ export default function MyDashboard() {
 
   // Computed values (safe before early returns)
   const totalCourses = enrollments?.length || 0;
-  const completedCourses = enrollments?.filter(e => e.completedAt != null).length || 0;
+  const completedCourses = enrollments?.filter(hasCompletedCourseLearning).length || 0;
   const allCoursesCompleted = totalCourses > 0 && completedCourses === totalCourses;
 
   // One-time congrats: show only once per user, dismiss forever

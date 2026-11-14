@@ -16,6 +16,7 @@ import {
 import { Link } from "wouter";
 import { useLanguage } from "@/contexts/LanguageContext";
 import type { RouterOutputs } from "@/lib/trpc";
+import { hasCompletedCourseLearning } from "@/lib/courseLearningProgress";
 import SpotlightCard from "./SpotlightCard";
 import "./student-dashboard.css";
 
@@ -43,10 +44,8 @@ export default function StudentDashboardOverview({
   const { isRTL } = useLanguage();
   const reducedMotion = useReducedMotion();
   const nextCourse =
-    enrollments.find(course => course.completedAt == null) ?? enrollments[0];
-  const completedCourses = enrollments.filter(
-    course => course.completedAt != null
-  ).length;
+    enrollments.find(course => !hasCompletedCourseLearning(course)) ?? enrollments[0];
+  const completedCourses = enrollments.filter(hasCompletedCourseLearning).length;
   const completedLessons = enrollments.reduce(
     (sum, course) => sum + (course.completedEpisodes ?? 0),
     0
@@ -55,7 +54,8 @@ export default function StudentDashboardOverview({
     100,
     Math.max(0, nextCourse?.progressPercentage ?? 0)
   );
-  const nextCompleted = nextCourse?.completedAt != null;
+  const nextCompleted = !!nextCourse && hasCompletedCourseLearning(nextCourse);
+  const nextCourseName = isRTL ? nextCourse?.courseNameAr || nextCourse?.courseName : nextCourse?.courseName;
   const services = [
     {
       name: "LexAI",
@@ -137,7 +137,7 @@ export default function StudentDashboardOverview({
                     : "Start learning"}
               </div>
               <h2 className="max-w-2xl break-words text-2xl font-bold leading-snug text-white md:text-3xl">
-                {nextCourse?.courseName ??
+                {nextCourseName ??
                   (isRTL
                     ? "مسارك التعليمي يبدأ هنا"
                     : "Your learning journey starts here")}
@@ -289,7 +289,8 @@ export default function StudentDashboardOverview({
                   100,
                   Math.max(0, course.progressPercentage ?? 0)
                 );
-                const completed = course.completedAt != null;
+                const completed = hasCompletedCourseLearning(course);
+                const courseName = isRTL ? course.courseNameAr || course.courseName : course.courseName;
                 return (
                   <article key={course.id} className="dashboard-course-card">
                     <div className="flex items-start gap-3">
@@ -302,7 +303,7 @@ export default function StudentDashboardOverview({
                       </span>
                       <div className="min-w-0 flex-1">
                         <h3 className="break-words text-base font-bold text-slate-900">
-                          {course.courseName}
+                          {courseName}
                         </h3>
                         <p className="mt-1 text-sm text-slate-600">
                           {course.completedEpisodes ?? 0}{" "}
@@ -313,6 +314,11 @@ export default function StudentDashboardOverview({
                             </span>
                           )}
                         </p>
+                        {course.isAdminSkipped && !completed && (
+                          <p className="mt-1 text-xs font-medium text-amber-800">
+                            {isRTL ? 'معفى من شرط إكمال الدورة' : 'Course completion requirement waived'}
+                          </p>
+                        )}
                       </div>
                     </div>
                     <div className="my-4 flex items-center gap-3">
@@ -320,7 +326,7 @@ export default function StudentDashboardOverview({
                         className="dashboard-course-progress"
                         value={courseProgress}
                         max={100}
-                        aria-label={`${course.courseName} ${isRTL ? "التقدم" : "progress"}`}
+                        aria-label={`${courseName} ${isRTL ? "التقدم" : "progress"}`}
                       />
                       <span className="text-xs font-semibold tabular-nums text-slate-600">
                         {Math.round(courseProgress)}%

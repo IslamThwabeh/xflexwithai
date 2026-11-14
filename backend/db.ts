@@ -1705,6 +1705,8 @@ export async function getEnrollmentsByUserId(userId: number) {
       userId: enrollments.userId,
       courseId: enrollments.courseId,
       courseName: courses.titleEn,
+      courseNameAr: courses.titleAr,
+      isAdminSkipped: enrollments.isAdminSkipped,
       progressPercentage: enrollments.progressPercentage,
       completedEpisodes: enrollments.completedEpisodes,
       totalEpisodes: sql`(SELECT COUNT(*) FROM ${episodes} WHERE ${eq(episodes.courseId, courses.id)})`,

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { withApiBase } from "@/lib/apiBase";
 import { formatFreeLibraryFileSize } from "@/lib/freeLibrary";
 import { buildFreeLibraryVideoDeepLink } from "@shared/freeLibrary";
+import { localizePublicHref } from "@/lib/publicLocaleHref";
 import { BookOpen, Download, ExternalLink, FileText, Play, Shield, Video } from "lucide-react";
 
 type FreeLibraryDocumentItem = {
@@ -157,7 +158,7 @@ export default function FreeLibrarySection({ data, isRtl, mode = "full", initial
             })}
 
             {mode !== "full" ? (
-              <Link href={buildFreeLibraryVideoDeepLink(selectedVideo.slug)}>
+              <Link href={localizePublicHref(buildFreeLibraryVideoDeepLink(selectedVideo.slug), isRtl ? 'ar' : 'en')}>
                 <Button variant="outline" className="w-full border-emerald-200 text-emerald-700 hover:bg-emerald-50">
                   {isRtl ? "عرض كل الفيديوهات المجانية" : "View All Free Videos"}
                 </Button>
