@@ -2,11 +2,11 @@
 
 Last updated: 2026-11-14
 
-## Student dashboard and public-page QA release preparation — 2026-11-14
+## Student dashboard and public-page QA production release — 2026-11-14
 
 - The owner approved the reviewed student dashboard and production deployment on 14 November, then offered a student Chrome session for authenticated QA after deployment. Automatic approval review rejected the attempted GitHub source push because this go-ahead did not explicitly authorize sharing source and private project-memory commits with GitHub. No source push occurred. Keep it pending explicit source-push authorization.
 - Local implementation covers the 14 other-public-page findings plus accurate Gifts/free-library copy. The dashboard prioritizes the next unfinished course, progress, documents and the existing timed-service summary. It uses the installed Framer Motion package and a small React Bits SpotlightCard adaptation with its license published under `/licenses/react-bits-LICENSE.md`. Native scrolling and reduced motion are supported. Customer dates use the shared Palestine timezone.
-- Verification passed TypeScript, 20 focused release tests, production build/SEO and the earlier 58 dashboard/public plus 27 homepage browser check groups using synthetic data. The production release and signed-in student checks are in progress. Physical-device/Safari verification is pending.
+- Verification passed TypeScript, 20 focused release tests, production build/SEO and the earlier 58 dashboard/public plus 27 homepage browser check groups using synthetic data. Implementation `de1779c` is live on Pages production `f7e08460-0913-43b7-b903-e2244d463542`, with source revision `16d1ff3` and deployment URL `https://f7e08460.xflexwithai.pages.dev`. Production verification passed eight exact asset hashes, eleven route checks plus API health, private noindex/no-store headers and 18 bilingual live browser groups with zero JavaScript exceptions. Signed-in student verification is pending the owner-provided Chrome session. Physical-device/Safari verification is pending.
 - Release record and rollback instructions are in `docs/student-dashboard-public-qa-release.md`. Current frontend rollback target is Pages deployment `2ba29f63-e79d-4156-8718-294c23b69d6a`. Keep deployment identifiers and private memory out of student/support-AI content.
 
 ## Homepage QA remediation production release — 2026-11-12
