@@ -4,10 +4,11 @@ Last updated: 2026-11-14
 
 ## Student dashboard and public-page QA release preparation — 2026-11-14
 
-- The owner approved the reviewed student dashboard, the proposed GitHub source push and production deployment on 14 November, then offered a student Chrome session for authenticated QA after deployment. This supersedes the previous pending source-push authorization for the reviewed release commits.
+- The owner approved the reviewed student dashboard and production deployment on 14 November, then offered a student Chrome session for authenticated QA after deployment. Automatic approval review rejected the attempted GitHub source push because this go-ahead did not explicitly authorize sharing source and private project-memory commits with GitHub. No source push occurred. Keep it pending explicit source-push authorization.
 - Local implementation covers the 14 other-public-page findings plus accurate Gifts/free-library copy. The dashboard prioritizes the next unfinished course, progress, documents and the existing timed-service summary. It uses the installed Framer Motion package and a small React Bits SpotlightCard adaptation with its license published under `/licenses/react-bits-LICENSE.md`. Native scrolling and reduced motion are supported. Customer dates use the shared Palestine timezone.
 - Verification passed TypeScript, 20 focused release tests, production build/SEO and the earlier 58 dashboard/public plus 27 homepage browser check groups using synthetic data. The production release and signed-in student checks are in progress. Physical-device/Safari verification is pending.
 - Release record and rollback instructions are in `docs/student-dashboard-public-qa-release.md`. Current frontend rollback target is Pages deployment `2ba29f63-e79d-4156-8718-294c23b69d6a`. Keep deployment identifiers and private memory out of student/support-AI content.
+
 ## Homepage QA remediation production release — 2026-11-12
 
 - User approved local Phases 2–5 after the requested preparation gate, then separately authorized deployment. All 14 findings are addressed: homepage logo, locale-preserving footer/article links, responsive navigation/pricing/menu, accessible state/labels, contrast/motion controls and bilingual customer copy. Palestine locale defaults are reused; payment/key/activation behaviour is unchanged.

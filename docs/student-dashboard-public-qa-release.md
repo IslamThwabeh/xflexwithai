@@ -1,6 +1,8 @@
 # Student dashboard and public-page QA release
 
-The owner approved the reviewed dashboard, GitHub source push and production deployment on 14 November 2026. Authenticated verification will follow deployment using the student Chrome session the owner provides.
+The owner approved the reviewed dashboard and production deployment on 14 November 2026. Authenticated verification will follow deployment using the student Chrome session the owner provides.
+
+Automatic approval review rejected the GitHub push because the owner's go-ahead did not explicitly authorize sharing the repository source and private project-memory commits with GitHub. The implementation commit is local. A separate source-push decision is pending.
 
 The student dashboard now emphasizes the next unfinished course, learning progress, course documents and existing subscription states. It uses the installed Framer Motion package and a small adaptation of React Bits SpotlightCard. Reduced-motion preferences and native page scrolling are supported. The upstream copyright and license ship at `/licenses/react-bits-LICENSE.md`.
 
