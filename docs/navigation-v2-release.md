@@ -1,6 +1,6 @@
 # Navigation V2 and workspace announcement
 
-Status: implemented locally; production is pending the separate migration approval below. Source and verification closeout are recorded below. Not deployed.
+Status: implementation `a92e2d0` is pushed to `origin/codex/live-package-phase-a`. Production is pending the separate migration approval below. Not deployed.
 
 ## Result and scope
 
@@ -41,12 +41,15 @@ Private, synthetic and operational artifacts are ignored under `output/playwrigh
 - The exact original role/feature-filter callback was compared with the integrated version, allowing only line-ending differences. Browser scenarios derive their expected destinations from the original implementation.
 - TypeScript, the full application/Worker builds and SEO/middleware checks pass. Focused coverage passes 50 tests, the layout suite passes 5 tests, and the established critical workflow cycle passes 231 tests across 33 files.
 - The final isolated Chrome pass completed all 75 check groups with zero JavaScript exceptions: 56 role/feature scenarios, six admin language/width layouts, favorites/collapsed-sidebar/record-search interactions, eight student language/width layouts, three audience announcement lifecycles and the optional-status-outage check. Widths include 320/390 px for both workspaces and 1024/1440 px for students. Each eligible student scenario preserved all 18 destinations including profile. Screenshots were visually reviewed in Arabic and English.
+- A separate pass waited for each status response to settle and verified initial display, refresh deferral, later-sign-in return and permanent dismissal for all three audiences, with six synthetic action writes and zero JavaScript exceptions. The final Worker deployment dry run also passed.
 
 The browser harness uses synthetic responses on normal application routes and creates no production account data. This establishes navigation reachability and announcement UI behavior; it does not prove every feature's full production workflow. Existing nested main landmarks were observed in the dashboard layouts and remain an accessibility follow-up outside this navigation release.
 
 ## Release gate and recovery
 
 Project memory requires separate explicit approval for a production D1 migration. Finish local/browser verification and present migration 135 for that approval before applying it. Source push authorization already exists in this conversation.
+
+The reviewed migration SHA-256 is `00029300b7562e2b16ef0632522f8e7f48db15b46445cacbf3762ca1913d5cc6`. The schema-only rehearsal snapshot SHA-256 is `f7c280b37d27196a4306033399eed95fc0f2f7800d1b0ba83e619195d87a1d7f`. Production read-only metadata confirmed the receipt table is absent and the existing migration ledger format is compatible. Live receipt-table metadata and query-plan verification follow the approved creation.
 
 After approval: verify Cloudflare authentication, capture a fresh Time Travel bookmark and deployment baselines, reconcile live schema/ledger metadata, apply only migration 135 and record it once in `schema_migrations`. Verify live table columns/PK and exact status-query plan, then deploy Worker before Pages. Preserve live variables, four schedules and all storage bindings. Verify production routes, anonymous denials and exact asset hashes.
 
