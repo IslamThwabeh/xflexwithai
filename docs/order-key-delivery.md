@@ -2,8 +2,8 @@
 
 Implementation `620b09648bad05a01790055a8e39dc0dd5332429` was committed and
 pushed to `origin/codex/live-package-phase-a` on 2026-11-16 following owner
-authorization. Production deployment remains pending; no Worker or Pages release
-was performed for this change.
+authorization. The owner subsequently approved production deployment, completed
+on 2026-11-16 from source `730b31d` as recorded below.
 
 ## Behavior
 
@@ -81,6 +81,35 @@ with zero page exceptions or unknown API fixtures. Panel screenshots were
 visually checked, including the corrected Arabic 320 px layout. Genuine signed-in
 production staff and real customer email receipt remain unverified in this change.
 No production customer/account/payment/key/email writes have been performed.
+
+## Production release — 2026-11-16
+
+- Worker `79061895-25aa-4ea5-9a27-06e6b96f8f68` is active at 100%.
+- Pages production `fd974465-8b59-4fda-97be-98668b8bb14b`, branch `main`,
+  reports source `730b31d`; deployment URL:
+  <https://fd974465.xflexwithai.pages.dev>.
+- Worker was published before Pages. All 31 bindings, variable values, runtime
+  compatibility/settings and four schedules match the saved pre-release snapshot.
+  No migration, historical replay or customer test transaction was performed.
+- Read-only metadata reconciled 60 affected table/index/trigger objects. The live
+  email-outbox DDL and four indexes passed an isolated rehearsal of seven actual
+  application SQL statements. Three exact read plans use the unique dedupe index
+  or outbox integer PK locally and in production. D1 EXPLAIN through JSON-bound
+  API requests read/wrote zero rows; schema metadata wrote zero rows. CLI-only
+  SQL argument/date-serialization checks initially failed, then the exact bound
+  statements passed through the API without source or schema changes.
+- Post-release checks passed nine exact asset SHA-256 comparisons, seven
+  current-entry/private-header/preview route checks, API/database health and
+  anonymous 401 denial for order list, delivery details and resend.
+- All twelve isolated bilingual browser groups passed again on deployed assets,
+  with zero page exceptions or unknown API fixtures. Five account mutations were
+  intercepted; no production order, payment, key, activation or email was created
+  for QA. The deployed Arabic 320 px panel was visually checked. Real signed-in
+  staff use and customer inbox receipt remain unverified.
+- Previous Worker `31364cc0-2688-44bb-acc7-ccbd01889a44` and Pages production
+  `8a2eb4f7-af71-487a-aeda-d7363375e637` are the code rollback targets.
+  Private release evidence remains ignored under
+  `output/playwright/order-key-delivery/`.
 
 ## Release and rollback
 
