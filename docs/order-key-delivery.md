@@ -1,6 +1,9 @@
 # Order approval and automatic key delivery
 
-Implementation prepared locally on 2026-11-16. Not deployed.
+Implementation `620b09648bad05a01790055a8e39dc0dd5332429` was committed and
+pushed to `origin/codex/live-package-phase-a` on 2026-11-16 following owner
+authorization. Production deployment remains pending; no Worker or Pages release
+was performed for this change.
 
 ## Behavior
 
