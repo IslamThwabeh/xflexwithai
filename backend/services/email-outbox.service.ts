@@ -2,6 +2,7 @@ import { sendAdminNotificationEmail, sendEmail } from "../_core/email";
 import * as db from "../db";
 import { getLiveExpertAlertBlockReason } from './live-expert-alerts.service';
 import type { EmailDeliveryClass } from "../../shared/emailDeliveryClasses";
+import { getOrderKeyDeliveryBlockReason } from './order-key-delivery.service';
 
 export const SUPPORT_REPLY_EMAIL_DRAIN_LIMIT = 5;
 export const PRIORITY_EMAIL_OUTBOX_DRAIN_LIMIT = 5;
@@ -26,15 +27,18 @@ export async function drainGenericEmailOutbox(input: {
   limit: number;
   eventTypes?: string[];
   deliveryClasses?: EmailDeliveryClass[];
+  ids?: number[];
 }): Promise<{ claimed: number; sent: number; failed: number; skipped: number }> {
   const claimOptions: {
     eventTypes?: string[];
     excludedEventTypes?: string[];
     deliveryClasses?: EmailDeliveryClass[];
+    ids?: number[];
   } = input.eventTypes
     ? { eventTypes: input.eventTypes }
     : { excludedEventTypes: PRIVACY_BCC_EMAIL_EVENTS };
   if (input.deliveryClasses) claimOptions.deliveryClasses = input.deliveryClasses;
+  if (input.ids) claimOptions.ids = input.ids;
   const rows = await db.claimEmailOutboxBatch(
     input.limit,
     claimOptions,
@@ -43,7 +47,8 @@ export async function drainGenericEmailOutbox(input: {
 
   for (const row of rows) {
     try {
-      const accountBlockReason = await db.getEmailOutboxRecipientBlockReason(row) ?? await getLiveExpertAlertBlockReason(row);
+      const accountBlockReason = await db.getEmailOutboxRecipientBlockReason(row)
+        ?? await getLiveExpertAlertBlockReason(row) ?? await getOrderKeyDeliveryBlockReason(row);
       if (accountBlockReason) {
         await db.markEmailOutboxSkipped(row.id, accountBlockReason, "skipped_suppressed");
         result.skipped += 1;

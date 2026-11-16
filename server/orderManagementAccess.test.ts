@@ -54,6 +54,12 @@ describe('read-only support order access', () => {
     expect(db.getAllOrders).not.toHaveBeenCalled();
   });
 
+  it('keeps support-only staff from viewing credentials or sending key emails', async () => {
+    await expect(caller().orders.adminKeyDelivery({ orderId: 135 })).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(caller().orders.adminResendKey({ orderId: 135 })).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    expect(db.getOrderById).not.toHaveBeenCalled();
+  });
+
   it.each(['completed', 'cancelled'] as const)('does not let support change orders to %s', async status => {
     await expect(caller().orders.adminUpdateStatus({ orderId: 135, status })).rejects.toMatchObject({ code: 'FORBIDDEN' });
     expect(db.updateOrderStatus).not.toHaveBeenCalled();

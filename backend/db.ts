@@ -7281,6 +7281,33 @@ export async function enqueueEmailOutbox(input: {
   return inserted.length > 0;
 }
 
+/** One indexed lookup; never load email bodies into the order screen. */
+export async function getOrderKeyDelivery(orderId: number) {
+  const db = await getDb();
+  if (!db) throw new Error('Database not available');
+  const [row] = await db.select({
+    id: emailOutbox.id, status: emailOutbox.status, recipientEmail: emailOutbox.recipientEmail,
+    sentAt: emailOutbox.sentAt, updatedAt: emailOutbox.updatedAt, nextAttemptAt: emailOutbox.nextAttemptAt,
+  }).from(emailOutbox).where(eq(emailOutbox.dedupeKey, `order_key_delivery:${orderId}`)).limit(1);
+  return row ?? null;
+}
+
+/** Explicit operator retry only. The CAS and cooldown also cover concurrent clicks. */
+export async function retryOrderKeyDelivery(row: NonNullable<Awaited<ReturnType<typeof getOrderKeyDelivery>>>) {
+  const db = await getDb();
+  if (!db) throw new Error('Database not available');
+  const now = new Date();
+  const result = await db.update(emailOutbox).set({
+    status: 'pending', attempts: 0, lockedAt: null, errorCategory: null, errorMessage: null,
+    nextAttemptAt: now.toISOString(), updatedAt: now.toISOString(),
+  }).where(and(
+    eq(emailOutbox.id, row.id), eq(emailOutbox.updatedAt, row.updatedAt),
+    inArray(emailOutbox.status, ['sent', 'failed', 'dead_letter']),
+    lte(emailOutbox.updatedAt, new Date(now.getTime() - 60_000).toISOString()),
+  )).returning({ id: emailOutbox.id });
+  return result.length > 0;
+}
+
 export async function enqueueSupportReplyDigestEmail(input: {
   conversationId: number;
   messageId: number;
@@ -7520,6 +7547,7 @@ export async function claimEmailOutboxBatch(
     eventTypes?: string[];
     excludedEventTypes?: string[];
     deliveryClasses?: EmailDeliveryClass[];
+    ids?: number[];
   },
 ): Promise<EmailOutbox[]> {
   const db = await getDb();
@@ -7553,6 +7581,10 @@ export async function claimEmailOutboxBatch(
   }
   if (options?.deliveryClasses?.length) {
     conditions.push(inArray(emailOutbox.deliveryClass, options.deliveryClasses));
+  }
+  if (options?.ids) {
+    if (!options.ids.length) return [];
+    conditions.push(inArray(emailOutbox.id, options.ids.slice(0, 10)));
   }
 
   const candidates = await db.select().from(emailOutbox)

@@ -37,17 +37,18 @@ vi.mock('../backend/db', async () => {
   };
 });
 
-vi.mock('../backend/_core/orderEmails', async () => {
-  const actual = await vi.importActual<typeof import('../backend/_core/orderEmails')>('../backend/_core/orderEmails');
-  return {
-    ...actual,
-    sendPaymentReceivedEmail: vi.fn(),
-  };
-});
+vi.mock('../backend/services/order-key-delivery.service', () => ({
+  queueOrderKeyDelivery: vi.fn(), getOrderKeyDeliveryDetails: vi.fn(), getOrderKeyDeliveryBlockReason: vi.fn(),
+}));
+vi.mock('../backend/services/email-outbox.service', async () => ({
+  ...await vi.importActual<typeof import('../backend/services/email-outbox.service')>('../backend/services/email-outbox.service'),
+  drainGenericEmailOutbox: vi.fn(),
+}));
 
 import { appRouter } from '../backend/routers';
 import * as db from '../backend/db';
-import { sendPaymentReceivedEmail } from '../backend/_core/orderEmails';
+import { queueOrderKeyDelivery } from '../backend/services/order-key-delivery.service';
+import { drainGenericEmailOutbox } from '../backend/services/email-outbox.service';
 
 const user = {
   id: 96,
@@ -87,6 +88,8 @@ describe('package activation routes', () => {
     vi.mocked(db.ensureStudentSupportWelcome).mockResolvedValue(false);
     vi.mocked(db.getOrderPaymentConfirmation).mockResolvedValue(undefined);
     vi.mocked(db.assertRenewalKeyIssuanceReady).mockResolvedValue(undefined);
+    vi.mocked(queueOrderKeyDelivery).mockResolvedValue({ id: 501, created: true });
+    vi.mocked(drainGenericEmailOutbox).mockResolvedValue({ claimed: 1, sent: 1, failed: 0, skipped: 0 });
   });
 
   it.each([false, true])('checks the one-time welcome after fresh activation (retry=%s)', async alreadyActivated => {
@@ -244,9 +247,8 @@ describe('package activation routes', () => {
       actorType: 'admin',
       actorId: 1,
     }));
-    expect(sendPaymentReceivedEmail).toHaveBeenCalledWith(user.email, expect.objectContaining({
-      activationKeys: ['XFLEX-TEST1-TEST2-TEST3'],
-    }));
+    expect(queueOrderKeyDelivery).toHaveBeenCalledWith(order.id);
+    expect(drainGenericEmailOutbox).toHaveBeenCalledWith({ limit: 1, ids: [501], eventTypes: ['payment_received'] });
   });
 
   function prepareRenewal(status: string, confirmed: boolean) {
@@ -274,7 +276,7 @@ describe('package activation routes', () => {
     } })).rejects.toMatchObject({ code: 'CONFLICT', message: expect.stringContaining('#184') });
     expect(db.confirmOrderPayment).not.toHaveBeenCalled();
     expect(db.createOrderActivationKeys).not.toHaveBeenCalled();
-    expect(sendPaymentReceivedEmail).not.toHaveBeenCalled();
+    expect(queueOrderKeyDelivery).not.toHaveBeenCalled();
   });
 
   it('recovers a confirmed renewal without new payment details, cash, entitlement grants or configuration changes', async () => {
@@ -298,8 +300,36 @@ describe('package activation routes', () => {
       paidAt: '2026-11-11T09:10:00Z', baseAmountIlsMinor: 35000, rationale: 'Matched genuine receipt',
     } })).rejects.toThrow('Payment is confirmed, but key issuance needs a safe retry');
     expect(db.confirmOrderPayment).toHaveBeenCalledTimes(1);
-    expect(sendPaymentReceivedEmail).not.toHaveBeenCalled();
+    expect(queueOrderKeyDelivery).not.toHaveBeenCalled();
     expect(db.createNotification).not.toHaveBeenCalled();
+  });
+
+  it('returns the saved approval and key with a visible warning when queueing fails', async () => {
+    prepareRenewal('completed', true);
+    vi.mocked(queueOrderKeyDelivery).mockRejectedValueOnce(new Error('Queue unavailable'));
+    const result = await createCaller().orders.adminUpdateStatus({ orderId: 173, status: 'completed' });
+    expect(result).toMatchObject({ keyDeliveryQueued: false, activationKeys: [{ keyCode: 'XFLEX-RETRY' }] });
+    expect(db.confirmOrderPayment).not.toHaveBeenCalled();
+    expect(drainGenericEmailOutbox).not.toHaveBeenCalled();
+  });
+
+  it('keeps delivery queued if the immediate drain fails', async () => {
+    prepareRenewal('completed', true);
+    vi.mocked(drainGenericEmailOutbox).mockRejectedValueOnce(new Error('Provider outage'));
+    const result = await createCaller().orders.adminUpdateStatus({ orderId: 173, status: 'completed' });
+    expect(result.keyDeliveryQueued).toBe(true);
+    expect(db.confirmOrderPayment).not.toHaveBeenCalled();
+  });
+
+  it.each(['key_manager', 'finance_manager'])('lets %s request delivery without approving or creating another key', async role => {
+    prepareRenewal('completed', true);
+    vi.mocked(db.getAdminByEmail).mockResolvedValue(null as any);
+    vi.mocked(db.hasAnyRole).mockImplementation(async (_id, roles) => roles.includes(role));
+    await createCaller({ ...user, isStaff: true }).orders.adminResendKey({ orderId: 173 });
+    expect(queueOrderKeyDelivery).toHaveBeenCalledWith(173, true);
+    expect(db.logAdminAction).toHaveBeenCalledWith(user.id, user.id, 'request_resend_order_activation_key', { orderId: 173, actorType: 'staff' });
+    expect(db.createOrderActivationKeys).not.toHaveBeenCalled();
+    expect(db.confirmOrderPayment).not.toHaveBeenCalled();
   });
 
   it('does not reapprove a historical completed order without immutable confirmation', async () => {

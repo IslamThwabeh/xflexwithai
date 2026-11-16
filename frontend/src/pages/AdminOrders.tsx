@@ -21,6 +21,7 @@ import { getLegalVersionLinks } from '@/lib/legalVersions';
 import { formatPaymentMethodLabel } from '@/lib/paymentMethodLabel';
 import { trpc } from '@/lib/trpc';
 import DashboardLayout from '@/components/DashboardLayout';
+import OrderKeyDeliveryPanel from '@/components/OrderKeyDeliveryPanel';
 import { useDataTable, DataTablePagination } from '@/components/DataTable';
 import { toast } from 'sonner';
 import { isLikelyValidEmail, normalizeEmailAddress } from '@shared/emailValidation';
@@ -101,9 +102,17 @@ export default function AdminOrders() {
     onSuccess: (data) => {
       utils.orders.adminList.invalidate();
       if (data.activationKeys?.length) {
-        toast.success(language === 'ar'
-          ? 'تم تأكيد الدفع وإنشاء مفتاح مربوط ببريد العميل. لن يبدأ الكورس قبل إدخال المفتاح.'
-          : 'Payment approved and an email-bound key was created. Course access starts after redemption.');
+        setFilter(undefined);
+        setSearch(String(data.order!.id));
+        setPage(0);
+        setExpandedId(data.order!.id);
+        void utils.orders.adminKeyDelivery.invalidate({ orderId: data.order!.id });
+        if (data.keyDeliveryQueued === false) toast.warning(language === 'ar'
+          ? 'تم تأكيد الدفع والمفتاح جاهز، لكن البريد يحتاج مراجعة. افتح حالة الإرسال في الطلب.'
+          : 'Payment confirmed and key ready, but email needs attention. Check delivery status in this order.');
+        else toast.success(language === 'ar'
+          ? 'تم تأكيد الدفع والمفتاح جاهز. راجع حالة إرسال البريد داخل الطلب.'
+          : 'Payment confirmed and key ready. Email delivery status is shown in this order.');
         setIssueOrder(null);
         setKeyConfigurations({});
         setFinancialPayment({ paidAt: '', baseAmountIls: '', rationale: '' });
@@ -487,6 +496,9 @@ export default function AdminOrders() {
                         </Button>
                       </div>
                     )}
+                    {(canManageOperationalOrders || canConfirmPayment) && order.status === 'completed' && !isCopierOrder && (
+                      <OrderKeyDeliveryPanel key={order.id} orderId={order.id} />
+                    )}
                     <div className="flex flex-wrap gap-2">
                       {financeAuthority?.isFinanceOwner && order.status === 'completed' && order.packageItems?.some((item: any) => item.packageSlug === 'live-package') && (
                         <Button size="sm" variant="outline" onClick={() => {
@@ -506,7 +518,7 @@ export default function AdminOrders() {
                         <>
                           {canConfirmPayment && order.transactionPurpose && !isCopierOrder && (
                             <Button size="sm" disabled={updateMutation.isPending} onClick={() => openIssueDialog(order)}>
-                              <CheckCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'تأكيد الدفع وإصدار المفتاح' : 'Approve & issue key'}
+                              <CheckCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'اعتماد الطلب وإرسال المفتاح' : 'Approve & send key'}
                             </Button>
                           )}
                           {canManageOperationalOrders && (
@@ -520,7 +532,7 @@ export default function AdminOrders() {
                         <>
                           {canConfirmPayment && order.transactionPurpose && !isCopierOrder && (
                             <Button size="sm" disabled={updateMutation.isPending} onClick={() => openIssueDialog(order)}>
-                              <CheckCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'تأكيد الدفع وإصدار المفتاح' : 'Approve & issue key'}
+                              <CheckCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'اعتماد الطلب وإرسال المفتاح' : 'Approve & send key'}
                             </Button>
                           )}
                           {canManageOperationalOrders && (
@@ -532,17 +544,12 @@ export default function AdminOrders() {
                       )}
                       {canConfirmPayment && order.transactionPurpose && !isCopierOrder && order.status === 'paid' && (
                         <Button size="sm" disabled={updateMutation.isPending} onClick={() => openIssueDialog(order)}>
-                          <CheckCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'إصدار المفتاح' : 'Issue key'}
+                          <CheckCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'إصدار المفتاح وإرساله' : 'Issue & send key'}
                         </Button>
                       )}
                       {canConfirmPayment && order.fulfillment?.keyStatus === 'issuance_pending' && (
                         <Button size="sm" disabled={updateMutation.isPending} onClick={() => openIssueDialog(order)}>
                           <RefreshCw className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'إعادة محاولة إصدار المفتاح' : 'Retry key issuance'}
-                        </Button>
-                      )}
-                      {canManageOperationalOrders && order.fulfillment?.keyStatus === 'key_ready' && (
-                        <Button size="sm" variant="outline" onClick={() => { window.location.href = '/admin/package-keys'; }}>
-                          {language === 'ar' ? 'عرض مفاتيح الباقات' : 'View package keys'}
                         </Button>
                       )}
                     </div>
@@ -611,8 +618,8 @@ export default function AdminOrders() {
                 {issueOrder?.fulfillment?.paymentConfirmed && issueOrder?.status === 'completed'
                   ? (language === 'ar' ? `إعادة إصدار مفتاح الطلب #${issueOrder?.id}` : `Retry key issuance for order #${issueOrder?.id}`)
                   : language === 'ar'
-                  ? `اعتماد الطلب #${issueOrder?.id ?? ''} وإصدار المفتاح`
-                  : `Approve order #${issueOrder?.id ?? ''} and issue key`}
+                  ? `اعتماد الطلب #${issueOrder?.id ?? ''} وإرسال المفتاح`
+                  : `Approve order #${issueOrder?.id ?? ''} and send key`}
               </DialogTitle>
               <DialogDescription>
                 {language === 'ar'
@@ -751,7 +758,7 @@ export default function AdminOrders() {
                   ? (language === 'ar' ? 'جاري الإصدار...' : 'Issuing...')
                   : issueOrder?.fulfillment?.paymentConfirmed && issueOrder?.status === 'completed'
                     ? (language === 'ar' ? 'إعادة محاولة إصدار المفتاح' : 'Retry key issuance')
-                    : (language === 'ar' ? 'تأكيد الدفع وإصدار المفتاح' : 'Confirm payment and issue key')}
+                    : (language === 'ar' ? 'تأكيد الدفع وإرسال المفتاح' : 'Confirm payment and send key')}
               </Button>
             </DialogFooter>
           </DialogContent>

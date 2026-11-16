@@ -81,7 +81,8 @@ import {
   buildStudentCommunityPostAnnouncementEmail,
   type StudentCommunityClientEmailKind,
 } from "./_core/communityEmails";
-import { buildAnnouncementEmail, sendOrderConfirmationEmail, sendPaymentReceivedEmail, sendAdminNewOrderNotification, sendStaffWelcomeEmail, sendJobInterviewInviteEmail } from "./_core/orderEmails";
+import { buildAnnouncementEmail, sendOrderConfirmationEmail, sendAdminNewOrderNotification, sendStaffWelcomeEmail, sendJobInterviewInviteEmail } from "./_core/orderEmails";
+import { getOrderKeyDeliveryDetails, queueOrderKeyDelivery } from './services/order-key-delivery.service';
 import { ENV } from "./_core/env";
 import {
   LIVE_PACKAGE_COHORT_STATUSES,
@@ -8151,6 +8152,30 @@ export const appRouter = router({
         ));
       }),
 
+    adminKeyDelivery: adminOrRoleProcedure(['key_manager', 'finance_manager'])
+      .input(z.object({ orderId: z.number().int().positive() }))
+      .query(async ({ input }) => {
+        try { return await getOrderKeyDeliveryDetails(input.orderId); }
+        catch { throw new TRPCError({ code: 'BAD_REQUEST', message: 'Order key delivery could not be loaded.' }); }
+      }),
+
+    adminResendKey: adminOrRoleProcedure(['key_manager', 'finance_manager'])
+      .input(z.object({ orderId: z.number().int().positive() }))
+      .mutation(async ({ input, ctx }) => {
+        const order = await db.getOrderById(input.orderId);
+        if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
+        // Record the request without copying credentials or email bodies into the audit.
+        await db.logAdminAction(ctx.admin?.id ?? ctx.user.id, order.userId, 'request_resend_order_activation_key', {
+          orderId: order.id, actorType: ctx.admin ? 'admin' : 'staff',
+        });
+        let queued;
+        try { queued = await queueOrderKeyDelivery(order.id, true); }
+        catch (error) { throw new TRPCError({ code: 'BAD_REQUEST', message: error instanceof Error ? error.message : 'Key email could not be queued.' }); }
+        // Persist the queue before calling the provider. Scheduled retries survive request failure.
+        await drainGenericEmailOutbox({ limit: 1, ids: [queued.id], eventTypes: ['payment_received'] }).catch(() => {});
+        return getOrderKeyDeliveryDetails(order.id);
+      }),
+
     adminRetireLiveOrder: financeControlProcedure
       .input(z.object({
         orderId: z.number().int().positive(), replacementOrderId: z.number().int().positive(),
@@ -8278,6 +8303,7 @@ export const appRouter = router({
         let activationKeys: Array<{ id: number; keyCode: string; packageId: number }> = [];
         let resolvedKeyConfigurations = input.keyConfigurations ?? [];
         let preserveExistingKeys = false;
+        let keyDeliveryQueued: boolean | null = null;
 
         // Financial confirmation is persisted before the email-bound
         // entitlement credential. Redemption remains operational only.
@@ -8432,50 +8458,20 @@ export const appRouter = router({
           await db.revokeLivePackageEntitlementForOrder(order.id);
         }
 
-        // If payment is approved, send the assigned key. Key redemption is the
-        // only path that grants package/course entitlements for new orders.
+        // Queue the existing keys durably before trying the provider. Delivery
+        // failure must not obscure the saved payment or create another key.
         if (input.status === 'completed' && updated) {
-          const items = await db.getOrderItems(input.orderId);
-          let packageName = 'Package';
-          for (const item of items) {
-            if (item.itemType === 'package' && item.packageId) {
-              const pkg = await db.getPackageById(item.packageId);
-              if (pkg) packageName = pkg.nameEn || pkg.nameAr || 'Package';
-            }
-          }
-
-          // In Workers, detached promises can be dropped before the provider call completes.
-          const userEmail = order.isGift && order.giftEmail ? order.giftEmail : (await db.getUserById(order.userId))?.email;
-          if (userEmail) {
-            try {
-              await sendPaymentReceivedEmail(userEmail, {
-                orderId: order.id,
-                packageName,
-                activationKeys: activationKeys.map((key) => key.keyCode),
-              });
-            } catch (error) {
-              logger.warn('[ORDER_EMAIL] Failed to send payment received email', {
-                orderId: order.id,
-                error: error instanceof Error ? error.message : String(error),
-              });
-            }
-          }
-
-          const targetUser = userEmail ? await db.getUserByEmail(userEmail) : null;
-          if (targetUser) {
-            await db.createNotification({
-              userId: targetUser.id,
-              type: 'success',
-              titleAr: 'تم تأكيد الدفع — مفتاح التفعيل جاهز',
-              titleEn: 'Payment confirmed — activation key ready',
-              contentAr: 'تم ربط مفتاح التفعيل بحسابك. افتح صفحة الطلب أو صفحة تفعيل المفتاح لبدء الباقة.',
-              contentEn: 'Your activation key is assigned to your account. Open the order or activation page to start the package.',
-              actionUrl: `/orders/${order.id}`,
-            }).catch(() => {});
+          try {
+            const queued = await queueOrderKeyDelivery(order.id);
+            keyDeliveryQueued = true;
+            await drainGenericEmailOutbox({ limit: 1, ids: [queued.id], eventTypes: ['payment_received'] }).catch(() => {});
+          } catch {
+            keyDeliveryQueued = false;
+            logger.warn('[ORDER_EMAIL] Key ready but delivery needs review', { orderId: order.id });
           }
         }
 
-        return { order: updated, activationKeys };
+        return { order: updated, activationKeys, keyDeliveryQueued };
       }),
   }),
 

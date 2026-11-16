@@ -116,7 +116,7 @@ describe("Live Package Phase A decisions", () => {
 
   it("checks registration again at the order write boundary but never at payment approval or activation", () => {
     const createOrder = router.slice(router.indexOf("create: protectedProcedure", router.indexOf("orders: router")), router.indexOf("// User: get my orders"));
-    const approveOrder = router.slice(router.indexOf("adminUpdateStatus:"), router.indexOf("return { order: updated, activationKeys }"));
+    const approveOrder = router.slice(router.indexOf("adminUpdateStatus:"), router.indexOf("return { order: updated, activationKeys,"));
     const activateLive = database.slice(database.indexOf("if (pkg.packageType === 'live')"), database.indexOf("if (pkg.packageType !== 'live' && resolvedUserId"));
     expect(createOrder.match(/availability\.purchasable/g)?.length).toBeGreaterThanOrEqual(2);
     expect(createOrder).toContain("registration was closed before the order was created");

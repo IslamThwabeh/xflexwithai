@@ -185,14 +185,14 @@ export async function buildPaymentReceivedEmail(to: string, data: {
       ${escapeHtml(key)}
     </div>`).join('');
   const body = `
-    <h2 style="margin:0 0 12px;color:#059669;">✅ تم تأكيد الدفع</h2>
-    <h3 style="margin:0 0 12px;color:#059669;">Payment confirmed</h3>
+    <h2 style="margin:0 0 12px;color:#059669;">أهلاً بك في أكاديمية XFlex — تم تأكيد الدفع ✅</h2>
+    <h3 style="margin:0 0 12px;color:#059669;">Thank you for choosing XFlex Academy — payment confirmed</h3>
     <p style="color:#555;line-height:1.7;">
       تم تأكيد دفعك لباقة <strong>${safePackageName}</strong>. مفتاح التفعيل أدناه مربوط ببريدك الإلكتروني ولا يمكن استخدامه من حساب آخر.<br/>
       Your payment for <strong>${safePackageName}</strong> is confirmed. The activation key below is bound to your email and cannot be used by another account.
     </p>
     ${keyRows}
-    <p style="color:#555;line-height:1.7;">أدخل المفتاح مرة واحدة فقط لبدء الباقة والكورس.<br/>Enter the key once to activate your package and course.</p>
+    <p style="color:#555;line-height:1.7;">سجّل الدخول بالبريد المرتبط بالمفتاح، ثم أدخله في صفحة التفعيل لبدء الباقة أو تطبيق التجديد أو الترقية. احتفظ بهذه الرسالة للرجوع إليها.<br/>Sign in with the email assigned to your key, then enter it on the activation page to activate your package or apply your renewal or upgrade. Keep this message for reference.</p>
     <div style="text-align:center;margin-top:24px;">
       <a href="https://xflexacademy.com/activate-key" style="display:inline-block;background:#059669;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold;">
         تفعيل المفتاح / Activate Key
