@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useSearch } from 'wouter';
-import { ShoppingCart, CheckCircle, XCircle, Eye, ChevronDown, ChevronUp, FileCheck, Pencil, RefreshCw } from 'lucide-react';
+import { ShoppingCart, CheckCircle, XCircle, Eye, ChevronDown, ChevronUp, FileCheck, Pencil, RefreshCw, Upload, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -26,6 +26,9 @@ import { useDataTable, DataTablePagination } from '@/components/DataTable';
 import { toast } from 'sonner';
 import { isLikelyValidEmail, normalizeEmailAddress } from '@shared/emailValidation';
 import { filterOrdersForSearch, getFocusedOrderId, getOrderNoteAttachments } from '@/lib/orderManagement';
+import { apiFetch } from '@/lib/apiBase';
+import { formatApprovalDateTime, parseApprovalDateTime } from '@/lib/orderApprovalTime';
+import { ACADEMY_TIME_LABEL_AR, ACADEMY_TIME_LABEL_EN } from '@shared/academyLocale';
 
 const orderSortFns: Record<string, (a: any, b: any) => number> = {
   created: (a, b) => new Date(String(a.createdAt).replace(' ', 'T')).getTime() - new Date(String(b.createdAt).replace(' ', 'T')).getTime(),
@@ -72,6 +75,8 @@ export default function AdminOrders() {
   const [search, setSearch] = useState(() => String(getFocusedOrderId(routeSearch) ?? ''));
   const [filter, setFilter] = useState<string | undefined>(undefined);
   const [issueOrder, setIssueOrder] = useState<any | null>(null);
+  const [uploadingProof, setUploadingProof] = useState(false);
+  const [proofError, setProofError] = useState('');
   const [recipientOrder, setRecipientOrder] = useState<any | null>(null);
   const [correctedIsGift, setCorrectedIsGift] = useState(false);
   const [correctedGiftEmail, setCorrectedGiftEmail] = useState('');
@@ -203,13 +208,42 @@ export default function AdminOrders() {
     const currency = String(order.currency || 'ILS').toUpperCase();
     const totalAmount = Number(order.totalAmount || 0);
     setFinancialPayment({
-      paidAt: new Date().toISOString().slice(0, 16),
+      paidAt: formatApprovalDateTime(new Date()),
       baseAmountIls: Number(order.displayTotalIls
         ?? (currency === 'ILS' || currency === 'NIS' ? totalAmount / 100 : 0)).toFixed(2),
       rationale: '',
     });
     setKeyConfigurations(initial);
+    setProofError('');
+    updateMutation.reset();
     setIssueOrder(order);
+  };
+
+  const uploadAdminProof = async (file: File) => {
+    if (!issueOrder || uploadingProof || updateMutation.isPending) return;
+    const orderId = issueOrder.id;
+    setProofError('');
+    if (!file.size || file.size > 10 * 1024 * 1024) {
+      setProofError(language === 'ar' ? 'اختر ملفاً غير فارغ بحجم 10 ميغابايت أو أقل.' : 'Choose a non-empty file of 10 MB or less.');
+      return;
+    }
+    setUploadingProof(true);
+    try {
+      const response = await apiFetch(`/api/uploads/admin-order-proof?orderId=${orderId}`, {
+        method: 'POST', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file,
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.message || 'Upload failed');
+      setIssueOrder((current: any) => current?.id === orderId ? { ...current, paymentProofUrl: payload.proof.url } : current);
+      void utils.orders.adminList.invalidate();
+      toast.success(language === 'ar' ? 'تم حفظ الإيصال مع الطلب.' : 'Receipt saved to the order.');
+    } catch {
+      setProofError(language === 'ar'
+        ? 'تعذر رفع الإيصال. استخدم صورة JPEG أو PNG أو WebP أو HEIC أو ملف PDF، وأعد المحاولة أو تابع بدون مرفق.'
+        : 'Receipt upload failed. Use JPEG, PNG, WebP, HEIC or PDF, then retry or continue without an attachment.');
+    } finally {
+      setUploadingProof(false);
+    }
   };
 
   const openRecipientCorrection = (order: any) => {
@@ -249,7 +283,7 @@ export default function AdminOrders() {
   };
 
   const issueConfiguredKeys = async () => {
-    if (!issueOrder) return;
+    if (!issueOrder || uploadingProof || proofError || updateMutation.isPending) return;
     const packageItems = issueOrder.packageItems ?? [];
     if (!packageItems.length) {
       toast.error(language === 'ar' ? 'لا توجد باقة مرتبطة بهذا الطلب' : 'This order has no linked package');
@@ -275,7 +309,7 @@ export default function AdminOrders() {
         : 'Service duration must be between 1 and 3650 days');
       return;
     }
-    const paidAt = new Date(financialPayment.paidAt);
+    const paidAt = parseApprovalDateTime(financialPayment.paidAt);
     const baseAmountIlsMinor = Math.round(Number(financialPayment.baseAmountIls) * 100);
     const isRetry = issueOrder.fulfillment?.paymentConfirmed === true && issueOrder.status === 'completed';
     if (!isRetry && (Number.isNaN(paidAt.getTime()) || !Number.isSafeInteger(baseAmountIlsMinor) || baseAmountIlsMinor <= 0 || financialPayment.rationale.trim().length < 5)) {
@@ -295,6 +329,10 @@ export default function AdminOrders() {
       },
     }).catch(() => undefined);
   };
+
+  const approvalBusy = uploadingProof || updateMutation.isPending;
+  const retryIssuance = issueOrder?.fulfillment?.paymentConfirmed === true && issueOrder?.status === 'completed';
+  const liveOnlyApproval = !!issueOrder?.packageItems?.length && issueOrder.packageItems.every((item: any) => item.packageType === 'live');
 
   return (
     <DashboardLayout>
@@ -606,14 +644,15 @@ export default function AdminOrders() {
         )}
 
         <Dialog open={!!issueOrder} onOpenChange={(open) => {
-          if (!open && !updateMutation.isPending) {
+          if (!open && !approvalBusy) {
             setIssueOrder(null);
             setKeyConfigurations({});
             setFinancialPayment({ paidAt: '', baseAmountIls: '', rationale: '' });
           }
         }}>
-          <DialogContent className="max-w-2xl" dir={language === 'ar' ? 'rtl' : 'ltr'}>
-            <DialogHeader>
+          <DialogContent className="flex max-h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] max-w-2xl flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl" showCloseButton={false} dir={language === 'ar' ? 'rtl' : 'ltr'}>
+            <button type="button" className="absolute end-2 top-2 flex h-11 w-11 items-center justify-center rounded-md hover:bg-muted disabled:opacity-50" aria-label={language === 'ar' ? 'إغلاق' : 'Close'} disabled={approvalBusy} onClick={() => setIssueOrder(null)}><X className="h-5 w-5" /></button>
+            <DialogHeader className="shrink-0 p-4 pe-14 text-start sm:p-6 sm:pe-14">
               <DialogTitle>
                 {issueOrder?.fulfillment?.paymentConfirmed && issueOrder?.status === 'completed'
                   ? (language === 'ar' ? `إعادة إصدار مفتاح الطلب #${issueOrder?.id}` : `Retry key issuance for order #${issueOrder?.id}`)
@@ -623,33 +662,35 @@ export default function AdminOrders() {
               </DialogTitle>
               <DialogDescription>
                 {language === 'ar'
-                  ? 'حددي مدة الخدمة لكل باقة قبل إصدار المفتاح. تبدأ هذه المدة حسب سياسة الجاهزية/فترة الحماية، وليس من تاريخ إنشاء المفتاح.'
-                  : 'Set the service duration before issuing each key. The duration starts under the readiness/protection policy, not when the key is created.'}
+                  ? (liveOnlyApproval ? 'راجع الدفع وأرسل مفتاح بكج لايف. لا تحتاج لاختيار مدة خدمة لهذه الباقة.' : 'حدد مدة الخدمة لكل باقة قبل إصدار المفتاح. تبدأ هذه المدة حسب سياسة الجاهزية/فترة الحماية، وليس من تاريخ إنشاء المفتاح.')
+                  : (liveOnlyApproval ? 'Review payment and send the Live Package key. No service duration is needed for this package.' : 'Set the service duration before issuing each key. The duration starts under the readiness/protection policy, not when the key is created.')}
               </DialogDescription>
+              {issueOrder?.userName && <p className="break-words text-sm font-medium">{language === 'ar' ? 'العميل: ' : 'Customer: '}{issueOrder.userName}</p>}
             </DialogHeader>
 
-            <div className="max-h-[60vh] space-y-4 overflow-y-auto py-2">
+            <div className="min-h-0 min-w-0 flex-1 space-y-4 overflow-x-hidden overflow-y-auto overscroll-contain px-4 pb-4 sm:px-6">
               {issueOrder?.fulfillment?.paymentConfirmed && issueOrder?.status === 'completed' ? (
                 <p className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950">
                   {language === 'ar' ? 'الدفع مؤكد مسبقًا. ستُستخدم عملية التأكيد الأصلية دون تسجيل دفعة أخرى أو تغيير تاريخها. تبقى المفاتيح الموجودة ومددها كما هي.' : 'Payment is already confirmed. This uses the original confirmation without recording another payment or changing its date. Existing keys and their durations are preserved.'}
                 </p>
               ) : <div className="space-y-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
                 <div>
-                  <p className="font-semibold text-emerald-950">{language === 'ar' ? 'تأكيد مالي غير قابل للتعديل' : 'Immutable financial confirmation'}</p>
+                  <p className="font-semibold text-emerald-950">{language === 'ar' ? 'بيانات تأكيد الدفع' : 'Payment confirmation details'}</p>
                   <p className="text-xs text-emerald-800">
                     {language === 'ar'
                       ? 'يُسجّل الدخل في تاريخ تأكيد الدفع، وليس عند استخدام المفتاح أو تفعيله.'
                       : 'Income is recorded on confirmed payment date, not on key issuance or activation.'}
                   </p>
                 </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>{language === 'ar' ? 'تاريخ ووقت تأكيد الدفع *' : 'Confirmed payment date/time *'}</Label>
-                    <Input type="datetime-local" value={financialPayment.paidAt} onChange={(event) => setFinancialPayment((current) => ({ ...current, paidAt: event.target.value }))} />
+                <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+                  <div className="min-w-0 space-y-2">
+                    <Label htmlFor="approval-paid-at">{language === 'ar' ? 'تاريخ ووقت تأكيد الدفع *' : 'Confirmed payment date/time *'}</Label>
+                    <Input id="approval-paid-at" className="block h-11 min-w-0 max-w-full [&::-webkit-date-and-time-value]:min-w-0" dir="ltr" type="datetime-local" value={financialPayment.paidAt} onChange={(event) => setFinancialPayment((current) => ({ ...current, paidAt: event.target.value }))} />
+                    <p className="text-xs text-emerald-800">{language === 'ar' ? ACADEMY_TIME_LABEL_AR : ACADEMY_TIME_LABEL_EN}</p>
                   </div>
-                  <div className="space-y-2">
-                    <Label>{language === 'ar' ? 'المبلغ المؤكد بالشيكل *' : 'Confirmed ILS amount *'}</Label>
-                    <Input type="number" min="0.01" step="0.01" inputMode="decimal" value={financialPayment.baseAmountIls} onChange={(event) => setFinancialPayment((current) => ({ ...current, baseAmountIls: event.target.value }))} />
+                  <div className="min-w-0 space-y-2">
+                    <Label htmlFor="approval-amount">{language === 'ar' ? 'المبلغ المؤكد بالشيكل *' : 'Confirmed ILS amount *'}</Label>
+                    <Input id="approval-amount" className="h-11" dir="ltr" type="number" min="0.01" step="0.01" inputMode="decimal" value={financialPayment.baseAmountIls} onChange={(event) => setFinancialPayment((current) => ({ ...current, baseAmountIls: event.target.value }))} />
                   </div>
                 </div>
                 {issueOrder && !['ILS', 'NIS'].includes(String(issueOrder.currency || '').toUpperCase()) && (
@@ -660,10 +701,18 @@ export default function AdminOrders() {
                   </p>
                 )}
                 <div className="space-y-2">
-                  <Label>{language === 'ar' ? 'سبب اعتماد الدفع *' : 'Payment-approval rationale *'}</Label>
-                  <Textarea minLength={5} maxLength={500} value={financialPayment.rationale} onChange={(event) => setFinancialPayment((current) => ({ ...current, rationale: event.target.value }))} placeholder={language === 'ar' ? 'مثال: تمت مطابقة التحويل مع الإيصال وكشف البنك.' : 'Example: Transfer matched to the receipt and bank statement.'} />
+                  <Label htmlFor="approval-rationale">{language === 'ar' ? 'سبب اعتماد الدفع *' : 'Payment-approval rationale *'}</Label>
+                  <Textarea id="approval-rationale" minLength={5} maxLength={500} value={financialPayment.rationale} onChange={(event) => setFinancialPayment((current) => ({ ...current, rationale: event.target.value }))} placeholder={language === 'ar' ? 'وضح كيف تحققت من وصول الدفع، سواء أرفقت إيصالاً أم لا.' : 'Explain how you verified payment, with or without an attached receipt.'} />
                 </div>
               </div>}
+              {!retryIssuance && <section className="min-w-0 space-y-3 rounded-lg border bg-white p-4" aria-label={language === 'ar' ? 'إيصال الدفع' : 'Payment receipt'}>
+                <Label htmlFor="approval-proof">{language === 'ar' ? 'صورة الإيصال أو ملف PDF (اختياري)' : 'Receipt image or PDF (optional)'}</Label>
+                <p className="text-sm text-muted-foreground">{language === 'ar' ? 'يمكن اعتماد الدفع بدون صورة. الحد الأقصى 10 ميغابايت؛ اختيار الملف يرفعه ويحفظه مع الطلب.' : 'You may approve without an image. Maximum 10 MB; choosing a file uploads and saves it to this order.'}</p>
+                {issueOrder?.paymentProofUrl && <a href={issueOrder.paymentProofUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-sm text-emerald-700 underline"><FileCheck className="h-4 w-4" />{language === 'ar' ? 'عرض الإيصال المرفق' : 'View attached receipt'}</a>}
+                <Input id="approval-proof" type="file" className="h-auto min-h-11 py-2" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf,.heic,.heif" disabled={approvalBusy} onChange={event => { const file = event.target.files?.[0]; if (file) void uploadAdminProof(file); event.target.value = ''; }} />
+                {uploadingProof && <p role="status" className="flex items-center gap-2 text-sm"><Upload className="h-4 w-4" />{language === 'ar' ? 'جاري رفع الإيصال…' : 'Uploading receipt…'}</p>}
+                {proofError && <div role="alert" className="space-y-2 text-sm text-destructive"><p>{proofError}</p><Button variant="outline" onClick={() => setProofError('')}>{language === 'ar' ? 'متابعة بدون مرفق جديد' : 'Continue without a new attachment'}</Button></div>}
+              </section>}
               {(issueOrder?.packageItems ?? []).map((item: any) => {
                 const configuration = keyConfigurations[item.packageId] ?? {
                   entitlementDays: '',
@@ -678,8 +727,8 @@ export default function AdminOrders() {
                       </p>
                       <p className="text-xs text-gray-500">
                         {language === 'ar'
-                          ? `المدة الافتراضية للباقة: ${item.defaultEntitlementDays || 30} يوم`
-                          : `Package default: ${item.defaultEntitlementDays || 30} days`}
+                          ? (item.packageType === 'live' ? 'مدة الوصول حسب إعدادات بكج لايف.' : `المدة الافتراضية للباقة: ${item.defaultEntitlementDays || 30} يوم`)
+                          : (item.packageType === 'live' ? 'Access follows the Live Package settings.' : `Package default: ${item.defaultEntitlementDays || 30} days`)}
                       </p>
                     </div>
 
@@ -735,12 +784,13 @@ export default function AdminOrders() {
                   {language === 'ar' ? 'لا توجد باقة مرتبطة بهذا الطلب.' : 'No package is linked to this order.'}
                 </p>
               )}
+              {updateMutation.error && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{updateMutation.error.message}</p>}
             </div>
-
-            <DialogFooter>
+            <DialogFooter className="shrink-0 border-t bg-background p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6">
               <Button
+                className="min-h-11"
                 variant="outline"
-                disabled={updateMutation.isPending}
+                disabled={approvalBusy}
                 onClick={() => {
                   setIssueOrder(null);
                   setKeyConfigurations({});
@@ -750,7 +800,8 @@ export default function AdminOrders() {
                 {language === 'ar' ? 'إلغاء' : 'Cancel'}
               </Button>
               <Button
-                disabled={updateMutation.isPending || !(issueOrder?.packageItems ?? []).length}
+                className="h-auto min-h-11 whitespace-normal text-center"
+                disabled={approvalBusy || !!proofError || !(issueOrder?.packageItems ?? []).length}
                 onClick={issueConfiguredKeys}
               >
                 <CheckCircle className="me-1 h-4 w-4" />

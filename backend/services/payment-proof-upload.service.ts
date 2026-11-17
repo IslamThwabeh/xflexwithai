@@ -11,7 +11,26 @@ export type PaymentProofOrderRecord = {
   status: string;
   paymentMethod: string | null;
   paymentProofUrl?: string | null;
+  paymentReference?: string | null;
 };
+
+export type PaymentProofStaffActor = { type: 'admin' | 'staff'; id: number };
+
+/** Only the server may resolve this actor; upload request parameters never grant staff access. */
+export async function authorizeAdminOrderProofUpload(
+  user: { id: number; email?: string | null },
+  dependencies: {
+    getAdminByEmail: (email: string) => Promise<{ id: number } | null | undefined>;
+    hasAnyRole: (userId: number, roles: string[]) => Promise<boolean>;
+  },
+): Promise<PaymentProofStaffActor> {
+  const admin = user.email ? await dependencies.getAdminByEmail(user.email) : null;
+  if (admin && (user.id > 0 || admin.id === -user.id)) return { type: 'admin', id: admin.id };
+  if (user.id > 0 && await dependencies.hasAnyRole(user.id, ['finance_manager'])) {
+    return { type: 'staff', id: user.id };
+  }
+  throw new PaymentProofUploadError(403, 'order_forbidden', 'Payment approval access is required to upload an admin receipt.');
+}
 
 export type PaymentProofUploadEvent = {
   eventType:
@@ -171,13 +190,14 @@ export async function processPaymentProofUpload<TOrder extends PaymentProofOrder
   bytes: Uint8Array;
   declaredContentType?: string | null;
   paymentReference?: string | null;
+  staffActor?: PaymentProofStaffActor;
 }, dependencies: PaymentProofUploadDependencies<TOrder>) {
   const startedAt = Date.now();
   const order = await dependencies.getOrder(input.orderId);
   if (!order) {
     throw new PaymentProofUploadError(404, "order_not_found", "Order not found.");
   }
-  if (order.userId !== input.userId) {
+  if (!input.staffActor && order.userId !== input.userId) {
     throw new PaymentProofUploadError(403, "order_forbidden", "You cannot update this order.");
   }
   if (order.paymentMethod !== "bank_transfer") {
@@ -198,6 +218,7 @@ export async function processPaymentProofUpload<TOrder extends PaymentProofOrder
   const metadataBase = {
     bytes: input.bytes.byteLength,
     declaredContentType: input.declaredContentType || null,
+    ...(input.staffActor ? { orderUserId: order.userId, actorType: input.staffActor.type, actorId: input.staffActor.id } : {}),
   };
   const fail = async (error: PaymentProofUploadError, stage: string) => {
     await safelyRecordEvent(dependencies.recordEvent, {
@@ -238,7 +259,7 @@ export async function processPaymentProofUpload<TOrder extends PaymentProofOrder
 
   let paymentReference: string | null;
   try {
-    paymentReference = normalizeReference(input.paymentReference);
+    paymentReference = normalizeReference(input.paymentReference ?? (input.staffActor ? order.paymentReference : null));
   } catch (error) {
     return fail(error as PaymentProofUploadError, "validation");
   }
@@ -260,7 +281,7 @@ export async function processPaymentProofUpload<TOrder extends PaymentProofOrder
   try {
     updatedOrder = await dependencies.submitOrderProof({
       orderId: order.id,
-      userId: input.userId,
+      userId: order.userId,
       paymentProofUrl: uploaded.url,
       paymentReference,
     });
@@ -280,7 +301,7 @@ export async function processPaymentProofUpload<TOrder extends PaymentProofOrder
     try {
       await dependencies.recordStatusTransition({
         orderId: order.id,
-        userId: input.userId,
+        userId: order.userId,
         previousStatus: order.status,
         newStatus: "awaiting_confirmation",
       });
@@ -299,12 +320,15 @@ export async function processPaymentProofUpload<TOrder extends PaymentProofOrder
       stage: "complete",
       objectKey: uploaded.key,
       replacedExistingProof: Boolean(order.paymentProofUrl),
+      ...(input.staffActor ? { previousPaymentProofUrl: order.paymentProofUrl ?? null } : {}),
       durationMs: Date.now() - startedAt,
     },
   });
 
   const previousObjectKey = getPaymentProofObjectKeyFromUrl(order.paymentProofUrl);
-  if (previousObjectKey && previousObjectKey !== uploaded.key) {
+  // Retain staff-replaced evidence: another approver may already have captured
+  // that original receipt in an immutable confirmation. The audit links both versions.
+  if (!input.staffActor && previousObjectKey && previousObjectKey !== uploaded.key) {
     const cleanup = await deleteObjectWithRetry(dependencies.deleteObject, previousObjectKey);
     await safelyRecordEvent(dependencies.recordEvent, {
       eventType: cleanup.deleted

@@ -8373,10 +8373,12 @@ export const appRouter = router({
               message: 'The client must accept the Terms & Conditions before this order can be approved.',
             });
           }
-          if (order.paymentMethod === 'bank_transfer' && !isTrustedPaymentProofUrl(order.paymentProofUrl)) {
+          // Receipt attachment is optional for an authorized financial approval. If present,
+          // it must still be a trusted upload; actor, amount, date and rationale remain mandatory.
+          if (order.paymentMethod === 'bank_transfer' && order.paymentProofUrl && !isTrustedPaymentProofUrl(order.paymentProofUrl)) {
             throw new TRPCError({
               code: 'BAD_REQUEST',
-              message: 'Bank-transfer payment evidence must be uploaded before this order can be approved.',
+              message: 'The attached payment evidence is invalid. Replace it with a receipt uploaded through the order form.',
             });
           }
           // Check the known renewal conflict before recognizing cash. Keep the

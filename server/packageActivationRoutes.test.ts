@@ -454,7 +454,7 @@ describe('package activation routes', () => {
     expect(db.createPackageKey).not.toHaveBeenCalled();
   });
 
-  it('rejects bank-transfer approval until payment evidence exists', async () => {
+  it('allows the authorized finance owner to approve without an optional receipt', async () => {
     const order = {
       id: 24,
       userId: user.id,
@@ -478,10 +478,11 @@ describe('package activation routes', () => {
       financialPayment: {
         paidAt: '2026-07-18T08:00:00.000Z',
         baseAmountIlsMinor: 70000,
-        rationale: 'Transfer matched to the receipt.',
+        rationale: 'Payment verified directly by owner without an attached receipt.',
       },
-    })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
-    expect(db.createOrderActivationKeys).not.toHaveBeenCalled();
+    })).resolves.toMatchObject({ activationKeys: expect.any(Array) });
+    expect(db.confirmOrderPayment).toHaveBeenCalledWith(expect.objectContaining({ order, actorType: 'admin', actorId: 1 }));
+    expect(db.createOrderActivationKeys).toHaveBeenCalled();
   });
 
   it('accepts a legacy USD-marked order as the canonical ILS amount without exchange-rate input', async () => {

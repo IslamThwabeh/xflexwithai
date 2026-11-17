@@ -5,6 +5,7 @@ import {
   PaymentProofUploadError,
   detectPaymentProofFileType,
   processPaymentProofUpload,
+  authorizeAdminOrderProofUpload,
 } from "../backend/services/payment-proof-upload.service";
 
 const jpeg = (size = 32) => {
@@ -43,6 +44,38 @@ function dependencies(overrides: Record<string, unknown> = {}) {
 }
 
 describe("payment-proof binary upload", () => {
+  it('resolves full-admin and finance actors, denying support, key-only and ordinary accounts', async () => {
+    const deps = { getAdminByEmail: vi.fn(async () => null as { id: number } | null), hasAnyRole: vi.fn(async () => false) };
+    await expect(authorizeAdminOrderProofUpload({ id: 7, email: 'user@example.test' }, deps)).rejects.toMatchObject({ status: 403 });
+    expect(deps.hasAnyRole).toHaveBeenCalledWith(7, ['finance_manager']);
+    deps.hasAnyRole.mockResolvedValue(true);
+    expect(await authorizeAdminOrderProofUpload({ id: 7 }, deps)).toEqual({ type: 'staff', id: 7 });
+    deps.getAdminByEmail.mockResolvedValue({ id: 1 });
+    expect(await authorizeAdminOrderProofUpload({ id: -1, email: 'admin@example.test' }, deps)).toEqual({ type: 'admin', id: 1 });
+    await expect(authorizeAdminOrderProofUpload({ id: -2, email: 'admin@example.test' }, deps)).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('links an authorized staff upload to the actual customer while preserving the bank reference', async () => {
+    const deps = dependencies({ getOrder: vi.fn(async () => ({ ...pendingOrder, paymentReference: 'ORIGINAL' })) });
+    await processPaymentProofUpload({ userId: -1, orderId: 42, bytes: jpeg(), staffActor: { type: 'admin', id: 1 } }, deps);
+    expect(deps.submitOrderProof).toHaveBeenCalledWith(expect.objectContaining({ userId: 7, paymentReference: 'ORIGINAL' }));
+    expect(deps.recordStatusTransition).toHaveBeenCalledWith(expect.objectContaining({ userId: 7 }));
+    expect(deps.recordEvent).toHaveBeenCalledWith(expect.objectContaining({ metadata: expect.objectContaining({ actorType: 'admin', actorId: 1, orderUserId: 7 }) }));
+  });
+
+  it.each(['completed', 'cancelled', 'refunded', 'paid'])('blocks staff receipt changes after order status becomes %s', async status => {
+    const deps = dependencies({ getOrder: vi.fn(async () => ({ ...pendingOrder, status })) });
+    await expect(processPaymentProofUpload({ userId: 130, orderId: 42, bytes: jpeg(), staffActor: { type: 'staff', id: 130 } }, deps)).rejects.toMatchObject({ status: 409 });
+    expect(deps.putObject).not.toHaveBeenCalled();
+  });
+
+  it('retains the original receipt and audits both versions on staff replacement', async () => {
+    const previousPaymentProofUrl = 'https://videos.xflexacademy.com/payment-proofs/42/original.jpg';
+    const deps = dependencies({ getOrder: vi.fn(async () => ({ ...pendingOrder, paymentProofUrl: previousPaymentProofUrl })) });
+    await processPaymentProofUpload({ userId: -1, orderId: 42, bytes: jpeg(), staffActor: { type: 'admin', id: 1 } }, deps);
+    expect(deps.deleteObject).not.toHaveBeenCalled();
+    expect(deps.recordEvent).toHaveBeenCalledWith(expect.objectContaining({ metadata: expect.objectContaining({ previousPaymentProofUrl }) }));
+  });
   it("detects supported receipt signatures instead of trusting the filename", () => {
     expect(detectPaymentProofFileType(jpeg())).toEqual({ contentType: "image/jpeg", extension: "jpg" });
     expect(detectPaymentProofFileType(Uint8Array.from([

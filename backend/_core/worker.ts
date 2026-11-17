@@ -42,6 +42,8 @@ import {
   PAYMENT_PROOF_MAX_BYTES,
   PaymentProofUploadError,
   processPaymentProofUpload,
+  authorizeAdminOrderProofUpload,
+  type PaymentProofStaffActor,
 } from "../services/payment-proof-upload.service";
 import { checkScheduledEmailOutboxHealth } from "../services/email-outbox-health-monitor.service";
 import { runPriorityDeliveryLanes } from "../services/worker-priority-delivery.service";
@@ -366,7 +368,8 @@ export default {
 
       await db.getDb({ DB: env.DB });
 
-      if (pathname === "/api/uploads/payment-proof") {
+      if (pathname === "/api/uploads/payment-proof" || pathname === "/api/uploads/admin-order-proof") {
+        const isAdminProofUpload = pathname === "/api/uploads/admin-order-proof";
         const headers = new Headers();
         corsHeaders.forEach((value, key) => {
           headers.set(key, value);
@@ -391,12 +394,21 @@ export default {
         const authContext = await createWorkerContext({ req: request, env, executionCtx: ctx });
         const cookieHeaders = (authContext as { cookieHeaders?: string[] }).cookieHeaders;
         appendCookieHeaders(headers, cookieHeaders);
-        if (!authContext.user || authContext.user.id <= 0) {
+        if (!authContext.user || (!isAdminProofUpload && authContext.user.id <= 0)) {
           return jsonResponse(401, {
             status: "unauthorized",
             code: "unauthorized",
             message: "Please login before uploading a payment proof.",
           }, headers);
+        }
+
+        let proofActor: PaymentProofStaffActor | undefined;
+        if (isAdminProofUpload) {
+          try {
+            proofActor = await authorizeAdminOrderProofUpload(authContext.user, db);
+          } catch {
+            return jsonResponse(403, { status: 'forbidden', code: 'order_forbidden', message: 'Payment approval access is required.' }, headers);
+          }
         }
 
         const orderId = Number(url.searchParams.get("orderId"));
@@ -425,6 +437,7 @@ export default {
             bytes,
             declaredContentType: request.headers.get("content-type"),
             paymentReference: url.searchParams.get("reference"),
+            staffActor: proofActor,
           }, {
             getOrder: db.getOrderById,
             putObject: (key, body, contentType) => storagePutR2(
@@ -441,7 +454,9 @@ export default {
                 throw new Error(`R2 object still exists after delete: ${key}`);
               }
             },
-            recordEvent: ({ eventType, orderId: eventOrderId, metadata }) => db.trackEngagement({
+            recordEvent: ({ eventType, orderId: eventOrderId, metadata }) => proofActor
+              ? db.logAdminAction(proofActor.id, Number(metadata.orderUserId), eventType, { ...metadata, orderId: eventOrderId })
+              : db.trackEngagement({
               userId: authContext.user!.id,
               eventType,
               entityType: "order",
@@ -453,9 +468,9 @@ export default {
               userId: transition.userId,
               previousStatus: transition.previousStatus,
               newStatus: transition.newStatus,
-              actorType: "user",
-              actorId: transition.userId,
-              reason: "Payment proof uploaded by order owner",
+              actorType: proofActor?.type ?? "user",
+              actorId: proofActor?.id ?? transition.userId,
+              reason: proofActor ? 'Payment proof uploaded from admin approval form' : "Payment proof uploaded by order owner",
               ipAddress: request.headers.get("cf-connecting-ip"),
               createdAt: new Date().toISOString(),
             }),
