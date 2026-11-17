@@ -8,7 +8,7 @@ An explicit refresh button reuses the existing progress query. Both standalone a
 
 ## Cost and release
 
-Frontend-only change; no backend SQL, schema, migration or production data repair. No new polling or background processing. Rendering has negligible expected CPU impact. Explicit refresh repeats the existing on-demand query (quiz catalog plus the account's indexed progress lookup); mutation invalidation marks inactive views stale and revalidates active views through existing endpoints. No new query shape or historical attempt scan is introduced. Worker deployment is unnecessary; release the Pages build through the normal authorized release workflow.
+Frontend-only change; no backend SQL, schema, migration or production data repair. No new polling or background processing. Rendering has negligible expected CPU impact. Explicit refresh repeats the existing on-demand query (quiz catalog plus the account's indexed progress lookup); mutation invalidation marks inactive views stale and revalidates active views through existing endpoints. No new query shape or historical attempt scan is introduced. Worker deployment is unnecessary. Source `42b140e` was pushed and deployed to production Pages with owner approval on 2026-11-17.
 
 ## Verification
 
@@ -16,5 +16,6 @@ Frontend-only change; no backend SQL, schema, migration or production data repai
 - 17 existing quiz access/progress and lesson-completion regression tests passed.
 - Isolated browser checks use synthetic API responses and do not submit real quizzes, send customer emails or alter student records. Evidence is ignored under `output/playwright/quiz-progress/`.
 - Eleven browser check groups cover Arabic 1440/390/320 px with mixed passed/full-mark scores, explicit refresh, full-mark submission/return unlocking level 7, optional redo below full marks, failed submission retaining retry, four history states (including an older full score followed by a failure), and an empty list without false completion. Physical-device/Safari behavior and the real customer's browser session were not exercised.
+- Post-deployment verification passed seven exact asset hashes, seven canonical/preview routes, private-page headers, API health and anonymous quiz-progress denial. All eleven synthetic browser groups passed on deployed assets, with zero page exceptions or unknown fixtures. Three quiz submissions were intercepted; no real customer attempts or emails were created.
 
 The reported historical lock could not be reproduced from current persisted progress. Do not describe the cache change as proof of that historical cause. Account details and diagnostic findings belong in private operational context, not student-facing documentation or support-AI knowledge.
