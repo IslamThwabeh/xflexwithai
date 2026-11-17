@@ -173,6 +173,8 @@ export default function CourseWatch() {
       });
 
       utils.episodeQuiz.getForEpisode.invalidate();
+      utils.userQuiz.progress.invalidate();
+      utils.userQuiz.history.invalidate();
     },
     onError: (error) => {
       toast.error(error.message || t('course.toastCompleteFail'));

@@ -1,6 +1,13 @@
 # XFLEX Project Memory
 
-Last updated: 2026-11-16
+Last updated: 2026-11-17
+
+## Quiz completion clarity and customer investigation — 2026-11-17
+
+- Owner supplied a support screenshot from إيهاب الشرفا reporting locked levels 7/8 and repeated retake prompts. Read-only production inspection identified user 192: all eight quizzes are passed/unlocked (level 7 best 100%, level 8 best 83%), with successful attempts today; course 1 has all 39 distinct lessons completed and enrollment at 100%. No current persisted lock or data repair was needed. Do not claim the historical lock cause was reproduced. Inspection wrote zero production rows and sent no customer message.
+- Local frontend changes make passed levels lead to results with explicit optional retakes, confirm saved success, add explicit progress refresh, and invalidate shared progress/history/episode-quiz caches after submission. Empty lists no longer claim completion; overview dates use the shared Palestine timezone. No authorization/unlock/watch/bypass or backend SQL changes, migration, dependency or polling. Existing endpoints are reused on explicit refresh and cache revalidation; negligible expected CPU impact. Details: `docs/quiz-completion-clarity.md`.
+- Owner subsequently requested explicit redo wording for passed exams and no redo prompt after full marks. Overview and attempt history now omit redo when the best saved passing score is 100%; submission results omit redo for a newly earned 100%. Lower passing scores retain optional redo; failed attempts retain retry. History honors an older full score even after a later failure. Result-page bottom padding keeps its return control clear of mobile navigation. This is frontend presentation, not a server retake prohibition; no extra SQL reads or background work.
+- TypeScript, production application build, 17 focused regression tests, SEO/private-page checks and eleven isolated synthetic browser groups passed using project Node 24.22.1. Browser coverage includes Arabic 1440/390/320 px, full-mark/optional-redo/history states, pass/return/next-level unlock, failure retry and empty state, with zero exceptions/unknown fixtures; mobile screenshots visually checked. Private QA artifacts are ignored under `output/playwright/quiz-progress/`. Real customer browser and Safari remain unverified. Owner explicitly approved pushing and deploying all changes; source push/Pages rollout is in progress. Worker and database changes are unnecessary.
 
 ## Community copier post backup — 2026-11-16
 

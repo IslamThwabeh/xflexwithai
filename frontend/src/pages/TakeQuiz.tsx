@@ -24,12 +24,20 @@ export default function TakeQuiz() {
   const [, params] = useRoute("/quiz/:level");
   const [, setLocation] = useLocation();
   const { track } = useEngagementTracker();
+  const utils = trpc.useUtils();
   const level = parseInt(params?.level || "1");
 
   const { data: quiz, isLoading: loading, error: queryError } = trpc.userQuiz.getLevel.useQuery({ level }, {
     retry: false,
   });
-  const submitMutation = trpc.userQuiz.submit.useMutation();
+  const submitMutation = trpc.userQuiz.submit.useMutation({
+    onSuccess: () => {
+      // Both quiz entry points share saved results; refresh each cached view after submission.
+      void utils.userQuiz.progress.invalidate();
+      void utils.userQuiz.history.invalidate({ level });
+      void utils.episodeQuiz.getForEpisode.invalidate();
+    },
+  });
 
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [answers, setAnswers] = useState<Record<number, string>>({});
@@ -138,7 +146,7 @@ export default function TakeQuiz() {
   if (result) {
     return (
       <ClientLayout>
-      <div className="min-h-screen bg-gray-50 py-8" dir="rtl">
+      <div className="min-h-screen bg-gray-50 pt-8 pb-28 sm:pb-8" dir="rtl">
         <div className="container mx-auto px-4 max-w-3xl">
           {/* Results Header */}
           <div className={`rounded-lg p-8 text-center mb-6 ${
@@ -167,6 +175,13 @@ export default function TakeQuiz() {
             {!result.passed && (
               <p className="mt-4 text-sm opacity-80">
                 تحتاج إلى {result.passingScore}% للنجاح. حاول مرة أخرى!
+              </p>
+            )}
+            {result.passed && (
+              <p className="mt-4 text-sm">
+                {result.score >= 100
+                  ? "أحسنت! تم حفظ العلامة الكاملة. لا حاجة لإعادة الاختبار."
+                  : "تم حفظ نجاحك. يمكنك إعادة الاختبار اختيارياً لتحسين نتيجتك."}
               </p>
             )}
           </div>
@@ -231,21 +246,22 @@ export default function TakeQuiz() {
           </div>
 
           {/* Action Buttons */}
-          <div className="flex gap-4">
-            <button
-              onClick={handleRetry}
-              className="flex-1 bg-emerald-600 text-white py-3 rounded-lg font-medium hover:bg-emerald-700 flex items-center justify-center gap-2"
-            >
-              <RotateCcw className="w-5 h-5" />
-              إعادة المحاولة
-            </button>
-            
+          <div className="flex flex-col gap-4 sm:flex-row">
             <button
               onClick={handleBackToLevels}
-              className="flex-1 bg-gray-600 text-white py-3 rounded-lg font-medium hover:bg-gray-700"
+              className={`flex-1 text-white py-3 px-4 rounded-lg font-medium ${result.passed ? "bg-emerald-600 hover:bg-emerald-700" : "bg-gray-600 hover:bg-gray-700"}`}
             >
               العودة إلى المستويات
             </button>
+            {!(result.passed && result.score >= 100) && (
+              <button
+                onClick={handleRetry}
+                className={`flex-1 py-3 px-4 rounded-lg font-medium flex items-center justify-center gap-2 ${result.passed ? "border border-emerald-600 text-emerald-700 hover:bg-emerald-50" : "bg-emerald-600 text-white hover:bg-emerald-700"}`}
+              >
+                <RotateCcw className="w-5 h-5" />
+                {result.passed ? "إعادة الاختبار (اختياري)" : "إعادة المحاولة"}
+              </button>
+            )}
           </div>
         </div>
       </div>

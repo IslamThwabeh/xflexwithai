@@ -45,6 +45,8 @@ export default function QuizHistory() {
 
   const bestScore = Math.max(...history.map((h: any) => h.score), 0);
   const passedAttempts = history.filter((h: any) => h.passed).length;
+  // Use the best saved result, so a later lower attempt never restores a redo prompt after full marks.
+  const hasFullMarks = history.some(attempt => attempt.passed && attempt.score >= 100);
   const avgScore = history.length > 0
     ? Math.round(history.reduce((sum: number, h: any) => sum + h.score, 0) / history.length)
     : 0;
@@ -132,9 +134,17 @@ export default function QuizHistory() {
         </div>
 
         <div className="mt-6">
-          <Link href={`/quiz/${level}`}>
-            <button className="w-full bg-emerald-600 text-white py-3 rounded-lg font-medium hover:bg-emerald-700">محاولة جديدة</button>
-          </Link>
+          {hasFullMarks ? (
+            <p className="rounded-lg border border-green-200 bg-green-50 p-4 text-center text-green-700">
+              أحسنت! حصلت على العلامة الكاملة. لا حاجة لإعادة الاختبار.
+            </p>
+          ) : history.length > 0 && (
+            <Link href={`/quiz/${level}`}>
+              <button className="w-full bg-emerald-600 text-white py-3 rounded-lg font-medium hover:bg-emerald-700">
+                {passedAttempts > 0 ? "إعادة الاختبار (اختياري)" : "المحاولة مجددًا"}
+              </button>
+            </Link>
+          )}
         </div>
       </div>
     </div>

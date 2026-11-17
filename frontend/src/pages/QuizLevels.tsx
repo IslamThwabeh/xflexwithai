@@ -1,6 +1,7 @@
 import { Link } from "wouter";
-import { Lock, CheckCircle, Circle, Trophy, Clock, Key } from "lucide-react";
+import { Lock, CheckCircle, Circle, Trophy, Clock, Key, RefreshCw } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { ACADEMY_TIME_ZONE } from "@shared/academyLocale";
 import ClientLayout from "@/components/ClientLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,7 +18,7 @@ type LevelProgress = {
 };
 
 export default function QuizLevels() {
-  const { data: progress = [], isLoading: loading, error: queryError, refetch } = trpc.userQuiz.progress.useQuery(undefined, {
+  const { data: progress = [], isLoading: loading, isFetching, error: queryError, refetch } = trpc.userQuiz.progress.useQuery(undefined, {
     retry: false,
   });
   const error = queryError?.message ?? "";
@@ -26,7 +27,7 @@ export default function QuizLevels() {
     if (level.isPassed) {
       return {
         icon: <CheckCircle className="w-6 h-6 text-green-500" />,
-        badge: "مكتمل",
+        badge: level.bestScore >= 100 ? "العلامة الكاملة" : "تم اجتيازه",
         badgeColor: "bg-green-100 text-green-800",
         canAccess: true
       };
@@ -98,7 +99,7 @@ export default function QuizLevels() {
 
   const completedLevels = progress.filter(p => p.isPassed).length;
   const totalLevels = progress.length;
-  const overallProgress = (completedLevels / totalLevels) * 100;
+  const overallProgress = totalLevels > 0 ? (completedLevels / totalLevels) * 100 : 0;
 
   return (
     <ClientLayout>
@@ -108,6 +109,15 @@ export default function QuizLevels() {
         <div className="container mx-auto px-4">
           <h1 className="text-3xl font-bold mb-2">اختبارات الدورة التعليمية</h1>
           <p className="text-emerald-100">أكمل جميع المستويات لإتقان التداول</p>
+          <Button
+            variant="secondary"
+            className="mt-4 gap-2"
+            disabled={isFetching}
+            onClick={() => void refetch()}
+          >
+            <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
+            تحديث التقدم
+          </Button>
           
           {/* Overall Progress */}
           <div className="mt-6 bg-white/10 rounded-lg p-4">
@@ -179,7 +189,7 @@ export default function QuizLevels() {
                           آخر محاولة
                         </span>
                         <span className="text-gray-800">
-                          {new Date(level.lastAttemptAt).toLocaleDateString('ar-EG')}
+                          {new Date(level.lastAttemptAt).toLocaleDateString('ar-PS', { timeZone: ACADEMY_TIME_ZONE })}
                         </span>
                       </div>
                     )}
@@ -191,10 +201,30 @@ export default function QuizLevels() {
                   </div>
 
                   {/* Action Button */}
-                  {status.canAccess ? (
+                  {level.isPassed ? (
+                    <div className="space-y-2">
+                      <p className="text-sm text-green-700">
+                        {level.bestScore >= 100
+                          ? "أحسنت! حصلت على العلامة الكاملة. لا حاجة لإعادة الاختبار."
+                          : "اجتزت هذا الاختبار بنجاح. يمكنك إعادته اختيارياً لتحسين نتيجتك."}
+                      </p>
+                      <Link href={`/quiz/${level.level}/history`}>
+                        <button className="w-full bg-emerald-600 text-white py-3 rounded-lg font-medium hover:bg-emerald-700 transition-colors">
+                          عرض النتائج
+                        </button>
+                      </Link>
+                      {level.bestScore < 100 && (
+                        <Link href={`/quiz/${level.level}`}>
+                          <button className="w-full text-emerald-700 text-sm py-2 hover:bg-emerald-50 rounded-lg transition-colors">
+                            إعادة الاختبار (اختياري)
+                          </button>
+                        </Link>
+                      )}
+                    </div>
+                  ) : status.canAccess ? (
                     <Link href={`/quiz/${level.level}`}>
                       <button className="w-full bg-emerald-600 text-white py-3 rounded-lg font-medium hover:bg-emerald-700 transition-colors">
-                        {level.isPassed ? "إعادة الاختبار" : level.bestScore > 0 ? "المحاولة مجددًا" : "ابدأ الاختبار"}
+                        {level.lastAttemptAt ? "المحاولة مجددًا" : "ابدأ الاختبار"}
                       </button>
                     </Link>
                   ) : (
@@ -208,7 +238,7 @@ export default function QuizLevels() {
                   )}
 
                   {/* View History */}
-                  {level.bestScore > 0 && (
+                  {!level.isPassed && level.lastAttemptAt && (
                     <Link href={`/quiz/${level.level}/history`}>
                       <button className="w-full mt-2 text-emerald-600 text-sm py-2 hover:bg-emerald-50 rounded-lg transition-colors">
                         عرض سجل المحاولات
@@ -222,12 +252,12 @@ export default function QuizLevels() {
         </div>
 
         {/* Completion Message */}
-        {completedLevels === totalLevels && (
+        {totalLevels > 0 && completedLevels === totalLevels && (
           <div className="mt-8 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg p-6 text-center">
             <Trophy className="w-16 h-16 mx-auto mb-4" />
             <h2 className="text-2xl font-bold mb-2">مبروك! 🎉</h2>
             <p className="text-green-100">
-              لقد أكملت جميع المستويات بنجاح! أنت الآن متداول محترف!
+              لقد اجتزت جميع اختبارات المستويات بنجاح. لا تحتاج إلى إعادتها.
             </p>
           </div>
         )}
