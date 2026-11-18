@@ -73,6 +73,8 @@ import {
   sendLoginCodeEmail,
 } from "./_core/email";
 import { buildRecommendationAlertEmail, buildRecommendationMessageEmail } from "./_core/recommendationEmails";
+import { validateRecommendationLevels } from '../shared/recommendationIntegrity';
+import { publishRecommendationManagement, RecommendationManagementError } from './services/recommendation-integrity.service';
 import { buildSupportReplyEmail } from "./_core/supportEmails";
 import { isSupportWorkingHours } from '../shared/studentWelcome';
 import { ACADEMY_TIME_LABEL_EN, formatAcademyDateTime } from '../shared/academyLocale';
@@ -4898,6 +4900,7 @@ export const appRouter = router({
           riskPercent: z.string().max(20).optional(),
           parserDiagnosticId: z.string().uuid().optional(),
           parentId: z.number().optional(),
+          entryMode: z.enum(['immediate', 'pending']).default('immediate'),
         })
       )
       .mutation(async ({ ctx, input }) => {
@@ -4933,6 +4936,7 @@ export const appRouter = router({
         let messageId: number;
         let parentMessage: Awaited<ReturnType<typeof db.getRecommendationMessageById>> | null = null;
         let rootMessageForDelivery: {
+          entryMode?: string | null;
           content: string;
           symbol?: string | null;
           side?: string | null;
@@ -4964,6 +4968,8 @@ export const appRouter = router({
           if (!normalizedSymbol) {
             throw new TRPCError({ code: 'BAD_REQUEST', message: 'Choose the symbol first.' });
           }
+          const levelsError = validateRecommendationLevels(input);
+          if (levelsError) throw new TRPCError({ code: 'BAD_REQUEST', message: levelsError });
 
           if (!funnelEligible.length) {
             logger.warn('[RECOMMENDATIONS] Recommendation blocked: no eligible recipients', {
@@ -4991,6 +4997,7 @@ export const appRouter = router({
           }
 
           rootMessageForDelivery = {
+            entryMode: input.entryMode,
             content: trimmedContent,
             symbol: normalizedSymbol,
             side: input.side?.trim() || undefined,
@@ -5017,6 +5024,7 @@ export const appRouter = router({
             riskPercent: input.riskPercent,
             parentId: null,
             threadStatus: 'open',
+            entryMode: input.entryMode,
             closedAt: null,
             closedByUserId: null,
             deliveryDiagnosticsJson: JSON.stringify(funnel.diagnostics),
@@ -5050,6 +5058,7 @@ export const appRouter = router({
           }
 
           rootMessageForDelivery = {
+            entryMode: parentMessage.entryMode,
             content: parentMessage.content || '',
             symbol: parentMessage.symbol ?? normalizedSymbol ?? undefined,
             side: parentMessage.side ?? undefined,
@@ -5221,72 +5230,33 @@ export const appRouter = router({
       .input(z.object({ limit: z.number().int().min(1).max(100).default(100) }).optional())
       .query(({ input }) => listParserDiagnostics(input?.limit)),
 
-    editMessage: protectedProcedure
+    manageRecommendation: protectedProcedure
       .input(z.object({
-        messageId: z.number(),
-        content: z.string().min(3).max(4000),
-        symbol: z.string().max(30).optional(),
-        side: z.string().max(10).optional(),
-        entryPrice: z.string().max(50).optional(),
-        stopLoss: z.string().max(50).optional(),
-        takeProfit1: z.string().max(50).optional(),
-        takeProfit2: z.string().max(50).optional(),
-        takeProfit3: z.string().max(50).optional(),
-        riskPercent: z.string().max(20).optional(),
+        rootId: z.number().int().positive(), requestId: z.string().uuid(),
+        action: z.enum(['cancel_pending','early_close','correction']),
+        reason: z.string().trim().min(5).max(1000), confirmUntriggered: z.boolean().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         await ensureRecommendationPublishAccess(ctx);
-
-        let updated: Awaited<ReturnType<typeof db.editRecommendationMessage>>;
-        try {
-          updated = await db.editRecommendationMessage({
-            messageId: input.messageId,
-            userId: ctx.user.id,
-            content: input.content,
-            symbol: input.symbol,
-            side: input.side,
-            entryPrice: input.entryPrice,
-            stopLoss: input.stopLoss,
-            takeProfit1: input.takeProfit1,
-            takeProfit2: input.takeProfit2,
-            takeProfit3: input.takeProfit3,
-            riskPercent: input.riskPercent,
-          });
-        } catch (error) {
-          const message = error instanceof Error ? error.message : "Unable to edit recommendation message";
-
-          if (message === "Recommendation message not found") {
-            throw new TRPCError({ code: 'NOT_FOUND', message });
-          }
-          if (message === "You can only edit your own recommendation messages") {
-            throw new TRPCError({ code: 'FORBIDDEN', message });
-          }
-          if (message === "Recommendation edit window expired") {
-            throw new TRPCError({
-              code: 'FORBIDDEN',
-              message: 'You can edit a recommendation only within 60 seconds of posting.',
-            });
-          }
-
-          throw new TRPCError({ code: 'BAD_REQUEST', message });
-        }
-
         const isAdmin = !!(ctx.user?.email && await db.getAdminByEmail(ctx.user.email));
-        if (ctx.user?.isStaff && !isAdmin) {
-          await writeStaffActivityLog({
-            ctx: { ...ctx, admin: null },
-            path: 'recommendations.editMessage',
-            type: 'mutation',
-            input: {
-              messageId: input.messageId,
-              hasSymbol: !!input.symbol,
-              hasStopLoss: !!input.stopLoss,
-              hasTargets: !!(input.takeProfit1 || input.takeProfit2 || input.takeProfit3),
-            },
-          });
+        const database = await db.getDb();
+        if (!database) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database unavailable.' });
+        try {
+          const result = await publishRecommendationManagement(database, { ...input, actorUserId:ctx.user.id, isAdmin });
+          deferRecommendationEmailDrain(ctx, result.eventKey);
+          return { success:true, messageId:result.messageId };
+        } catch (error) {
+          if (error instanceof RecommendationManagementError) throw new TRPCError({code:'BAD_REQUEST',message:error.message});
+          logger.error('[RECOMMENDATIONS] Management transaction failed',{rootId:input.rootId,action:input.action});
+          throw new TRPCError({ code:'INTERNAL_SERVER_ERROR', message:'Unable to publish trade instruction. Refresh and retry.' });
         }
+      }),
 
-        return { success: true, message: updated };
+    editMessage: protectedProcedure
+      .input(z.object({ messageId:z.number(), content:z.string().optional() }))
+      .mutation(async ({ctx}) => {
+        await ensureRecommendationPublishAccess(ctx);
+        throw new TRPCError({code:'FORBIDDEN',message:'Published messages cannot be edited. Append a clarification instead.'});
       }),
 
     monthlyTradeReport: protectedProcedure
@@ -5320,12 +5290,15 @@ export const appRouter = router({
     saveTradeResult: protectedProcedure
       .input(z.object({
         messageId: z.number(),
-        outcome: z.enum(['win', 'loss']),
-        pips: z.number().positive().finite(),
+        outcome: z.enum(['win', 'loss','breakeven']),
+        pips: z.number().nonnegative().finite(),
+        reason: z.string().trim().min(5).max(1000),
       }))
       .mutation(async ({ ctx, input }) => {
         await ensureRecommendationPublishAccess(ctx);
         const isAdmin = !!(ctx.user?.email && await db.getAdminByEmail(ctx.user.email));
+
+        if (!isAdmin) throw new TRPCError({ code: 'FORBIDDEN', message: 'Only full admins can correct reported results.' });
 
         let updated: Awaited<ReturnType<typeof db.saveRecommendationTradeResultOverride>>;
         try {
@@ -5410,23 +5383,10 @@ export const appRouter = router({
       }),
 
     deleteMessage: protectedProcedure
-      .input(z.object({ messageId: z.number() }))
-      .mutation(async ({ ctx, input }) => {
+      .input(z.object({messageId:z.number()}))
+      .mutation(async ({ctx}) => {
         await ensureRecommendationPublishAccess(ctx);
-        // Check admin status via DB lookup (ctx.admin only exists on adminProcedure)
-        const isAdmin = !!(ctx.user?.email && await db.getAdminByEmail(ctx.user.email));
-        await db.deleteRecommendationMessage(input.messageId, ctx.user.id, isAdmin);
-
-        if (ctx.user?.isStaff && !isAdmin) {
-          await writeStaffActivityLog({
-            ctx: { ...ctx, admin: null },
-            path: 'recommendations.deleteMessage',
-            type: 'mutation',
-            input,
-          });
-        }
-
-        return { success: true };
+        throw new TRPCError({code:'FORBIDDEN',message:'Published recommendations, updates and results cannot be deleted.'});
       }),
 
   }),

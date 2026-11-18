@@ -18,6 +18,10 @@ const event = (
 });
 
 describe("cumulative recommendation reporting", () => {
+  it('keeps zero-period contributions separate from wins and losses',()=>{
+    const [row]=buildRecommendationPeriodTradeStates({periodStart:'2026-08-01',periodEnd:'2026-09-01',events:[event(1,10,'2026-08-03',0)]});
+    expect(row).toMatchObject({periodPips:0,outcome:'breakeven'});
+  });
   it("collapses +50, +100, and +250 into one 250-pip trade contribution", () => {
     const [row] = buildRecommendationPeriodTradeStates({
       periodStart: "2026-08-01T00:00:00.000Z",
@@ -79,6 +83,7 @@ describe("cumulative recommendation reporting", () => {
     expect(source).toContain('key: "p250"');
     expect(source).toContain('key: "p300"');
     expect(source).toContain('placeholder={isRTL ? "قيمة أخرى" : "Custom pips"}');
-    expect(source.match(/monthlyTradeReport\.invalidate\(\)/g)?.length).toBeGreaterThanOrEqual(4);
+    // Publish, close and management replace the old edit/delete mutations.
+    expect(source.match(/monthlyTradeReport\.invalidate\(\)/g)?.length).toBeGreaterThanOrEqual(3);
   });
 });

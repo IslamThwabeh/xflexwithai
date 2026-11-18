@@ -1,4 +1,4 @@
-export type RecommendationReportOutcome = "win" | "loss";
+export type RecommendationReportOutcome = "win" | "loss" | 'breakeven';
 
 export type RecommendationScoringEvent = {
   messageId: number;
@@ -14,7 +14,7 @@ export type RecommendationPeriodTradeState<T extends RecommendationScoringEvent>
   cumulativePips: number;
   periodPips: number;
   milestoneCount: number;
-  outcome: RecommendationReportOutcome;
+  outcome: RecommendationReportOutcome | 'breakeven';
 };
 
 function roundTo2(value: number): number {
@@ -79,7 +79,7 @@ export function buildRecommendationPeriodTradeStates<T extends RecommendationSco
       cumulativePips,
       periodPips,
       milestoneCount: periodEvents.length,
-      outcome: periodPips < 0 ? "loss" : periodPips > 0 ? "win" : latestEvent.outcome,
+      outcome: periodPips < 0 ? "loss" : periodPips > 0 ? "win" : 'breakeven',
     });
   }
 

@@ -3,6 +3,11 @@ import { describe, expect, it } from "vitest";
 import { buildRecommendationMessageEmail } from "../backend/_core/recommendationEmails";
 
 describe("recommendation message email template", () => {
+  it('does not invent an entry type for historical recommendations',()=>{
+    const email=buildRecommendationMessageEmail({language:'en',type:'update',recommendation:{content:'Historical recommendation',entryMode:'legacy'},latestMessage:{content:'Clarification'}});
+    expect(email.text).not.toContain('Entry type:');
+    expect(email.html).not.toContain('Immediate entry');
+  });
   it("does not include the copy-friendly block in the email body", () => {
     const email = buildRecommendationMessageEmail({
       language: "en",

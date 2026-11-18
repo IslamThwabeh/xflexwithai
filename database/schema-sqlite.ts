@@ -512,10 +512,24 @@ export const recommendationMessages = sqliteTable("recommendationMessages", {
   closedByUserId: integer("closedByUserId"),
   deliveryDiagnosticsJson: text("deliveryDiagnosticsJson"),
   createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
-});
+  entryMode: text("entryMode").notNull().default("legacy"),
+  cancelledAt: text("cancelledAt"),
+  managementAction: text("managementAction"),
+  managementRequestId: text("managementRequestId"),
+}, (table) => ({
+  managementRequestUnique: unique('ux_recommendation_management_request').on(table.managementRequestId),
+}));
 
 export type RecommendationMessage = typeof recommendationMessages.$inferSelect;
 export type InsertRecommendationMessage = typeof recommendationMessages.$inferInsert;
+
+export const recommendationResultCorrections = sqliteTable('recommendation_result_corrections', {
+  id: int('id').primaryKey({autoIncrement:true}),
+  messageId: integer('messageId').notNull().references(()=>recommendationMessages.id),
+  actorUserId: integer('actorUserId').notNull(), reason:text('reason').notNull(),
+  previousOutcome:text('previousOutcome'), previousPips:real('previousPips'),
+  outcome:text('outcome').notNull(), pips:real('pips').notNull(), createdAt:text('createdAt').notNull(),
+}, table=>({messageIdx:index('idx_recommendation_result_corrections_message').on(table.messageId,table.id)}));
 
 /**
  * Recommendation notification delivery outbox.

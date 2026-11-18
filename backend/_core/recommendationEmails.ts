@@ -2,6 +2,7 @@ type RecommendationEmailLanguage = "ar" | "en";
 type RecommendationMessageEmailType = "recommendation" | "update" | "result";
 
 type RecommendationEmailTrade = {
+  entryMode?: string | null;
   content: string;
   symbol?: string | null;
   side?: string | null;
@@ -115,6 +116,7 @@ export function buildRecommendationAlertEmail(input: {
 
 function buildTradeDetails(trade: RecommendationEmailTrade, isArabic: boolean) {
   return [
+    trade.entryMode === 'pending' || trade.entryMode === 'immediate' ? {label:isArabic ? 'نوع الدخول' : 'Entry type',value:trade.entryMode === 'pending' ? (isArabic ? 'أمر دخول معلّق' : 'Pending entry order') : (isArabic ? 'دخول مباشر' : 'Immediate entry'),tone:'default' as const} : null,
     trade.symbol ? { label: isArabic ? "الأصل / الزوج" : "Symbol / Pair", value: trade.symbol, tone: "default" as const } : null,
     trade.side ? { label: isArabic ? "الاتجاه" : "Direction", value: trade.side, tone: "default" as const } : null,
     trade.entryPrice ? { label: isArabic ? "الدخول" : "Entry", value: trade.entryPrice, tone: "default" as const } : null,
@@ -158,6 +160,7 @@ export function buildRecommendationMessageEmail(input: {
   recommendation: RecommendationEmailTrade;
   latestMessage?: { content: string };
   threadUnfollowUrl?: string;
+  operationalNotice?: boolean;
 }) {
   const isArabic = input.language !== "en";
   const subject = getRecommendationMessageEmailSubject({
@@ -180,7 +183,9 @@ export function buildRecommendationMessageEmail(input: {
       : (isArabic
           ? "هناك تحديث جديد على الصفقة نفسها. افتح القناة لمتابعة إدارة الصفقة مباشرة."
           : "There is a new update on the same trade. Open the channel to follow the trade management live.");
-  const footer = isArabic
+  const footer = input.operationalNotice
+    ? (isArabic ? 'أُرسل إشعار إدارة الصفقة لأن هذه التوصية سبق أن نُشرت لحسابك.' : 'You received this trade-management notice because this recommendation was previously shared with your account.')
+    : isArabic
     ? "تم إرسال هذا التنبيه لأن إشعارات التوصيات مفعلة على حسابك عندما تكون خارج القناة."
     : "You received this alert because recommendation notifications are enabled on your account when you are away from the channel.";
   const ctaLabel = isArabic ? "افتح القناة الآن" : "Open Channel Now";

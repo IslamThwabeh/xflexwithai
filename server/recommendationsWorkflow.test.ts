@@ -129,8 +129,16 @@ describe("recommendations workflow", () => {
     accountUnavailable: 0, accountDisabled: 0, notificationsDisabled: 0, eligibleCount: 0,
   };
 
+  it.each([false,true])('rejects deletion and rewriting for managers and full admins (admin=%s)',async(isAdmin)=>{
+    vi.mocked(db.getAdminByEmail).mockResolvedValue(isAdmin ? {id:1} as any : null);
+    const caller=createAuthedCaller();
+    await expect(caller.recommendations.deleteMessage({messageId:901})).rejects.toMatchObject({code:'FORBIDDEN'});
+    await expect(caller.recommendations.editMessage({messageId:901,content:'Changed loss'})).rejects.toMatchObject({code:'FORBIDDEN'});
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(db.getAdminByEmail).mockResolvedValue(null);
     hasAnyRole.mockResolvedValue(false);
 
     getUserRecommendationsAccess.mockResolvedValue({
@@ -382,13 +390,21 @@ describe("recommendations workflow", () => {
     expect(result).toMatchObject({ month: "2026-05", analysts: [] });
   });
 
-  it("saves manual trade result overrides", async () => {
+  it("denies managers permission to rewrite reported outcomes", async () => {
+    const caller = createAuthedCaller();
+    await expect(caller.recommendations.saveTradeResult({messageId:902,outcome:'win',pips:25,reason:'Verified correction'})).rejects.toMatchObject({code:'FORBIDDEN'});
+    expect(saveRecommendationTradeResultOverride).not.toHaveBeenCalled();
+  });
+
+  it("allows full admins to save an explained result correction", async () => {
+    vi.mocked(db.getAdminByEmail).mockResolvedValue({id:1} as any);
     const caller = createAuthedCaller();
 
     const result = await caller.recommendations.saveTradeResult({
       messageId: 902,
       outcome: "win",
       pips: 25,
+      reason: 'Verified correction',
     });
 
     expect(saveRecommendationTradeResultOverride).toHaveBeenCalledWith({
@@ -396,7 +412,8 @@ describe("recommendations workflow", () => {
       outcome: "win",
       pips: 25,
       analystUserId: 123,
-      isAdmin: false,
+      isAdmin: true,
+      reason: 'Verified correction',
     });
     expect(result).toMatchObject({ success: true });
   });
@@ -580,6 +597,8 @@ describe("recommendations workflow", () => {
       symbol: "XAUUSD",
       side: "BUY",
       entryPrice: "2320",
+      stopLoss: '2314',
+      takeProfit1: '2328',
     });
 
     expect(result).toMatchObject({ success: true, messageId: 901 });
@@ -842,6 +861,7 @@ describe("recommendations workflow", () => {
         type: "recommendation",
         content: "Buy XAUUSD on the pullback.",
         symbol: "XAUUSD",
+        side: 'BUY', entryPrice: '2320', stopLoss: '2314', takeProfit1: '2328',
       })
     ).rejects.toMatchObject({
       code: "CONFLICT",

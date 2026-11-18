@@ -1,5 +1,6 @@
 import { eq, desc, and, or, sql, ne, inArray, notInArray, isNotNull, isNull, gte, lte, lt, gt, like, asc, exists, type SQL } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
+import { executeRecommendationBatch } from './services/recommendation-integrity.service';
 import type { D1Database } from "@cloudflare/workers-types";
 import {
   InsertUser, users,
@@ -336,7 +337,6 @@ const DEFAULT_KEY_ENTITLEMENT_DAYS = 30;
 const DEFAULT_STUDY_PERIOD_DAYS = 14;
 const RECOMMENDATION_ALERT_UNLOCK_MS = 60 * 1000;
 const RECOMMENDATION_ALERT_EXPIRY_MS = 15 * 60 * 1000;
-const RECOMMENDATION_MESSAGE_EDIT_WINDOW_MS = 60 * 1000;
 const RECOMMENDATION_REPORT_MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 const RECOMMENDATION_REPORT_SIGNED_PIPS_RE = /([+-]\s*\d+(?:[.,]\d+)?)\s*(pips?|points?|نقاط|نقطة)?/i;
 const RECOMMENDATION_REPORT_UNSIGNED_PIPS_RE = /(\d+(?:[.,]\d+)?)\s*(?:pips?|points?|نقاط|نقطة)/i;
@@ -345,7 +345,7 @@ const RECOMMENDATION_REPORT_REQUIRE_UNIT_ABOVE_ABS_PIPS = 200;
 let hasLoggedMissingEngagementEventsTable = false;
 let hasLoggedMissingOpenAiUsageEventsTable = false;
 
-export type RecommendationReportOutcome = 'win' | 'loss';
+export type RecommendationReportOutcome = 'win' | 'loss' | 'breakeven';
 
 export type RecommendationTradeReportRow = {
   messageId: number;
@@ -354,7 +354,7 @@ export type RecommendationTradeReportRow = {
   symbol: string;
   side: string;
   content: string;
-  outcome: RecommendationReportOutcome;
+  outcome: RecommendationReportOutcome | 'breakeven';
   pips: number;
   periodStartPips: number;
   cumulativePips: number;
@@ -378,6 +378,7 @@ export type RecommendationTradeReportSummary = {
   totalTrades: number;
   winningTrades: number;
   losingTrades: number;
+  breakevenTrades: number;
   winRate: number;
   totalPipsWon: number;
   totalPipsLost: number;
@@ -407,6 +408,7 @@ export type RecommendationMonthlyTradeReport = {
     rootRecommendationsOpened: number;
     closedRootRecommendations: number;
     openRootRecommendations: number;
+    cancelledPendingRecommendations: number;
   };
   basis: 'cumulative_state_delta_month';
 };
@@ -6381,7 +6383,7 @@ export async function partitionRecommendationDeliveriesByEligibility(
       const prefs = parseRecommendationPrefs(account.notificationPrefs);
       if (prefs.malformed) reason = 'malformed_preferences';
       else if (prefs.optedOut) reason = 'preference_opted_out';
-      else if (!eligibleSubscriptionUserIds.has(delivery.userId)) reason = 'subscription_ineligible';
+      else if (delivery.eventKind !== 'management' && !eligibleSubscriptionUserIds.has(delivery.userId)) reason = 'subscription_ineligible';
     }
 
     if (reason) ineligible.push({ delivery, reason });
@@ -6654,7 +6656,7 @@ export async function findSimilarOpenRecommendationForAnalyst(input: {
 
 export const MAX_RECOMMENDATION_DELIVERY_ATTEMPTS = 3;
 
-export type RecommendationDeliveryEventKind = 'alert' | 'recommendation' | 'update' | 'result';
+export type RecommendationDeliveryEventKind = 'alert' | 'recommendation' | 'update' | 'result' | 'management';
 
 export type PrepareRecommendationDeliveryItem = {
   userId: number;
@@ -7089,6 +7091,7 @@ export async function listPendingRecommendationDeliveriesForRetry(limit: number 
     ))
     .orderBy(
       sql`CASE ${recommendationDeliveries.eventKind}
+        WHEN 'management' THEN -1
         WHEN 'recommendation' THEN 0
         WHEN 'alert' THEN 1
         WHEN 'update' THEN 2
@@ -7157,6 +7160,7 @@ export async function claimNextRecommendationDeliveryBatch(
     ))
     .orderBy(
       sql`CASE ${recommendationDeliveries.eventKind}
+        WHEN 'management' THEN -1
         WHEN 'recommendation' THEN 0
         WHEN 'alert' THEN 1
         WHEN 'update' THEN 2
@@ -8144,115 +8148,16 @@ export async function getRecommendationMessageById(messageId: number) {
   return rows[0];
 }
 
-export async function deleteRecommendationMessage(messageId: number, userId: number, isAdmin: boolean = false) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  const existing = await db
-    .select({ id: recommendationMessages.id, ownerId: recommendationMessages.userId })
-    .from(recommendationMessages)
-    .where(eq(recommendationMessages.id, messageId))
-    .limit(1);
-
-  const target = existing[0];
-  if (!target) {
-    throw new Error("Recommendation message not found");
-  }
-
-  if (!isAdmin && target.ownerId !== userId) {
-    throw new Error("You can only delete your own recommendation messages");
-  }
-
-  await db.delete(recommendationMessages).where(eq(recommendationMessages.id, messageId));
-  await db.delete(recommendationMessages).where(eq(recommendationMessages.parentId, messageId));
+export async function deleteRecommendationMessage(_messageId: number, _userId: number, _isAdmin = false): Promise<never> {
+  throw new Error("Published recommendations, updates and results cannot be deleted");
 }
 
-export async function editRecommendationMessage(input: {
-  messageId: number;
-  userId: number;
-  content: string;
-  symbol?: string;
-  side?: string;
-  entryPrice?: string;
-  stopLoss?: string;
-  takeProfit1?: string;
-  takeProfit2?: string;
-  takeProfit3?: string;
-  riskPercent?: string;
-}) {
-  const db = await getDb();
-  if (!db) throw new Error("Database not available");
-
-  const existingRows = await db
-    .select()
-    .from(recommendationMessages)
-    .where(eq(recommendationMessages.id, input.messageId))
-    .limit(1);
-
-  const existing = existingRows[0];
-  if (!existing) {
-    throw new Error("Recommendation message not found");
-  }
-
-  if (existing.userId !== input.userId) {
-    throw new Error("You can only edit your own recommendation messages");
-  }
-
-  if (!["recommendation", "update", "result"].includes(existing.type)) {
-    throw new Error("Only recommendation channel messages can be edited");
-  }
-
-  const createdAtTs = new Date(existing.createdAt).getTime();
-  if (!Number.isFinite(createdAtTs) || Date.now() - createdAtTs > RECOMMENDATION_MESSAGE_EDIT_WINDOW_MS) {
-    throw new Error("Recommendation edit window expired");
-  }
-
-  const trimmedContent = input.content.trim();
-  if (trimmedContent.length < 3) {
-    throw new Error("Please write a clear message first.");
-  }
-
-  const normalizeOptional = (value?: string) => {
-    if (value === undefined) return undefined;
-    const trimmed = value.trim();
-    return trimmed.length ? trimmed : null;
-  };
-
-  const normalizedSymbol = normalizeOptional(input.symbol)?.toUpperCase() ?? undefined;
-  if (existing.type === "recommendation" && !normalizedSymbol) {
-    throw new Error("Choose the symbol first.");
-  }
-
-  const updatePayload: Partial<InsertRecommendationMessage> = {
-    content: trimmedContent,
-    symbol: normalizedSymbol,
-    side: normalizeOptional(input.side),
-    entryPrice: normalizeOptional(input.entryPrice),
-    stopLoss: normalizeOptional(input.stopLoss),
-    takeProfit1: normalizeOptional(input.takeProfit1),
-    takeProfit2: normalizeOptional(input.takeProfit2),
-    takeProfit3: normalizeOptional(input.takeProfit3),
-    riskPercent: normalizeOptional(input.riskPercent),
-  };
-
-  if (existing.type !== "recommendation") {
-    delete updatePayload.symbol;
-    delete updatePayload.side;
-    delete updatePayload.entryPrice;
-    delete updatePayload.stopLoss;
-    delete updatePayload.takeProfit1;
-    delete updatePayload.takeProfit2;
-    delete updatePayload.takeProfit3;
-    delete updatePayload.riskPercent;
-  }
-
-  const updatedRows = await db
-    .update(recommendationMessages)
-    .set(updatePayload)
-    .where(eq(recommendationMessages.id, input.messageId))
-    .returning();
-
-  return updatedRows[0] ?? null;
+export async function editRecommendationMessage(_input: {
+  messageId: number; userId: number; content: string; symbol?: string; side?: string;
+  entryPrice?: string; stopLoss?: string; takeProfit1?: string; takeProfit2?: string;
+  takeProfit3?: string; riskPercent?: string;
+}): Promise<never> {
+  throw new Error("Published messages are immutable; append a clarification");
 }
 
 type RecommendationParsedCandidate = {
@@ -8326,7 +8231,7 @@ function parseSymbol(message: RecommendationMessage | null, parent: Recommendati
 function parseRecommendationCandidate(message: RecommendationMessage, parent: RecommendationMessage | null): RecommendationParsedCandidate {
   const content = (message.content || '').trim();
 
-  const manualOutcome = message.resultOutcome === 'win' || message.resultOutcome === 'loss'
+  const manualOutcome = message.resultOutcome === 'win' || message.resultOutcome === 'loss' || message.resultOutcome === 'breakeven'
     ? message.resultOutcome
     : null;
   const manualPips = typeof message.resultPips === 'number' && Number.isFinite(message.resultPips)
@@ -8334,7 +8239,7 @@ function parseRecommendationCandidate(message: RecommendationMessage, parent: Re
     : null;
 
   if (manualOutcome && manualPips !== null) {
-    const signedPips = manualOutcome === 'loss' ? -Math.abs(manualPips) : Math.abs(manualPips);
+    const signedPips = manualOutcome === 'breakeven' ? 0 : manualOutcome === 'loss' ? -Math.abs(manualPips) : Math.abs(manualPips);
     return {
       message,
       parent,
@@ -8459,6 +8364,7 @@ function emptyRecommendationMonthlyTradeReport(
       totalTrades: 0,
       winningTrades: 0,
       losingTrades: 0,
+      breakevenTrades: 0,
       winRate: 0,
       totalPipsWon: 0,
       totalPipsLost: 0,
@@ -8482,6 +8388,7 @@ function emptyRecommendationMonthlyTradeReport(
       rootRecommendationsOpened: 0,
       closedRootRecommendations: 0,
       openRootRecommendations: 0,
+      cancelledPendingRecommendations: 0,
       ...coverage,
     },
     basis: 'cumulative_state_delta_month',
@@ -8908,6 +8815,7 @@ export async function getRecommendationMonthlyTradeReport(month: string, analyst
 
   const [monthStats] = await db
     .select({
+      cancelledPendingRecommendations: sql<number>`SUM(CASE WHEN ${recommendationMessages.parentId} IS NULL AND ${recommendationMessages.cancelledAt} IS NOT NULL THEN 1 ELSE 0 END)`,
       rootRecommendationsOpened: sql<number>`SUM(CASE WHEN ${recommendationMessages.parentId} IS NULL AND ${recommendationMessages.type} = 'recommendation' THEN 1 ELSE 0 END)`,
       closedRootRecommendations: sql<number>`SUM(CASE WHEN ${recommendationMessages.parentId} IS NULL AND ${recommendationMessages.type} = 'recommendation' AND ${recommendationMessages.threadStatus} = 'closed' THEN 1 ELSE 0 END)`,
       openRootRecommendations: sql<number>`SUM(CASE WHEN ${recommendationMessages.parentId} IS NULL AND ${recommendationMessages.type} = 'recommendation' AND (${recommendationMessages.threadStatus} IS NULL OR ${recommendationMessages.threadStatus} <> 'closed') THEN 1 ELSE 0 END)`,
@@ -8918,6 +8826,7 @@ export async function getRecommendationMonthlyTradeReport(month: string, analyst
     .where(and(...monthConditions));
 
   const rootCoverage = {
+    cancelledPendingRecommendations: Number(monthStats?.cancelledPendingRecommendations ?? 0),
     resultMessages: Number(monthStats?.resultMessages ?? 0),
     rootRecommendationsOpened: Number(monthStats?.rootRecommendationsOpened ?? 0),
     closedRootRecommendations: Number(monthStats?.closedRootRecommendations ?? 0),
@@ -8963,7 +8872,7 @@ export async function getRecommendationMonthlyTradeReport(month: string, analyst
   }
 
   const parsedCandidates = messages
-    .filter((message) => typeof message.parentId === 'number')
+    .filter((message) => typeof message.parentId === 'number' && !message.managementAction)
     .map((message) => parseRecommendationCandidate(
       message,
       parentMap.get(message.parentId as number) ?? null,
@@ -9056,7 +8965,9 @@ export async function getRecommendationMonthlyTradeReport(month: string, analyst
   const winningTrades = trades.filter((trade) => trade.outcome === 'win').length;
   const losingTrades = trades.filter((trade) => trade.outcome === 'loss').length;
   const totalTrades = trades.length;
-  const winRate = totalTrades ? roundTo2((winningTrades * 100) / totalTrades) : 0;
+  const breakevenTrades = trades.filter((trade) => trade.outcome === 'breakeven').length;
+  const decidedTrades = winningTrades + losingTrades;
+  const winRate = decidedTrades ? roundTo2((winningTrades * 100) / decidedTrades) : 0;
   const totalPipsWon = roundTo2(trades
     .filter((trade) => trade.pips > 0)
     .reduce((sum, trade) => sum + trade.pips, 0));
@@ -9087,6 +8998,7 @@ export async function getRecommendationMonthlyTradeReport(month: string, analyst
       totalTrades,
       winningTrades,
       losingTrades,
+      breakevenTrades,
       winRate,
       totalPipsWon,
       totalPipsLost,
@@ -9135,51 +9047,25 @@ export async function getRecommendationAnalystComparisonReport(month: string): P
 }
 
 export async function saveRecommendationTradeResultOverride(input: {
-  messageId: number;
-  outcome: RecommendationReportOutcome;
-  pips: number;
-  analystUserId?: number;
-  isAdmin?: boolean;
+  messageId: number; outcome: RecommendationReportOutcome; pips: number;
+  analystUserId?: number; isAdmin?: boolean; reason?: string;
 }) {
+  if (!input.isAdmin || !input.analystUserId) throw new Error('Only full admins can correct reported results');
+  if (!input.reason || input.reason.trim().length < 5) throw new Error('A correction reason is required');
+  if (!Number.isFinite(input.pips) || (input.outcome === 'breakeven' ? input.pips !== 0 : input.pips <= 0)) throw new Error('Use zero pips for breakeven, or positive pips for win/loss');
   const db = await getDb();
   if (!db) throw new Error('Database not available');
-
-  const existingRows = await db
-    .select()
-    .from(recommendationMessages)
-    .where(eq(recommendationMessages.id, input.messageId))
-    .limit(1);
-
-  const existing = existingRows[0];
-  if (!existing) {
-    throw new Error('Recommendation result message not found');
-  }
-  if (!existing.parentId || !['result', 'update'].includes(existing.type)) {
-    throw new Error('Only recommendation result/update replies can be adjusted for monthly reports');
-  }
-  if (!input.isAdmin && input.analystUserId !== undefined && existing.userId !== input.analystUserId) {
-    throw new Error('You can only adjust your own recommendation results');
-  }
-
-  const normalizedPips = input.outcome === 'loss'
-    ? -Math.abs(roundTo2(input.pips))
-    : Math.abs(roundTo2(input.pips));
-
-  await db
-    .update(recommendationMessages)
-    .set({
-      resultOutcome: input.outcome,
-      resultPips: normalizedPips,
-    })
-    .where(eq(recommendationMessages.id, input.messageId));
-
-  const updatedRows = await db
-    .select()
-    .from(recommendationMessages)
-    .where(eq(recommendationMessages.id, input.messageId))
-    .limit(1);
-
-  return updatedRows[0] ?? null;
+  const existing = await db.select().from(recommendationMessages).where(eq(recommendationMessages.id,input.messageId)).limit(1);
+  if (!existing[0] || !existing[0].parentId || !['result','update'].includes(existing[0].type) || existing[0].managementAction) throw new Error('Recommendation result message not found');
+  const pips = input.outcome === 'breakeven' ? 0 : input.outcome === 'loss' ? -Math.abs(roundTo2(input.pips)) : Math.abs(roundTo2(input.pips));
+  // INSERT SELECT snapshots the actual value inside the same atomic D1 batch.
+  await executeRecommendationBatch(db,[
+    sql`INSERT INTO recommendation_result_corrections (messageId,actorUserId,reason,previousOutcome,previousPips,outcome,pips,createdAt)
+      SELECT id,${input.analystUserId},${input.reason.trim()},resultOutcome,resultPips,${input.outcome},${pips},${new Date().toISOString()}
+      FROM recommendationMessages WHERE id=${input.messageId}`,
+    sql`UPDATE recommendationMessages SET resultOutcome=${input.outcome},resultPips=${pips} WHERE id=${input.messageId}`,
+  ]);
+  return (await db.select().from(recommendationMessages).where(eq(recommendationMessages.id,input.messageId)).limit(1))[0];
 }
 
 async function hydrateRecommendationFeedMessages(userId: number, orderedMessages: RecommendationMessage[]) {

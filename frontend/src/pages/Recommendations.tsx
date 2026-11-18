@@ -873,7 +873,7 @@ export default function Recommendations() {
                                         {language === 'ar' ? 'خيط الصفقة' : 'Trade Thread'}
                                       </span>
                                       <Badge className={thread.isClosed ? 'bg-slate-100 text-slate-700 dark:bg-white/10 dark:text-slate-300' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200'}>
-                                        {thread.isClosed
+                                        {message.cancelledAt ? (language === 'ar' ? 'أُلغي قبل الدخول' : 'Cancelled before entry') : thread.isClosed
                                           ? (language === 'ar' ? 'مؤرشفة' : 'Archived')
                                           : (language === 'ar' ? 'مفتوحة' : 'Open')}
                                       </Badge>
