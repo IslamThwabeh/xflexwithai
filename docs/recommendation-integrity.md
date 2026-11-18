@@ -1,6 +1,6 @@
 # Published recommendation integrity
 
-Implementation approved by the owner on 18 November 2026. **Local implementation; not released to production.** Historical deletions, restoration and retrospective customer notices are out of scope.
+Implementation and production deployment approved by the owner on 18 November 2026. **Released to production on 18 November 2026.** Historical deletions, restoration and retrospective customer notices remain out of scope.
 
 ## Behaviour
 
@@ -31,6 +31,15 @@ Each manager sees only their own existing feed/report scope and may manage only 
 - Ignored evidence: `output/recommendation-deletion-review-2026-11-18/`; browser artifacts: `output/playwright/recommendation-integrity/`.
 
 Completed local gates: **38 files / 262 critical tests**, TypeScript, production frontend/server/Worker builds, SEO/private-page checks, four bilingual viewport groups, four additional permission/validation/retry checks and two required-copy groups. Arabic mobile panels and the full-admin report were visually inspected. All business requests were synthetic/intercepted; actual production roles/inboxes and physical Safari were not exercised.
+
+## Production release evidence
+
+- Runtime source `bcc1b5eac73a91e040c345c65347c7c95457549e` was pushed to `origin/codex/live-package-phase-a` before release. Only this feature and its memory section were committed; the unrelated paid-efficiency investigation and previous memory edits remain outside the release.
+- Migration 136 applied once and is recorded as ledger ID 80. All four columns, the empty correction-audit table, two indexes and seven integrity triggers were reconciled. The 2,599 pre-existing messages through ID 2737 remain present with legacy entry type and no cancellation/management metadata. No historical result repair, restoration, deletion or notification seed occurred. D1 reports 2,614 writes for the DDL/index application; this is not 2,614 modified trade results.
+- Worker `f8a2c408-8926-474c-aa12-7afd67b17a68` is active at 100%; Pages production `45c5cde2-21e3-4195-b999-70c25f5157dc` reports the same source commit. Deployment URL: https://45c5cde2.xflexwithai.pages.dev. All 31 binding/variable descriptors, inspected compatibility/limit/placement settings and four schedules match the pre-release snapshot.
+- Production and deployment HTTP checks passed: five exact local/live asset hashes, five page routes, API health 200 and anonymous 401 on management, edit, delete and result-correction mutations. Recommendation routes preserve private/no-store and noindex headers.
+- The actual deployed assets passed the same four Arabic/English viewport groups, four additional validation/role/retry checks and two required-copy checks, with zero application exceptions or unknown fixture requests. Twelve management instructions and extra publish/retry requests were intercepted; guards prohibit unintercepted production API traffic. No actual staff/customer trade or inbox was used for QA. External font loading was replaced only inside the isolated browser fixture.
+- Recovery bookmark, schema/ledger captures, settings snapshots, exact artifact hashes, live metadata and verification logs are ignored under the private evidence paths above. Previous runtime references are Worker `8f94a8d1-c690-47ac-b39f-263fad336e34` and Pages `8a98f71d-7c0b-4e4a-8a0b-60f26e88b3c9`. Follow the compatible-queue/retained-guard recovery rule below; never restore the database as routine code rollback.
 
 ## Production release and recovery
 
