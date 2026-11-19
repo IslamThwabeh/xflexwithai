@@ -2,6 +2,7 @@ import type { D1Database, ExecutionContext, KVNamespace, R2Bucket, ScheduledCont
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { cleanupPendingExpertImages } from '../services/live-expert.service';
 import { cleanupParserDiagnostics } from '../services/recommendation-parser-diagnostics.service';
+import { recoverOrderKeyDeliveries } from '../services/order-key-dispatch.service';
 import { appRouter } from "../routers";
 import { createWorkerContext } from "./context-worker";
 import * as db from "../db";
@@ -1487,6 +1488,11 @@ export default {
     }
 
     if (controller.cron === TIMED_SERVICE_REPAIR_CRON) {
+      try {
+        await recoverOrderKeyDeliveries();
+      } catch {
+        logger.error('[ORDER_DELIVERY] Scheduled recovery unavailable', { stage: 'recovery', code: 'recovery_failed' });
+      }
       // This repair can scan several future-pending users. Keep it outside the
       // minute delivery invocation so it cannot consume that invocation's CPU.
       try {

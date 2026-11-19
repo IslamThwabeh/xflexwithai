@@ -7,6 +7,7 @@ vi.mock('../backend/db', async () => ({
 }));
 vi.mock('../backend/services/live-order-retirement.service', async () => ({ ...await vi.importActual('../backend/services/live-order-retirement.service'), findRetiredOrder: vi.fn(async () => null) }));
 vi.mock('../backend/services/order-key-delivery.service', () => ({ queueOrderKeyDelivery: vi.fn(async () => ({ id: 1 })) }));
+vi.mock('../backend/services/order-key-dispatch.service', () => ({ dispatchOrderKey: vi.fn(async () => ({ emailId: 1, supportStatus: 'delivered', busy: false })) }));
 vi.mock('../backend/services/email-outbox.service', async () => ({ ...await vi.importActual('../backend/services/email-outbox.service'), drainGenericEmailOutbox: vi.fn() }));
 import { appRouter } from '../backend/routers';
 import * as db from '../backend/db';

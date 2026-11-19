@@ -4,6 +4,7 @@ vi.mock('../backend/db', () => ({
   getOrderById: vi.fn(), getOrderActivationKeys: vi.fn(), getUserById: vi.fn(), getOrderItems: vi.fn(),
   getOrderPaymentConfirmation: vi.fn(), getOrderKeyDelivery: vi.fn(), retryOrderKeyDelivery: vi.fn(),
   getPackageById: vi.fn(), getUserByEmail: vi.fn(), enqueueEmailOutbox: vi.fn(), createNotification: vi.fn(),
+  getOrderKeyDeliveryDiagnostics: vi.fn(),
 }));
 vi.mock('../backend/_core/orderEmails', () => ({ buildPaymentReceivedEmail: vi.fn() }));
 import * as db from '../backend/db';
@@ -22,6 +23,7 @@ beforeEach(() => {
   vi.mocked(db.getOrderItems).mockResolvedValue([{ itemType: 'package', packageId: 1 }] as any);
   vi.mocked(db.getOrderPaymentConfirmation).mockResolvedValue({ id: 3 } as any);
   vi.mocked(db.getOrderKeyDelivery).mockResolvedValue(null);
+  vi.mocked(db.getOrderKeyDeliveryDiagnostics).mockResolvedValue({ job: null, email: null });
   vi.mocked(db.getPackageById).mockResolvedValue({ nameEn: 'Basic' } as any);
   vi.mocked(db.getUserByEmail).mockResolvedValue({ id: 7 } as any);
   vi.mocked(buildPaymentReceivedEmail).mockResolvedValue({ subject: 'Confirmed', text: 'Key', html: '<p>Key</p>' });

@@ -112,12 +112,12 @@ export default function AdminOrders() {
         setPage(0);
         setExpandedId(data.order!.id);
         void utils.orders.adminKeyDelivery.invalidate({ orderId: data.order!.id });
-        if (data.keyDeliveryQueued === false) toast.warning(language === 'ar'
-          ? 'تم تأكيد الدفع والمفتاح جاهز، لكن البريد يحتاج مراجعة. افتح حالة الإرسال في الطلب.'
-          : 'Payment confirmed and key ready, but email needs attention. Check delivery status in this order.');
+        if (data.keyDeliveryQueued === false || data.keySupportDelivered === false) toast.warning(language === 'ar'
+          ? 'تم تأكيد الدفع والمفتاح جاهز، لكن إحدى قنوات التسليم تحتاج متابعة. راجع البريد والدعم داخل الطلب.'
+          : 'Payment confirmed and key ready, but a delivery channel needs attention. Check email and support in this order.');
         else toast.success(language === 'ar'
-          ? 'تم تأكيد الدفع والمفتاح جاهز. راجع حالة إرسال البريد داخل الطلب.'
-          : 'Payment confirmed and key ready. Email delivery status is shown in this order.');
+          ? 'تم تأكيد الدفع وحفظ المفتاح في الدعم وجدولة بريده. راجع حالة التسليم داخل الطلب.'
+          : 'Payment confirmed. Key saved in support and email queued. Delivery status is shown in this order.');
         setIssueOrder(null);
         setKeyConfigurations({});
         setFinancialPayment({ paidAt: '', baseAmountIls: '', rationale: '' });

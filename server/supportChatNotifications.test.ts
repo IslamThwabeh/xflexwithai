@@ -407,6 +407,23 @@ describe("support chat staff notifications", () => {
     ]);
   });
 
+  it('redacts activation keys from customer and support history before sending AI context', async () => {
+    vi.stubEnv('OPENAI_API_KEY', 'test-openai-key');
+    const fetchMock = vi.fn().mockResolvedValue(supportAiResponse());
+    vi.stubGlobal('fetch', fetchMock);
+    createSupportMessage.mockResolvedValueOnce({ id: 82, conversationId: 10, content: 'Where do I start?' } as any);
+    getSupportMessages.mockResolvedValue([
+      { senderType: 'client', content: 'Where do I start? My key is XFLEX-11111-22222-33333' },
+      { senderType: 'support', content: 'Your key: XFLEX-AAAAA-BBBBB-CCCCC' },
+    ] as any);
+    await createAuthedCaller().supportChat.send({ content: 'Where do I start?' });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const payload = String(fetchMock.mock.calls[0]?.[1]?.body ?? '');
+    expect(payload).toContain('[activation key hidden]');
+    expect(payload).not.toContain('XFLEX-11111');
+    expect(payload).not.toContain('XFLEX-AAAAA');
+  });
+
   it("does not mistake a reference to the support team for a human request", async () => {
     vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
     const fetchMock = vi.fn().mockResolvedValue(supportAiResponse());

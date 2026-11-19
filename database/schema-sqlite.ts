@@ -1317,6 +1317,23 @@ export const orders = sqliteTable("orders", {
 export type Order = typeof orders.$inferSelect;
 export type InsertOrder = typeof orders.$inferInsert;
 
+export const orderKeyDeliveryJobs = sqliteTable('order_key_delivery_jobs', {
+  orderId: integer('order_id').primaryKey().references(() => orders.id),
+  status: text('status').notNull().default('pending'),
+  attempts: integer('attempts').notNull().default(0),
+  nextAttemptAt: text('next_attempt_at').notNull(),
+  lockedAt: text('locked_at'),
+  claimToken: text('claim_token'),
+  lastErrorCode: text('last_error_code'),
+  supportStatus: text('support_status').notNull().default('pending'),
+  supportRecipientUserId: integer('support_recipient_user_id'),
+  supportConversationId: integer('support_conversation_id'),
+  supportMessageId: integer('support_message_id'),
+  supportDeliveredAt: text('support_delivered_at'),
+  createdAt: text('created_at').notNull(),
+  updatedAt: text('updated_at').notNull(),
+}, table => ({ dueIndex: index('idx_order_key_delivery_jobs_due').on(table.status, table.nextAttemptAt, table.orderId) }));
+
 /**
  * Immutable cash-confirmation evidence. This is the financial paidAt
  * equivalent for legacy-safe orders: one confirmed payment per order, without

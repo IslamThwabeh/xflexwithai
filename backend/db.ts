@@ -7292,8 +7292,31 @@ export async function getOrderKeyDelivery(orderId: number) {
   const [row] = await db.select({
     id: emailOutbox.id, status: emailOutbox.status, recipientEmail: emailOutbox.recipientEmail,
     sentAt: emailOutbox.sentAt, updatedAt: emailOutbox.updatedAt, nextAttemptAt: emailOutbox.nextAttemptAt,
+    attempts: emailOutbox.attempts, provider: emailOutbox.provider, errorCategory: emailOutbox.errorCategory,
   }).from(emailOutbox).where(eq(emailOutbox.dedupeKey, `order_key_delivery:${orderId}`)).limit(1);
   return row ?? null;
+}
+
+/** On-demand, credential-free diagnostics. Never infer inbox receipt from provider acceptance. */
+export async function getOrderKeyDeliveryDiagnostics(orderId: number, recipientEmail: string) {
+  const database = (await getDb())?.$client;
+  if (!database) throw new Error('Database not available');
+  const { getOrderDeliveryJob } = await import('./services/order-key-delivery-jobs.service');
+  const [job, email] = await Promise.all([
+    getOrderDeliveryJob(database, orderId),
+    database.prepare(`SELECT id,status,provider,provider_event_name AS eventName,provider_event_at AS eventAt,
+      created_at AS attemptedAt FROM email_delivery_logs WHERE recipient_email=? AND event_type='payment_received'
+      AND json_extract(CASE WHEN json_valid(metadata) THEN metadata ELSE '{}' END,'$.orderId')=?
+      ORDER BY id DESC LIMIT 1`).bind(recipientEmail, orderId).first<{
+        id: number; status: string; provider: string | null; eventName: string | null; eventAt: string | null; attemptedAt: string;
+      }>(),
+  ]);
+  return {
+    job: job ? { status: job.status, attempts: job.attempts, lastErrorCode: job.last_error_code,
+      nextAttemptAt: job.next_attempt_at, supportStatus: job.support_status,
+      supportDeliveredAt: job.support_delivered_at, supportConversationId: job.support_conversation_id } : null,
+    email,
+  };
 }
 
 /** Explicit operator retry only. The CAS and cooldown also cover concurrent clicks. */

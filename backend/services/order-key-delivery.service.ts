@@ -24,6 +24,7 @@ export async function getOrderKeyDeliveryContext(orderId: number) {
 export async function getOrderKeyDeliveryDetails(orderId: number) {
   const context = await getOrderKeyDeliveryContext(orderId);
   const delivery = await db.getOrderKeyDelivery(orderId);
+  const diagnostics = await db.getOrderKeyDeliveryDiagnostics(orderId, context.recipientEmail);
   const blockReason = context.blockReason ?? (delivery && normalizeEmailAddress(delivery.recipientEmail) !== context.recipientEmail
     ? 'The delivery recipient needs review.' : null);
   const canResend = !blockReason && (!delivery || (
@@ -33,8 +34,9 @@ export async function getOrderKeyDeliveryDetails(orderId: number) {
   return {
     keys: context.keys.map(key => ({ id: key.id, keyCode: key.keyCode, activatedAt: key.activatedAt, isActive: key.isActive, expiresAt: key.expiresAt })),
     recipientEmail: delivery?.recipientEmail ?? context.recipientEmail,
-    delivery: delivery ? { status: delivery.status, sentAt: delivery.sentAt, nextAttemptAt: delivery.nextAttemptAt } : null,
-    canResend, blockReason,
+    delivery: delivery ? { status: delivery.status, sentAt: delivery.sentAt, nextAttemptAt: delivery.nextAttemptAt,
+      attempts: delivery.attempts, provider: delivery.provider, errorCategory: delivery.errorCategory } : null,
+    diagnostics, canResend, blockReason,
   };
 }
 

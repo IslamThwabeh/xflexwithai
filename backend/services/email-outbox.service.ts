@@ -1,5 +1,6 @@
 import { sendAdminNotificationEmail, sendEmail } from "../_core/email";
 import * as db from "../db";
+import { logger } from '../_core/logger';
 import { getLiveExpertAlertBlockReason } from './live-expert-alerts.service';
 import type { EmailDeliveryClass } from "../../shared/emailDeliveryClasses";
 import { getOrderKeyDeliveryBlockReason } from './order-key-delivery.service';
@@ -51,6 +52,7 @@ export async function drainGenericEmailOutbox(input: {
         ?? await getLiveExpertAlertBlockReason(row) ?? await getOrderKeyDeliveryBlockReason(row);
       if (accountBlockReason) {
         await db.markEmailOutboxSkipped(row.id, accountBlockReason, "skipped_suppressed");
+        logOrderKeyEmailAttempt(row, 'blocked');
         result.skipped += 1;
         continue;
       }
@@ -84,6 +86,7 @@ export async function drainGenericEmailOutbox(input: {
           skipReason,
           sendResult.skipped === "suppressed" ? "skipped_suppressed" : "skipped_unsubscribed",
         );
+        logOrderKeyEmailAttempt(row, sendResult.skipped === 'suppressed' ? 'suppressed' : 'unsubscribed');
         result.skipped += 1;
         continue;
       }
@@ -93,6 +96,7 @@ export async function drainGenericEmailOutbox(input: {
         attemptedProviders: sendResult.attemptedProviders,
       });
       result.sent += 1;
+      logOrderKeyEmailAttempt(row, 'provider_accepted');
     } catch (error) {
       await db.markEmailOutboxFailed({
         id: row.id,
@@ -101,10 +105,24 @@ export async function drainGenericEmailOutbox(input: {
         attemptedProviders: (error as { attemptedProviders?: string[] })?.attemptedProviders,
       });
       result.failed += 1;
+      logOrderKeyEmailAttempt(row, 'provider_failed', (error as { category?: string })?.category);
     }
   }
 
   return result;
+}
+
+/** Allowlisted metadata only: never log recipient, credential, body or raw provider errors. */
+function logOrderKeyEmailAttempt(row: { id: number; eventType: string; metadataJson: string | null }, outcome: string, category?: string) {
+  if (row.eventType !== 'payment_received') return;
+  try {
+    const metadata = JSON.parse(row.metadataJson ?? '{}');
+    if (metadata.orderKeyDelivery !== true || !Number.isSafeInteger(metadata.orderId)) return;
+    const context = { orderId: metadata.orderId, outboxId: row.id, stage: 'email_attempt', outcome,
+      errorCategory: ['timeout','5xx','4xx','network','config','unknown'].includes(category ?? '') ? category : undefined };
+    if (outcome === 'provider_accepted') logger.info('[ORDER_DELIVERY] Email provider accepted', context);
+    else logger.warn('[ORDER_DELIVERY] Email attempt needs attention', context);
+  } catch { /* Malformed metadata is handled by the send-time guard. */ }
 }
 
 type PrivacyBccEmailOutboxRow = Awaited<ReturnType<typeof db.claimEmailOutboxBatch>>[number];

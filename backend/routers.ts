@@ -85,6 +85,8 @@ import {
 } from "./_core/communityEmails";
 import { buildAnnouncementEmail, sendOrderConfirmationEmail, sendAdminNewOrderNotification, sendStaffWelcomeEmail, sendJobInterviewInviteEmail } from "./_core/orderEmails";
 import { getOrderKeyDeliveryDetails, queueOrderKeyDelivery } from './services/order-key-delivery.service';
+import { dispatchOrderKey } from './services/order-key-dispatch.service';
+import { redactActivationKeys } from '../shared/orderKeySupport';
 import { ENV } from "./_core/env";
 import {
   LIVE_PACKAGE_COHORT_STATUSES,
@@ -2264,7 +2266,7 @@ async function generateSupportAIReply(
   for (const msg of recentMessages) {
     chatMessages.push({
       role: msg.senderType === 'client' ? 'user' : 'assistant',
-      content: msg.content,
+      content: redactActivationKeys(msg.content),
     });
   }
 
@@ -8116,7 +8118,10 @@ export const appRouter = router({
       .input(z.object({ orderId: z.number().int().positive() }))
       .query(async ({ input }) => {
         try { return await getOrderKeyDeliveryDetails(input.orderId); }
-        catch { throw new TRPCError({ code: 'BAD_REQUEST', message: 'Order key delivery could not be loaded.' }); }
+        catch {
+          logger.warn('[ORDER_DELIVERY] Diagnostics unavailable', { orderId: input.orderId, stage: 'diagnostics', code: 'diagnostics_read_failed' });
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Order key delivery could not be loaded.' });
+        }
       }),
 
     adminResendKey: adminOrRoleProcedure(['key_manager', 'finance_manager'])
@@ -8133,6 +8138,23 @@ export const appRouter = router({
         catch (error) { throw new TRPCError({ code: 'BAD_REQUEST', message: error instanceof Error ? error.message : 'Key email could not be queued.' }); }
         // Persist the queue before calling the provider. Scheduled retries survive request failure.
         await drainGenericEmailOutbox({ limit: 1, ids: [queued.id], eventTypes: ['payment_received'] }).catch(() => {});
+        return getOrderKeyDeliveryDetails(order.id);
+      }),
+
+    adminRecoverKeyDelivery: adminOrRoleProcedure(['key_manager', 'finance_manager'])
+      .input(z.object({ orderId: z.number().int().positive() }))
+      .mutation(async ({ input, ctx }) => {
+        const context = await getOrderKeyDeliveryDetails(input.orderId);
+        if (context.blockReason) throw new TRPCError({ code: 'BAD_REQUEST', message: context.blockReason });
+        const order = await db.getOrderById(input.orderId);
+        if (!order) throw new TRPCError({ code: 'NOT_FOUND' });
+        await db.logAdminAction(ctx.admin?.id ?? ctx.user.id, order.userId, 'recover_order_key_delivery', {
+          orderId: order.id, actorType: ctx.admin ? 'admin' : 'staff',
+        });
+        // Fill missing channels only; an accepted email is not sent again.
+        const result = await dispatchOrderKey(order.id, { explicit: true });
+        if (result.emailId) await drainGenericEmailOutbox({ limit: 1, ids: [result.emailId], eventTypes: ['payment_received'] })
+          .catch(() => logger.warn('[ORDER_DELIVERY] Immediate drain unavailable; scheduled retry retained', { orderId: order.id, stage: 'drain' }));
         return getOrderKeyDeliveryDetails(order.id);
       }),
 
@@ -8264,6 +8286,7 @@ export const appRouter = router({
         let resolvedKeyConfigurations = input.keyConfigurations ?? [];
         let preserveExistingKeys = false;
         let keyDeliveryQueued: boolean | null = null;
+        let keySupportDelivered: boolean | null = null;
 
         // Financial confirmation is persisted before the email-bound
         // entitlement credential. Redemption remains operational only.
@@ -8393,6 +8416,9 @@ export const appRouter = router({
               preserveExistingKeys,
             });
           } catch (error) {
+            logger.error('[ORDER_DELIVERY] Key issuance failed after payment confirmation', {
+              orderId: order.id, stage: 'key_issuance', code: 'issuance_failed',
+            });
             throw new TRPCError({
               code: 'BAD_REQUEST',
               message: `Payment is confirmed, but key issuance needs a safe retry: ${error instanceof Error ? error.message : 'unknown key error'}`,
@@ -8424,16 +8450,18 @@ export const appRouter = router({
         // failure must not obscure the saved payment or create another key.
         if (input.status === 'completed' && updated) {
           try {
-            const queued = await queueOrderKeyDelivery(order.id);
-            keyDeliveryQueued = true;
-            await drainGenericEmailOutbox({ limit: 1, ids: [queued.id], eventTypes: ['payment_received'] }).catch(() => {});
+            const delivery = await dispatchOrderKey(order.id, { explicit: true });
+            keyDeliveryQueued = delivery.emailId != null;
+            keySupportDelivered = delivery.supportStatus === 'delivered';
+            if (delivery.emailId) await drainGenericEmailOutbox({ limit: 1, ids: [delivery.emailId], eventTypes: ['payment_received'] })
+              .catch(() => logger.warn('[ORDER_DELIVERY] Immediate drain unavailable; scheduled retry retained', { orderId: order.id, stage: 'drain' }));
           } catch {
             keyDeliveryQueued = false;
-            logger.warn('[ORDER_EMAIL] Key ready but delivery needs review', { orderId: order.id });
+            logger.warn('[ORDER_DELIVERY] Key ready but delivery needs review', { orderId: order.id, stage: 'dispatch', code: 'dispatch_unavailable' });
           }
         }
 
-        return { order: updated, activationKeys, keyDeliveryQueued };
+        return { order: updated, activationKeys, keyDeliveryQueued, keySupportDelivered };
       }),
   }),
 

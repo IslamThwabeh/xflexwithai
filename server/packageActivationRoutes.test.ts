@@ -40,6 +40,7 @@ vi.mock('../backend/db', async () => {
 vi.mock('../backend/services/order-key-delivery.service', () => ({
   queueOrderKeyDelivery: vi.fn(), getOrderKeyDeliveryDetails: vi.fn(), getOrderKeyDeliveryBlockReason: vi.fn(),
 }));
+vi.mock('../backend/services/order-key-dispatch.service', () => ({ dispatchOrderKey: vi.fn() }));
 vi.mock('../backend/services/email-outbox.service', async () => ({
   ...await vi.importActual<typeof import('../backend/services/email-outbox.service')>('../backend/services/email-outbox.service'),
   drainGenericEmailOutbox: vi.fn(),
@@ -47,7 +48,8 @@ vi.mock('../backend/services/email-outbox.service', async () => ({
 
 import { appRouter } from '../backend/routers';
 import * as db from '../backend/db';
-import { queueOrderKeyDelivery } from '../backend/services/order-key-delivery.service';
+import { getOrderKeyDeliveryDetails, queueOrderKeyDelivery } from '../backend/services/order-key-delivery.service';
+import { dispatchOrderKey } from '../backend/services/order-key-dispatch.service';
 import { drainGenericEmailOutbox } from '../backend/services/email-outbox.service';
 
 const user = {
@@ -89,6 +91,7 @@ describe('package activation routes', () => {
     vi.mocked(db.getOrderPaymentConfirmation).mockResolvedValue(undefined);
     vi.mocked(db.assertRenewalKeyIssuanceReady).mockResolvedValue(undefined);
     vi.mocked(queueOrderKeyDelivery).mockResolvedValue({ id: 501, created: true });
+    vi.mocked(dispatchOrderKey).mockResolvedValue({ emailId: 501, supportStatus: 'delivered', busy: false });
     vi.mocked(drainGenericEmailOutbox).mockResolvedValue({ claimed: 1, sent: 1, failed: 0, skipped: 0 });
   });
 
@@ -247,7 +250,7 @@ describe('package activation routes', () => {
       actorType: 'admin',
       actorId: 1,
     }));
-    expect(queueOrderKeyDelivery).toHaveBeenCalledWith(order.id);
+    expect(dispatchOrderKey).toHaveBeenCalledWith(order.id, { explicit: true });
     expect(drainGenericEmailOutbox).toHaveBeenCalledWith({ limit: 1, ids: [501], eventTypes: ['payment_received'] });
   });
 
@@ -306,9 +309,9 @@ describe('package activation routes', () => {
 
   it('returns the saved approval and key with a visible warning when queueing fails', async () => {
     prepareRenewal('completed', true);
-    vi.mocked(queueOrderKeyDelivery).mockRejectedValueOnce(new Error('Queue unavailable'));
+    vi.mocked(dispatchOrderKey).mockResolvedValueOnce({ emailId: null, supportStatus: 'delivered', busy: false });
     const result = await createCaller().orders.adminUpdateStatus({ orderId: 173, status: 'completed' });
-    expect(result).toMatchObject({ keyDeliveryQueued: false, activationKeys: [{ keyCode: 'XFLEX-RETRY' }] });
+    expect(result).toMatchObject({ keyDeliveryQueued: false, keySupportDelivered: true, activationKeys: [{ keyCode: 'XFLEX-RETRY' }] });
     expect(db.confirmOrderPayment).not.toHaveBeenCalled();
     expect(drainGenericEmailOutbox).not.toHaveBeenCalled();
   });
@@ -330,6 +333,25 @@ describe('package activation routes', () => {
     expect(db.logAdminAction).toHaveBeenCalledWith(user.id, user.id, 'request_resend_order_activation_key', { orderId: 173, actorType: 'staff' });
     expect(db.createOrderActivationKeys).not.toHaveBeenCalled();
     expect(db.confirmOrderPayment).not.toHaveBeenCalled();
+  });
+
+  it.each(['key_manager', 'finance_manager'])('lets %s recover missing channels without resending accepted mail or recording cash', async role => {
+    prepareRenewal('completed', true);
+    vi.mocked(db.getAdminByEmail).mockResolvedValue(null as any);
+    vi.mocked(db.hasAnyRole).mockImplementation(async (_id, roles) => roles.includes(role));
+    vi.mocked(getOrderKeyDeliveryDetails).mockResolvedValue({ blockReason: null } as any);
+    await createCaller({ ...user, isStaff: true }).orders.adminRecoverKeyDelivery({ orderId: 173 });
+    expect(dispatchOrderKey).toHaveBeenCalledWith(173, { explicit: true });
+    expect(queueOrderKeyDelivery).not.toHaveBeenCalled();
+    expect(db.createOrderActivationKeys).not.toHaveBeenCalled();
+    expect(db.confirmOrderPayment).not.toHaveBeenCalled();
+    expect(db.logAdminAction).toHaveBeenCalledWith(user.id, user.id, 'recover_order_key_delivery', { orderId: 173, actorType: 'staff' });
+  });
+
+  it('rejects recovery of a redeemed key without dispatching either channel', async () => {
+    vi.mocked(getOrderKeyDeliveryDetails).mockResolvedValue({ blockReason: 'Only active, unused keys within their redemption deadline can be sent.' } as any);
+    await expect(createCaller().orders.adminRecoverKeyDelivery({ orderId: 173 })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    expect(dispatchOrderKey).not.toHaveBeenCalled();
   });
 
   it('does not reapprove a historical completed order without immutable confirmation', async () => {

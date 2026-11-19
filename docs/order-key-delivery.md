@@ -1,5 +1,95 @@
 # Order approval and automatic key delivery
 
+## Email and support delivery — local implementation, 2026-11-19
+
+The owner requested investigation of a reported missing key and automatic delivery
+through both email and the customer's private website support conversation. Chrome
+inspection of order 189 found the payment/key email recorded as **delivered** by the
+provider webhook and the key already redeemed. Provider delivery means acceptance
+by the recipient's mail server; inbox placement and reading remain unverified. No
+new key, activation, payment or message was created during the investigation.
+
+The following changes are implemented locally and **not deployed**:
+
+- Approval saves the existing email-bound key in the intended recipient's private
+  support conversation, with an in-app link to Support, then queues its existing
+  critical payment email. Support persistence and email persistence are independent:
+  either channel can succeed while the other is retried. Support does not generate
+  a second email or a new onboarding welcome. Access still requires redemption.
+- Migration 137 creates one small delivery-job row per new paid order. Insert and
+  order-link triggers commit this row in the same transaction as the issued key.
+  A request interruption before email queuing therefore leaves recoverable work.
+  No historical jobs/messages are backfilled. The existing five-minute repair
+  invocation processes at most five due jobs, with indexed selection, exponential
+  backoff, six attempts and a five-minute fenced lease. No new schedule is added;
+  customer emails are queued for existing drains. Exhausted recovery uses the
+  existing staff alert channel. Existing email drains retain provider retries.
+- Support message, in-app notice and delivery receipt share one D1 transaction.
+  Repeated approval/recovery cannot duplicate the support copy. Payment,
+  recipient-account ownership, complete issuance, key IDs, key source/purpose,
+  active/unused state and deadline are checked again inside that transaction.
+  Existing conversation history, assignment and human handoff are preserved.
+- Gifts go only to the actual recipient's account. If that account does not exist,
+  email proceeds and the panel explicitly reports that the support copy is
+  unavailable. It never puts a gift key in the purchaser's conversation. Once the
+  recipient registers, an operator can recover the support copy while the key is
+  still valid and unused. Redeemed/closed/refunded credentials are not replayed.
+- The expanded order panel shows separate email and support outcomes, support
+  persistence time, email attempt count/provider/error category, last recorded
+  provider lifecycle result, job retry information and diagnostic code. New times
+  use Palestine/Asia-Hebron. Reads never deliver messages and no polling is added.
+  **Recover missing email / support delivery** fills missing channels without
+  resetting a sent email. **Resend same key** remains the guarded explicit email
+  resend. Neither action recognizes cash, issues another key or grants access.
+- New failure logs contain allowlisted order/outbox references, stages and codes;
+  they do not contain keys, recipient addresses, message bodies or raw provider
+  exceptions. Successful email attempts remain in the existing durable email log.
+  Exhausted job recovery uses the existing staff email-anomaly event. Key issuance
+  failure before any key exists is logged and retains the existing explicit
+  issuance-retry process; recovery never guesses service duration or issues keys.
+- Activation-key strings are redacted from support history before automatic AI
+  replies or staff AI suggestions are requested. Authorized human support staff
+  can read the key in the customer conversation, as requested. Credential-detail,
+  recovery and resend endpoints retain full-admin/key-manager/finance-manager
+  guards; support-only staff cannot call those endpoints.
+
+Staff process after release: approve once; check both delivery channels. If email
+fails but support succeeded, direct the client to **Support → their private
+conversation**. Use recovery for a missing channel and explicit email resend only
+when needed. Never re-confirm payment or generate a replacement credential to fix
+delivery. A redeemed key needs no further delivery. A mail-server delivery result
+does not establish inbox placement or customer reading.
+
+Release order: apply migration 137, record it using the established migration
+ledger workflow, deploy Worker, then deploy Pages. Review new normal approvals
+without creating test customer payments/messages. Historical recovery is explicit
+per order. Preserve jobs, receipts, support messages, payment and key data during
+rollback; an older Worker cannot recover these jobs, so rollback requires a
+pending-job review. Do not drop the table/triggers or restore the database for a
+routine code rollback.
+
+Local verification passed 143 focused tests across nine files, the 262-test
+critical workflow gate, TypeScript, application/Worker builds and SEO/private-route
+checks. It includes concurrency/rollback/fencing/eligibility/gift tests, an actual
+support-AI request redaction test, 14 bilingual desktop/mobile browser groups
+(nine intercepted mutations, zero application exceptions/unknown requests), and a rehearsal against 504 objects
+from the saved November 18 schema-only production snapshot. The migration was
+applied twice locally; the rehearsal produced one support message and one email
+queue row, preserved one fixture key/payment, granted zero entitlements and made
+zero external provider calls. The diagnostic read uses the existing recipient
+email index. This is local evidence, not live migration or real-inbox verification.
+
+The final pre-release SQL gate reconciled 87 current live schema objects and
+rehearsed 21 exact bound statement shapes locally. It caught and corrected a
+missing outer order-ID predicate on the support receipt update before any live
+write; a two-customer regression verifies that another job remains unchanged.
+Jobs use primary-key/due-index access. Existing key/order-item reads and the new
+write-time eligibility guards intentionally scan the currently small 215-key and
+189-item tables only during approval/recovery; idle recovery performs no such
+scan. JSON iteration is bounded by the order's key list. No speculative index was
+added to these tables. Live read-only EXPLAIN verifies plans without executing
+the mutations or reading customer rows.
+
 Implementation `620b09648bad05a01790055a8e39dc0dd5332429` was committed and
 pushed to `origin/codex/live-package-phase-a` on 2026-11-16 following owner
 authorization. The owner subsequently approved production deployment, completed
