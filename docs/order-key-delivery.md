@@ -1,6 +1,6 @@
 # Order approval and automatic key delivery
 
-## Email and support delivery — local implementation, 2026-11-19
+## Email and support delivery — production release, 2026-11-19
 
 The owner requested investigation of a reported missing key and automatic delivery
 through both email and the customer's private website support conversation. Chrome
@@ -9,7 +9,8 @@ provider webhook and the key already redeemed. Provider delivery means acceptanc
 by the recipient's mail server; inbox placement and reading remain unverified. No
 new key, activation, payment or message was created during the investigation.
 
-The following changes are implemented locally and **not deployed**:
+The owner approved the production migration and deployment. The following changes
+are **live in production**:
 
 - Approval saves the existing email-bound key in the intended recipient's private
   support conversation, with an in-app link to Support, then queues its existing
@@ -89,6 +90,37 @@ write-time eligibility guards intentionally scan the currently small 215-key and
 scan. JSON iteration is bounded by the order's key list. No speculative index was
 added to these tables. Live read-only EXPLAIN verifies plans without executing
 the mutations or reading customer rows.
+
+Production release completed from pushed commit
+`d3c3c552d132e9299991f42f29fc683ca1573b30`. Migration 137 is recorded once as
+ledger ID 81. It executed five statements (one table/index/two triggers plus
+ledger), with nine schema/ledger writes, and no historical job backfill. The new
+job table was empty after migration and at the final post-release check. Existing
+schema objects were preserved. Eleven pre-migration and 21 post-migration exact
+SQL EXPLAIN checks read/wrote zero customer rows. The final gate's corrected
+receipt update uses the order primary key.
+
+Worker `f3108b26-0794-42b6-bbf1-90ab2cf29f54` is active at 100%; Pages production
+`59c4dffa-3e5e-49cc-99c8-41f57b33e1dc` reports source `d3c3c55`, preview
+<https://59c4dffa.xflexwithai.pages.dev>. Migration preceded Worker, then Pages.
+All 31 binding/variable descriptors, inspected compatibility/runtime settings and
+four schedules match the pre-release snapshot. Recovery bookmark and raw evidence
+are private under `output/playwright/order-key-dual-delivery/`.
+
+Post-release checks passed nine exact static asset hashes, eight canonical/private/
+preview routes, API health and anonymous 401 denial for order list/details/resend/
+recovery. All 14 bilingual browser fixture groups passed against deployed assets,
+with nine intercepted mutations and zero application exceptions/unknown requests;
+the Arabic 320 px panel was visually checked. Analytics was intentionally blocked
+in this fixture, producing expected beacon-integrity console warnings; the explicit
+synthetic error case also logged its expected failure. No real customer order,
+payment, key, support message, activation or email was created for verification.
+The owner's Chrome admin session had expired, so fresh authenticated staff use,
+real approval through both channels, inbox receipt and physical Safari remain
+unverified. Code rollback references are the preceding Worker
+`f8a2c408-8926-474c-aa12-7afd67b17a68` and Pages
+`45c5cde2-21e3-4195-b999-70c25f5157dc`; retain migration/job/message data and review
+pending work if an older Worker is used.
 
 Implementation `620b09648bad05a01790055a8e39dc0dd5332429` was committed and
 pushed to `origin/codex/live-package-phase-a` on 2026-11-16 following owner
