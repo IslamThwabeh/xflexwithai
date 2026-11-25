@@ -56,9 +56,12 @@ describe("account restriction and ILS refund workflow", () => {
   it("shows only shekel-denominated financial decisions in the new admin UI", () => {
     expect(profileSource).toContain("Refund Amount (₪)");
     expect(profileSource).toContain("All amounts are in ILS");
-    expect(dashboardSource).toContain("Currency', 'ILS");
-    expect(dashboardSource).toContain("Refunds (ILS)");
-    expect(dashboardSource).toContain("refunds on refund date");
+    expect(dashboardSource).toContain("formatAdminCurrencyFromIls");
+    expect(dashboardSource).toContain("Net refunds");
+    expect(dashboardSource).toContain("scopedReceiptTotals");
+    const csvSource = readFileSync(new URL('../shared/financialReportCsv.ts', import.meta.url), 'utf8');
+    expect(csvSource).toContain('"Currency", "ILS"');
+    expect(csvSource).toContain("refunds by refund date");
     expect(activationSource).toMatch(/not a revenue report/i);
   });
 });

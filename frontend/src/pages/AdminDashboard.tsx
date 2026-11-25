@@ -1,6 +1,6 @@
 import DashboardLayout from "@/components/DashboardLayout";
+import AdminCashSummary from "@/components/admin/AdminCashSummary";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatAdminCurrencyFromIls } from "@/lib/adminCurrency";
 import { trpc } from "@/lib/trpc";
 import { useLanguage } from "@/contexts/LanguageContext";
 import {
@@ -337,24 +337,10 @@ export default function AdminDashboard() {
           </Card>
         </div>
 
-        {/* Statistics — compact grid */}
-        <div className="grid gap-2 grid-cols-3 lg:grid-cols-6">
-          <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-lg px-3 py-2 text-center">
-            <p className="text-lg font-bold text-green-700">
-              {statsLoading
-                ? "..."
-                : formatAdminCurrencyFromIls(stats?.totalRevenueIls || 0, language, {
-                    minimumFractionDigits: 0,
-                    maximumFractionDigits: 0,
-                  })}
-            </p>
-            <p className="text-[11px] text-green-700 leading-tight">{isRtl ? 'صافي الدخل' : 'Net Income'}</p>
-            {!statsLoading && (stats?.refundedRevenueIls || 0) > 0 && (
-              <p className="text-[10px] text-rose-600 leading-tight">
-                {isRtl ? 'مسترد' : 'Refunded'}: {formatAdminCurrencyFromIls(stats?.refundedRevenueIls || 0, language)}
-              </p>
-            )}
-          </div>
+        <AdminCashSummary />
+
+        {/* Operational counts — never cash revenue. */}
+        <div className="grid gap-2 grid-cols-3 lg:grid-cols-5">
 
           <div className="border rounded-lg px-3 py-2 text-center bg-white">
             <p className="text-lg font-bold">

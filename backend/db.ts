@@ -242,12 +242,8 @@ import {
   type FinanceActor,
   type FinancialReceiptMetadata,
 } from './services/financial-expense.service';
-import {
-  normalizeFinancialPeriodRows,
-  normalizeFinancialReportRange,
-  totalFinancialPeriods,
-  type FinancialReportGrouping,
-} from './services/financial-reporting.service';
+import { type FinancialReportGrouping } from './services/financial-reporting.service';
+import { loadFinancialReport } from './services/financial-report-engine';
 import {
   assertIndependentAdjustmentReviewer,
   canEditAdjustment,
@@ -4532,7 +4528,6 @@ export async function getDashboardStats() {
       activeEnrollments: 0,
       totalKeySales: 0,
       activatedPackageKeys: 0,
-      totalRevenueIls: 0,
       pendingOrders: 0,
     };
   }
@@ -4546,34 +4541,13 @@ export async function getDashboardStats() {
     .where(eq(enrollments.isSubscriptionActive, true));
 
   // Pending orders (for attention banner)
-  const [pendingOrdersResult] = await db.select({ count: sql<number>`count(*)` }).from(orders).where(eq(orders.status, 'pending'));
+  const [pendingOrdersResult] = await db.select({ count: sql<number>`count(*)` }).from(orders)
+    .where(inArray(orders.status, ['pending', 'awaiting_confirmation']));
 
   const packageKeyStats = await getPackageKeyStatistics();
 
-  const activatedPackageKeyFilter = and(
-    sql`${registrationKeys.packageId} IS NOT NULL`,
-    sql`${registrationKeys.activatedAt} IS NOT NULL`,
-    sql`${registrationKeys.price} > 0`,
-  );
-
-  // Staff-facing finance is ILS-only. Activated keys preserve gross sales;
-  // the append-only refund ledger is subtracted to produce net revenue.
-  const revenueKeys = await db.select({
-    price: registrationKeys.price,
-    currency: registrationKeys.currency,
-    isUpgrade: registrationKeys.isUpgrade,
-    isRenewal: registrationKeys.isRenewal,
-    packageSlug: packages.slug,
-    includesLexai: packages.includesLexai,
-  }).from(registrationKeys)
-    .leftJoin(packages, eq(packages.id, registrationKeys.packageId))
-    .where(activatedPackageKeyFilter);
-  const grossRevenueIls = revenueKeys.reduce((sum, key) => sum + getPackageKeyPriceIls(key), 0);
-  const [refundTotal] = await db.select({
-    amountIlsAgorot: sql<number>`COALESCE(SUM(${accountRefunds.amountIlsAgorot}), 0)`,
-  }).from(accountRefunds);
-  const refundedRevenueIls = Number(refundTotal?.amountIlsAgorot ?? 0) / 100;
-  const totalRevenueIls = grossRevenueIls - refundedRevenueIls;
+  // Cash metrics are read through financeReportProcedure, never inferred from
+  // key activations or exposed through this general-admin operational endpoint.
 
   return {
     totalUsers: Number(totalUsersResult?.count ?? 0),
@@ -4582,9 +4556,6 @@ export async function getDashboardStats() {
     activeEnrollments: Number(activeEnrollmentsResult?.count ?? 0),
     totalKeySales: Number(packageKeyStats.total),
     activatedPackageKeys: Number(packageKeyStats.activated),
-    totalRevenueIls,
-    grossRevenueIls,
-    refundedRevenueIls,
     pendingOrders: Number(pendingOrdersResult?.count ?? 0),
   };
 }
@@ -15111,82 +15082,9 @@ export async function getFinancialManagementDashboard(input: {
 }, database?: any) {
   const db = database ?? await getDb();
   if (!db) throw new Error('Database not available');
-  const range = normalizeFinancialReportRange(input.from, input.to);
   const client = (db as { $client?: D1Database }).$client;
   if (!client) throw new Error('D1 client not available for financial reporting');
-  const periodExpression = input.grouping === 'year'
-    ? 'substr(reporting_month, 1, 4)'
-    : 'reporting_month';
-  const ledgerLimit = Math.min(Math.max(input.ledgerLimit ?? 100, 1), 100);
-  // INDEXED BY is deliberate: without it SQLite may favor the older grouping
-  // index and scan all approved history. Every report statement remains bounded
-  // by effective_at; activation/key timestamps never participate.
-  const statements = [
-    client.prepare(`SELECT ${periodExpression} AS period,
-      COALESCE(SUM(CASE WHEN entry_type = 'payment' THEN base_amount_ils_minor ELSE 0 END), 0) AS confirmedIncomeMinor,
-      COALESCE(SUM(CASE WHEN (entry_type = 'payment' OR (entry_type = 'adjustment' AND source_type IN ('financial_reclassification','financial_replacement')) OR (entry_type = 'reversal' AND transaction_purpose IS NOT NULL)) AND COALESCE(transaction_purpose, CASE source_type WHEN 'order_payment_new_sale' THEN 'new_sale' WHEN 'order_payment_renewal' THEN 'renewal' WHEN 'order_payment_upgrade' THEN 'upgrade' END) = 'new_sale' THEN base_amount_ils_minor ELSE 0 END), 0) AS newSalesMinor,
-      COALESCE(SUM(CASE WHEN (entry_type = 'payment' OR (entry_type = 'adjustment' AND source_type IN ('financial_reclassification','financial_replacement')) OR (entry_type = 'reversal' AND transaction_purpose IS NOT NULL)) AND COALESCE(transaction_purpose, CASE source_type WHEN 'order_payment_new_sale' THEN 'new_sale' WHEN 'order_payment_renewal' THEN 'renewal' WHEN 'order_payment_upgrade' THEN 'upgrade' END) = 'renewal' THEN base_amount_ils_minor ELSE 0 END), 0) AS renewalsMinor,
-      COALESCE(SUM(CASE WHEN (entry_type = 'payment' OR (entry_type = 'adjustment' AND source_type IN ('financial_reclassification','financial_replacement')) OR (entry_type = 'reversal' AND transaction_purpose IS NOT NULL)) AND COALESCE(transaction_purpose, CASE source_type WHEN 'order_payment_new_sale' THEN 'new_sale' WHEN 'order_payment_renewal' THEN 'renewal' WHEN 'order_payment_upgrade' THEN 'upgrade' END) = 'upgrade' THEN base_amount_ils_minor ELSE 0 END), 0) AS upgradesMinor,
-      COALESCE(SUM(CASE WHEN entry_type = 'payment'
-        OR (entry_type = 'adjustment' AND source_type IN ('financial_reclassification','financial_replacement'))
-        OR (entry_type = 'reversal' AND transaction_purpose IS NOT NULL)
-        THEN base_amount_ils_minor ELSE 0 END), 0) AS recognizedIncomeMinor,
-      COALESCE(SUM(CASE WHEN entry_type = 'refund' THEN base_amount_ils_minor ELSE 0 END), 0) AS refundsSignedMinor,
-      COALESCE(SUM(CASE WHEN entry_type = 'expense' THEN base_amount_ils_minor ELSE 0 END), 0) AS expensesSignedMinor,
-      COALESCE(SUM(CASE WHEN entry_type = 'opening_balance'
-        OR (entry_type = 'adjustment' AND source_type NOT IN ('financial_reclassification','financial_replacement'))
-        OR (entry_type = 'reversal' AND transaction_purpose IS NULL)
-        THEN base_amount_ils_minor ELSE 0 END), 0) AS adjustmentsSignedMinor
-      FROM financial_ledger_entries INDEXED BY idx_financial_ledger_approved_effective_type
-      WHERE status = 'approved' AND effective_at >= ? AND effective_at < ?
-        AND entry_type IN ('payment', 'refund', 'expense', 'adjustment', 'reversal', 'opening_balance')
-      GROUP BY ${periodExpression} ORDER BY ${periodExpression}`)
-      .bind(range.fromTimestamp, range.endExclusiveTimestamp),
-    client.prepare(`SELECT e.category AS category,
-      COALESCE(-SUM(l.base_amount_ils_minor), 0) AS amountMinor
-      FROM financial_ledger_entries l INDEXED BY idx_financial_ledger_approved_effective_type
-      INNER JOIN financial_expenses e ON e.id = l.expense_id
-      WHERE l.status = 'approved' AND l.effective_at >= ? AND l.effective_at < ?
-        AND l.entry_type = 'expense'
-      GROUP BY e.category ORDER BY amountMinor DESC`)
-      .bind(range.fromTimestamp, range.endExclusiveTimestamp),
-  ];
-  if (input.includeLedger) {
-    statements.push(client.prepare(`SELECT id, entry_type AS entryType, effective_at AS effectiveAt,
-      base_amount_ils_minor AS baseAmountIlsMinor, source_type AS sourceType,
-      source_reference AS sourceReference, order_id AS orderId, refund_id AS refundId,
-      expense_id AS expenseId, description, payment_method AS paymentMethod
-      , transaction_purpose AS transactionPurpose
-      FROM financial_ledger_entries INDEXED BY idx_financial_ledger_approved_effective_type
-      WHERE status = 'approved' AND effective_at >= ? AND effective_at < ?
-        AND entry_type IN ('payment', 'refund', 'expense', 'adjustment', 'reversal', 'opening_balance')
-      ORDER BY effective_at DESC, id DESC LIMIT ?`)
-      .bind(range.fromTimestamp, range.endExclusiveTimestamp, ledgerLimit + 1));
-  }
-
-  const results = await client.batch(statements);
-  const rawPeriods = results[0]?.results ?? [];
-  const rawCategories = results[1]?.results ?? [];
-  const rawLedger = input.includeLedger ? (results[2]?.results ?? []) : [];
-  const periods = normalizeFinancialPeriodRows(rawPeriods as Array<Record<string, unknown>>);
-  const totals = totalFinancialPeriods(periods);
-  const ledgerRows = rawLedger as Array<Record<string, unknown>>;
-  return {
-    basis: 'cash' as const,
-    currency: 'ILS' as const,
-    from: range.from,
-    to: range.to,
-    grouping: input.grouping,
-    generatedAt: new Date().toISOString(),
-    periods,
-    totals,
-    categories: (rawCategories as Array<{ category: string; amountMinor: number }>).map((row) => ({
-      category: row.category,
-      amountMinor: Number(row.amountMinor),
-    })),
-    ledger: input.includeLedger ? ledgerRows.slice(0, ledgerLimit) : [],
-    ledgerTruncated: input.includeLedger && ledgerRows.length > ledgerLimit,
-  };
+  return loadFinancialReport(client, input);
 }
 
 /** Financial-role changes need their own append-only audit, separate from generic RBAC. */

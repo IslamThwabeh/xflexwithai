@@ -73,18 +73,18 @@ describe('financial management reporting', () => {
       const monthly = await getFinancialManagementDashboard({
         from: '2026-07-01', to: '2026-08-31', grouping: 'month', includeLedger: true,
       }, orm);
-      expect(monthly.periods).toEqual([
+      expect(monthly.periods).toMatchObject([
         { period: '2026-07', confirmedIncomeMinor: 10000, newSalesMinor: 10000, renewalsMinor: 0, upgradesMinor: 0, refundsMinor: 2000, netRevenueMinor: 8000, expensesMinor: 3000, netAdjustmentsMinor: 0, operatingProfitLossMinor: 5000 },
         { period: '2026-08', confirmedIncomeMinor: 5000, newSalesMinor: 0, renewalsMinor: 0, upgradesMinor: 5000, refundsMinor: 0, netRevenueMinor: 5000, expensesMinor: 0, netAdjustmentsMinor: 0, operatingProfitLossMinor: 5000 },
       ]);
-      expect(monthly.totals).toEqual({ confirmedIncomeMinor: 15000, newSalesMinor: 10000, renewalsMinor: 0, upgradesMinor: 5000, refundsMinor: 2000, netRevenueMinor: 13000, expensesMinor: 3000, netAdjustmentsMinor: 0, operatingProfitLossMinor: 10000 });
+      expect(monthly.totals).toMatchObject({ confirmedIncomeMinor: 15000, newSalesMinor: 10000, renewalsMinor: 0, upgradesMinor: 5000, refundsMinor: 2000, netRevenueMinor: 13000, expensesMinor: 3000, netAdjustmentsMinor: 0, operatingProfitLossMinor: 10000 });
       expect(monthly.categories).toEqual([{ category: 'software_and_subscriptions', amountMinor: 3000 }]);
       expect(monthly.ledger).toHaveLength(4);
 
       const viewer = await getFinancialManagementDashboard({
         from: '2026-01-01', to: '2026-12-31', grouping: 'year', includeLedger: false,
       }, orm);
-      expect(viewer.periods).toEqual([{ period: '2026', confirmedIncomeMinor: 15000, newSalesMinor: 10000, renewalsMinor: 0, upgradesMinor: 5000, refundsMinor: 2000, netRevenueMinor: 13000, expensesMinor: 3000, netAdjustmentsMinor: 0, operatingProfitLossMinor: 10000 }]);
+      expect(viewer.periods).toMatchObject([{ period: '2026', confirmedIncomeMinor: 15000, newSalesMinor: 10000, renewalsMinor: 0, upgradesMinor: 5000, refundsMinor: 2000, netRevenueMinor: 13000, expensesMinor: 3000, netAdjustmentsMinor: 0, operatingProfitLossMinor: 10000 }]);
       expect(viewer.ledger).toEqual([]);
     } finally { (database as any).close(); }
   });

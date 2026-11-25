@@ -1,4 +1,9 @@
-export type FinancialReportGrouping = 'month' | 'year';
+import {
+  emptyFinancialTotals,
+  FINANCIAL_TOTAL_FIELDS,
+  type FinancialPeriod,
+} from "../../shared/financialReport";
+export type FinancialReportGrouping = "month" | "year";
 
 export type FinancialReportRange = {
   from: string;
@@ -11,21 +16,31 @@ export type FinancialReportRange = {
 
 function parseCalendarDate(value: string, label: string) {
   const normalized = value.trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) throw new Error(`${label} must use YYYY-MM-DD.`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized))
+    throw new Error(`${label} must use YYYY-MM-DD.`);
   const date = new Date(`${normalized}T00:00:00.000Z`);
-  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== normalized) {
+  if (
+    Number.isNaN(date.getTime()) ||
+    date.toISOString().slice(0, 10) !== normalized
+  ) {
     throw new Error(`${label} is invalid.`);
   }
   return date;
 }
 
-export function normalizeFinancialReportRange(from: string, to: string): FinancialReportRange {
-  const fromDate = parseCalendarDate(from, 'Start date');
-  const toDate = parseCalendarDate(to, 'End date');
-  if (fromDate.getTime() > toDate.getTime()) throw new Error('Start date must be on or before end date.');
+export function normalizeFinancialReportRange(
+  from: string,
+  to: string
+): FinancialReportRange {
+  const fromDate = parseCalendarDate(from, "Start date");
+  const toDate = parseCalendarDate(to, "End date");
+  from = fromDate.toISOString().slice(0, 10);
+  to = toDate.toISOString().slice(0, 10);
+  if (fromDate.getTime() > toDate.getTime())
+    throw new Error("Start date must be on or before end date.");
   const maximumDays = 366 * 10;
   if ((toDate.getTime() - fromDate.getTime()) / 86_400_000 > maximumDays) {
-    throw new Error('Financial report range cannot exceed ten years.');
+    throw new Error("Financial report range cannot exceed ten years.");
   }
   const endExclusive = new Date(toDate);
   endExclusive.setUTCDate(endExclusive.getUTCDate() + 1);
@@ -39,21 +54,12 @@ export function normalizeFinancialReportRange(from: string, to: string): Financi
   };
 }
 
-export type FinancialPeriodRow = {
-  period: string;
-  confirmedIncomeMinor: number;
-  newSalesMinor: number;
-  renewalsMinor: number;
-  upgradesMinor: number;
-  refundsMinor: number;
-  netRevenueMinor: number;
-  expensesMinor: number;
-  netAdjustmentsMinor: number;
-  operatingProfitLossMinor: number;
-};
+export type FinancialPeriodRow = FinancialPeriod;
 
-export function normalizeFinancialPeriodRows(rows: Array<Record<string, unknown>>): FinancialPeriodRow[] {
-  return rows.map((row) => {
+export function normalizeFinancialPeriodRows(
+  rows: Array<Record<string, unknown>>
+): FinancialPeriodRow[] {
+  return rows.map(row => {
     const confirmedIncomeMinor = Number(row.confirmedIncomeMinor ?? 0);
     const newSalesMinor = Number(row.newSalesMinor ?? 0);
     const renewalsMinor = Number(row.renewalsMinor ?? 0);
@@ -61,15 +67,17 @@ export function normalizeFinancialPeriodRows(rows: Array<Record<string, unknown>
     const refundsSignedMinor = Number(row.refundsSignedMinor ?? 0);
     const expensesSignedMinor = Number(row.expensesSignedMinor ?? 0);
     const netAdjustmentsMinor = Number(row.adjustmentsSignedMinor ?? 0);
-    const refundsMinor = Math.abs(refundsSignedMinor);
-    const expensesMinor = Math.abs(expensesSignedMinor);
-    const recognizedIncomeMinor = row.recognizedIncomeMinor == null
-      ? confirmedIncomeMinor
-      : Number(row.recognizedIncomeMinor);
+    const refundsMinor = -refundsSignedMinor;
+    const expensesMinor = -expensesSignedMinor;
+    const recognizedIncomeMinor =
+      row.recognizedIncomeMinor == null
+        ? confirmedIncomeMinor
+        : Number(row.recognizedIncomeMinor);
     const netRevenueMinor = recognizedIncomeMinor + refundsSignedMinor;
     return {
+      ...emptyFinancialTotals(),
       period: String(row.period),
-      confirmedIncomeMinor,
+      confirmedIncomeMinor: recognizedIncomeMinor,
       newSalesMinor,
       renewalsMinor,
       upgradesMinor,
@@ -77,84 +85,46 @@ export function normalizeFinancialPeriodRows(rows: Array<Record<string, unknown>
       netRevenueMinor,
       expensesMinor,
       netAdjustmentsMinor,
-      operatingProfitLossMinor: netRevenueMinor + expensesSignedMinor + netAdjustmentsMinor,
+      recordedReceiptsMinor: Number(
+        row.recordedReceiptsMinor ?? confirmedIncomeMinor
+      ),
+      receiptCorrectionsMinor:
+        recognizedIncomeMinor -
+        Number(row.recordedReceiptsMinor ?? confirmedIncomeMinor),
+      copierMinor: Number(row.copierMinor ?? 0),
+      unclassifiedIncomeMinor:
+        recognizedIncomeMinor -
+        newSalesMinor -
+        renewalsMinor -
+        upgradesMinor -
+        Number(row.copierMinor ?? 0),
+      academyReceiptsMinor: newSalesMinor + renewalsMinor + upgradesMinor,
+      openingBalancesMinor: Number(row.openingBalancesMinor ?? 0),
+      academyRefundsMinor: Number(row.academyRefundsMinor ?? 0),
+      copierRefundsMinor: Number(row.copierRefundsMinor ?? 0),
+      unclassifiedRefundsMinor:
+        refundsMinor -
+        Number(row.academyRefundsMinor ?? 0) -
+        Number(row.copierRefundsMinor ?? 0),
+      operatingProfitLossMinor: netRevenueMinor + expensesSignedMinor,
+      ledgerMovementMinor:
+        netRevenueMinor +
+        expensesSignedMinor +
+        netAdjustmentsMinor +
+        Number(row.openingBalancesMinor ?? 0),
     };
   });
 }
 
 export function totalFinancialPeriods(rows: FinancialPeriodRow[]) {
-  return rows.reduce((total, row) => ({
-    confirmedIncomeMinor: total.confirmedIncomeMinor + row.confirmedIncomeMinor,
-    newSalesMinor: total.newSalesMinor + row.newSalesMinor,
-    renewalsMinor: total.renewalsMinor + row.renewalsMinor,
-    upgradesMinor: total.upgradesMinor + row.upgradesMinor,
-    refundsMinor: total.refundsMinor + row.refundsMinor,
-    netRevenueMinor: total.netRevenueMinor + row.netRevenueMinor,
-    expensesMinor: total.expensesMinor + row.expensesMinor,
-    netAdjustmentsMinor: total.netAdjustmentsMinor + row.netAdjustmentsMinor,
-    operatingProfitLossMinor: total.operatingProfitLossMinor + row.operatingProfitLossMinor,
-  }), {
-    confirmedIncomeMinor: 0,
-    newSalesMinor: 0,
-    renewalsMinor: 0,
-    upgradesMinor: 0,
-    refundsMinor: 0,
-    netRevenueMinor: 0,
-    expensesMinor: 0,
-    netAdjustmentsMinor: 0,
-    operatingProfitLossMinor: 0,
-  });
+  const total = emptyFinancialTotals();
+  for (const row of rows)
+    for (const field of FINANCIAL_TOTAL_FIELDS) {
+      total[field] += row[field] ?? 0;
+      if (!Number.isSafeInteger(total[field]))
+        throw Error("Financial totals exceed safe integer limits.");
+    }
+  return total;
 }
 
-function csvCell(value: unknown) {
-  const text = String(value ?? '');
-  return `"${text.replace(/"/g, '""')}"`;
-}
-
-export function buildFinancialManagementCsv(input: {
-  from: string;
-  to: string;
-  grouping: FinancialReportGrouping;
-  periods: FinancialPeriodRow[];
-  totals: ReturnType<typeof totalFinancialPeriods>;
-  categories: Array<{ category: string; amountMinor: number }>;
-}) {
-  const rows: unknown[][] = [
-    ['Report', 'Management P&L'],
-    ['Accounting basis', 'Cash basis: confirmed-payment date; refunds by refund date'],
-    ['Currency', 'ILS'],
-    ['From', input.from],
-    ['To', input.to],
-    [],
-    ['Period', 'New sales (ILS)', 'Paid renewals (ILS)', 'Upgrades (ILS)', 'Confirmed income (ILS)', 'Refunds (ILS)', 'Net revenue (ILS)', 'Expenses (ILS)', 'Net adjustments/reversals (ILS)', 'Operating profit/loss (ILS)'],
-    ...input.periods.map((row) => [
-      row.period,
-      (row.newSalesMinor / 100).toFixed(2),
-      (row.renewalsMinor / 100).toFixed(2),
-      (row.upgradesMinor / 100).toFixed(2),
-      (row.confirmedIncomeMinor / 100).toFixed(2),
-      (row.refundsMinor / 100).toFixed(2),
-      (row.netRevenueMinor / 100).toFixed(2),
-      (row.expensesMinor / 100).toFixed(2),
-      (row.netAdjustmentsMinor / 100).toFixed(2),
-      (row.operatingProfitLossMinor / 100).toFixed(2),
-    ]),
-    [
-      'TOTAL',
-      (input.totals.newSalesMinor / 100).toFixed(2),
-      (input.totals.renewalsMinor / 100).toFixed(2),
-      (input.totals.upgradesMinor / 100).toFixed(2),
-      (input.totals.confirmedIncomeMinor / 100).toFixed(2),
-      (input.totals.refundsMinor / 100).toFixed(2),
-      (input.totals.netRevenueMinor / 100).toFixed(2),
-      (input.totals.expensesMinor / 100).toFixed(2),
-      (input.totals.netAdjustmentsMinor / 100).toFixed(2),
-      (input.totals.operatingProfitLossMinor / 100).toFixed(2),
-    ],
-    [],
-    ['Expense category', 'Approved expenses (ILS)'],
-    ...input.categories.map((row) => [row.category, (row.amountMinor / 100).toFixed(2)]),
-    ['TOTAL EXPENSES', (input.totals.expensesMinor / 100).toFixed(2)],
-  ];
-  return rows.map((row) => row.map(csvCell).join(',')).join('\r\n');
-}
+export { buildFinancialManagementCsv } from "../../shared/financialReportCsv";

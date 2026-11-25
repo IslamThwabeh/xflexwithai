@@ -181,8 +181,10 @@ describe('financial adjustment and period controls', () => {
       const report = await getFinancialManagementDashboard({
         from: '2026-01-01', to: '2026-12-31', grouping: 'year', includeLedger: true,
       }, orm);
-      expect(report.totals).toEqual({
-        confirmedIncomeMinor: 10000,
+      expect(report.totals).toMatchObject({
+        confirmedIncomeMinor: 8000,
+        recordedReceiptsMinor: 10000,
+        receiptCorrectionsMinor: -2000,
         newSalesMinor: 8000,
         renewalsMinor: 0,
         upgradesMinor: 0,

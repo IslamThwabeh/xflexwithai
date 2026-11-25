@@ -39,15 +39,15 @@ describe('financial authorization UI contracts', () => {
   });
 
   it('loads the financial dashboard only on demand and exports the loaded filter totals', () => {
-    expect(dashboardSource).toContain('trpc.financialReports.dashboard.useQuery(filters');
-    expect(dashboardSource).toContain('refetchOnWindowFocus: false');
-    expect(dashboardSource).toContain('refetchOnMount: false');
+    expect(dashboardSource).toMatch(/trpc\.financialReports\.dashboard\.useQuery\(\s*\{\s*\.\.\.filters,\s*viewerId,\s*access:/);
+    expect(dashboardSource).toMatch(/refetchOnWindowFocus:\s*false/);
+    expect(dashboardSource).toMatch(/refetchOnMount:\s*true/);
     expect(dashboardSource).not.toContain('refetchInterval');
     expect(dashboardSource).toContain('data.periods.map');
     expect(dashboardSource).toContain('data.totals.confirmedIncomeMinor');
     expect(dashboardSource).toContain('data.totals.operatingProfitLossMinor');
-    expect(dashboardSource).toContain("printReport(isRtl ? 'تقرير الأرباح والخسائر الإداري'");
-    expect(dashboardSource).toContain('className="no-print rounded-2xl');
+    expect(dashboardSource).toMatch(/printReport\(\s*ar\s*\?\s*["']تقرير المقبوضات والنتيجة التشغيلية/);
+    expect(dashboardSource).toContain('className="no-print space-y-4 rounded-2xl');
     expect(dashboardSource).toContain('print-title');
     expect(printSource).toContain('[data-slot="sidebar-gap"]');
     expect(printSource).toContain('[data-slot="sidebar-container"]');

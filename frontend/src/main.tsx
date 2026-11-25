@@ -8,6 +8,7 @@ import App from "./App";
 import { ADMIN_LOGIN_URL, getLoginUrl } from "./const";
 import { resolveTrpcUrl } from "./lib/apiBase";
 import "./index.css";
+import { subscribeToFinancialReportChanges } from "./lib/financialReportInvalidation";
 
 const normalizeCurrentPathname = () => {
   if (typeof window === "undefined") return;
@@ -28,6 +29,7 @@ if (localeFromPath === "ar" || localeFromPath === "en") {
 }
 
 const queryClient = new QueryClient();
+subscribeToFinancialReportChanges(queryClient);
 
 const buildUnauthorizedRedirectUrl = () => {
   if (typeof window === "undefined") return null;

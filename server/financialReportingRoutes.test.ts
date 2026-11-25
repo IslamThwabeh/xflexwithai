@@ -92,4 +92,25 @@ describe('financial reporting route authorization', () => {
       ledgerLimit: 100,
     }));
   });
+
+  it('partitions the new summary by verified identity and access without returning ledger details',async()=>{
+    vi.mocked(db.resolveFinanceActor).mockResolvedValue(actor('viewer'));
+    const input={from:'2026-11-01',to:'2026-11-25',grouping:'month' as const,viewerId:20,access:'viewer' as const};
+    await expect(caller().financialReports.summary({...input,viewerId:21})).rejects.toMatchObject({code:'FORBIDDEN'});
+    await expect(caller().financialReports.summary({...input,access:'owner'})).rejects.toMatchObject({code:'FORBIDDEN'});
+    expect(db.getFinancialManagementDashboard).not.toHaveBeenCalled();
+    const result=await caller().financialReports.summary(input);
+    expect(result).not.toHaveProperty('ledger');expect(result).not.toHaveProperty('categories');
+    expect(db.getFinancialManagementDashboard).toHaveBeenCalledWith(expect.objectContaining({includeLedger:false,from:'2026-11-01'}));
+  });
+  it('reports own access only and never grants report access to a clerk',async()=>{
+    vi.mocked(db.resolveFinanceActor).mockResolvedValue(actor('clerk'));
+    expect(await caller().financialReports.access({viewerId:20})).toEqual({viewerId:20,access:null});
+    await expect(caller().financialReports.access({viewerId:21})).rejects.toMatchObject({code:'FORBIDDEN'});
+  });
+  it('rejects stale role keys on the detailed report before reading money',async()=>{
+    vi.mocked(db.resolveFinanceActor).mockResolvedValue(actor('viewer'));
+    await expect(caller().financialReports.dashboard({from:'2026-11-01',to:'2026-11-25',grouping:'month',viewerId:20,access:'owner'})).rejects.toMatchObject({code:'FORBIDDEN'});
+    expect(db.getFinancialManagementDashboard).not.toHaveBeenCalled();
+  });
 });

@@ -6539,13 +6539,34 @@ export const appRouter = router({
   // Financial dashboard and management P&L (approved ledger only)
   // =========================================================================
   financialReports: router({
+    access: protectedProcedure.input(z.object({viewerId:z.number().int()}).strict()).query(async({ctx,input})=>{
+      if(input.viewerId!==ctx.user.id)throw new TRPCError({code:'FORBIDDEN'});
+      const admin=await db.getAdminByEmail(ctx.user.email);
+      const actor=await db.resolveFinanceActor({adminId:admin?.id??null,userId:ctx.user.id});
+      return{viewerId:ctx.user.id,access:actor&&actor.access!=='clerk'?actor.access:null};
+    }),
+    summary: financeReportProcedure
+      .input(z.object({from:z.string(),to:z.string(),grouping:z.enum(['month','year']).default('month'),
+        viewerId:z.number().int(),access:z.enum(['owner','manager','viewer'])}).strict())
+      .query(async({ctx,input})=>{
+        if(input.viewerId!==ctx.user.id||input.access!==ctx.financeActor.access)throw new TRPCError({code:'FORBIDDEN'});
+        const report=await db.getFinancialManagementDashboard({...input,includeLedger:false});
+        return{reportVersion:report.reportVersion,basis:report.basis,currency:report.currency,timezone:report.timezone,
+          from:report.from,to:report.to,generatedAt:report.generatedAt,totals:report.totals,quality:report.quality,
+          receiptCount:report.receiptCount,correctionCount:report.correctionCount};
+      }),
     dashboard: financeReportProcedure
       .input(z.object({
         from: z.string(),
         to: z.string(),
         grouping: z.enum(['month', 'year']).default('month'),
+        viewerId:z.number().int().optional(),
+        access:z.enum(['owner','manager','viewer']).optional(),
       }))
-      .query(async ({ ctx, input }) => ({
+      .query(async ({ ctx, input }) => {
+        if((input.viewerId!==undefined&&input.viewerId!==ctx.user.id)
+          ||(input.access!==undefined&&input.access!==ctx.financeActor.access))throw new TRPCError({code:'FORBIDDEN'});
+        return {
         access: ctx.financeActor.access,
         canViewLedger: ctx.financeActor.access === 'owner' || ctx.financeActor.access === 'manager',
         ...(await db.getFinancialManagementDashboard({
@@ -6553,7 +6574,7 @@ export const appRouter = router({
           includeLedger: ctx.financeActor.access === 'owner' || ctx.financeActor.access === 'manager',
           ledgerLimit: 100,
         })),
-      })),
+      }; }),
   }),
 
   // =========================================================================
