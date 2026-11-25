@@ -64,6 +64,7 @@ const CourseWatch = lazy(() => import("./pages/CourseWatch"));
 const ActivateKey = lazy(() => import("./pages/ActivateKey"));
 const LexAI = lazy(() => import("./pages/LexAI"));
 const Recommendations = lazy(() => import("./pages/Recommendations"));
+const RecommendationPerformance = lazy(() => import('./pages/RecommendationPerformance'));
 const ClientGuides = lazy(() => import('./pages/ClientGuides'));
 const HomeScreenGuide = lazy(() => import('./pages/HomeScreenGuide'));
 const SupportChat = lazy(() => import("./pages/SupportChat"));
@@ -311,6 +312,9 @@ function Router() {
           <AdminLexaiConversations />
         </AdminRoute>
       </Route>
+      <Route path="/admin/recommendations-performance">
+        <AdminRoute><RecommendationPerformance preview /></AdminRoute>
+      </Route>
       <Route path={"/admin/recommendations"}>
         <AdminRoute>
           <AdminRecommendations />
@@ -472,6 +476,9 @@ function Router() {
         <ProtectedRoute>
           <LexAI />
         </ProtectedRoute>
+      </Route>
+      <Route path="/recommendations-performance">
+        <ProtectedRoute><RecommendationPerformance /></ProtectedRoute>
       </Route>
       <Route path={"/recommendations"}>
         <ProtectedRoute>

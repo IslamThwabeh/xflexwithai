@@ -1,4 +1,6 @@
 import { CLIENT_PAYMENT_SUMMARY_ROLES, CLIENT_REPORT_ROLES } from '../shared/clientPaymentSummary';
+import { isSupportedPerformanceMonth } from '../shared/recommendationPerformance';
+import { recommendationPerformanceCache } from './services/recommendation-performance.service';
 import { liveExpertRouter } from './live-expert.router';
 import {
   ALL_STAFF_ROLES,
@@ -4695,6 +4697,21 @@ export const appRouter = router({
   }),
 
   recommendations: router({
+    customerPerformance: protectedProcedure
+      .input(z.object({ viewerId: z.number().int(), month: z.string().refine(value => isSupportedPerformanceMonth(value),
+        'Choose a valid month between January 2000 and the current UTC month.') }).strict())
+      .query(async ({ ctx, input }) => {
+        // Partitions the browser query cache; never selects another user's data.
+        if (input.viewerId !== ctx.user.id) throw new TRPCError({ code: 'FORBIDDEN' });
+        // Customer visibility must not bypass analysts' existing own-work scope.
+        if (ctx.user.id > 0 && (ctx.user.isStaff || await db.hasAnyRole(ctx.user.id, ['analyst']))) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Use your staff recommendations workspace.' });
+        }
+        const scope = new URL(ctx.req.url || '/', 'http://localhost').origin;
+        return recommendationPerformanceCache.get(scope, input.month,
+          () => db.getRecommendationCustomerPerformance(input.month));
+      }),
+
     me: protectedProcedure.query(async ({ ctx }) => {
       const access = await db.getUserRecommendationsAccess(ctx.user.id);
       return {

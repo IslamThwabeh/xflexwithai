@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from 'wouter';
 import DashboardLayout from "@/components/DashboardLayout";
 import { ResponsiveTable } from "@/components/ui/responsive-table";
 import { TimedServiceStatus } from "@/components/admin/TimedServiceStatus";
@@ -1657,6 +1658,9 @@ function AnalystView() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
+              {adminCheck?.isAdmin && <Button variant="outline" size="sm" asChild>
+                <Link href="/admin/recommendations-performance">{isRTL ? 'معاينة تقرير العملاء' : 'Preview customer report'}</Link>
+              </Button>}
               <Input
                 type="month"
                 value={reportMonth}

@@ -144,6 +144,8 @@ import {
   type ProviderDeliveryStatus,
 } from '../shared/emailDeliveryLifecycle';
 import { buildRecommendationPeriodTradeStates } from './services/recommendation-report.service';
+import { buildRecommendationPerformance } from './services/recommendation-performance.service';
+import type { RecommendationScoringEvent } from './services/recommendation-report.service';
 import {
   getPackageKeyAssignmentFailure,
   hasValidPackageKeyAdminAuthorization,
@@ -324,10 +326,11 @@ function chunkValues<T>(values: T[], size: number = D1_SAFE_IN_CLAUSE_SIZE): T[]
 async function collectChunkedRows<T, R>(
   values: T[],
   fetchChunk: (chunk: T[]) => Promise<R[]>,
+  chunkSize = D1_SAFE_IN_CLAUSE_SIZE,
 ): Promise<R[]> {
   const rows: R[] = [];
   const uniqueValues = Array.from(new Set(values));
-  for (const chunk of chunkValues(uniqueValues)) {
+  for (const chunk of chunkValues(uniqueValues, chunkSize)) {
     rows.push(...await fetchChunk(chunk));
   }
   return rows;
@@ -8822,7 +8825,9 @@ export async function runStaffMonitoringRetention(now = new Date()) {
   return { compacted: true, detailCutoff, aggregateCutoffDate };
 }
 
-export async function getRecommendationMonthlyTradeReport(month: string, analystUserId?: number): Promise<RecommendationMonthlyTradeReport> {
+async function loadRecommendationMonthlyReport(month: string, analystUserId?: number, customerBatch = false): Promise<{
+  report: RecommendationMonthlyTradeReport; scoringEvents: RecommendationScoringEvent[];
+}> {
   const db = await getDb();
   if (!db) throw new Error('Database not available');
 
@@ -8865,17 +8870,28 @@ export async function getRecommendationMonthlyTradeReport(month: string, analyst
     childConditions.push(eq(recommendationMessages.userId, analystUserId));
   }
 
-  const messages = await db
+  let messages = await db
     .select()
     .from(recommendationMessages)
     .where(and(...childConditions))
     .orderBy(asc(recommendationMessages.createdAt), asc(recommendationMessages.id));
 
+  if (customerBatch) {
+    // Only trades with this month's follow-ups can contribute. Keep their full
+    // earlier history so crossing-month cumulative baselines remain exact.
+    const startMs = Date.parse(periodStart), endMs = Date.parse(periodEnd);
+    const activeParents = new Set(messages.filter(message => {
+      const at = new Date(message.createdAt).getTime();
+      return at >= startMs && at < endMs;
+    }).map(message => message.parentId));
+    messages = messages.filter(message => activeParents.has(message.parentId));
+  }
+
   if (!messages.length) {
-    return emptyRecommendationMonthlyTradeReport(normalizedMonth, {
+    return { scoringEvents: [], report: emptyRecommendationMonthlyTradeReport(normalizedMonth, {
       ...rootCoverage,
       updateMessagesIgnored: Number(monthStats?.updateMessages ?? 0),
-    });
+    }) };
   }
 
   const parentIds = Array.from(new Set(messages
@@ -8886,7 +8902,10 @@ export async function getRecommendationMonthlyTradeReport(month: string, analyst
     ? await collectChunkedRows(parentIds, (chunk) => db
         .select()
         .from(recommendationMessages)
-        .where(inArray(recommendationMessages.id, chunk)))
+        .where(customerBatch
+          // One bound JSON array preserves PK lookups without D1's 100-variable limit.
+          ? sql`${recommendationMessages.id} IN (SELECT value FROM json_each(${JSON.stringify(chunk)}))`
+          : inArray(recommendationMessages.id, chunk)), customerBatch ? 500 : D1_SAFE_IN_CLAUSE_SIZE)
     : [];
 
   const parentMap = new Map<number, RecommendationMessage>();
@@ -8911,17 +8930,18 @@ export async function getRecommendationMonthlyTradeReport(month: string, analyst
   const scoredCandidates = parsedCandidates.filter(isScored);
   const periodScoredCandidates = periodCandidates.filter(isScored);
 
-  const periodStates = buildRecommendationPeriodTradeStates({
-    periodStart,
-    periodEnd,
-    events: scoredCandidates.map((candidate) => ({
+  const scoringEvents = scoredCandidates.map((candidate) => ({
       messageId: candidate.message.id,
       tradeId: candidate.message.parentId as number,
       occurredAt: candidate.message.createdAt,
       outcome: candidate.outcome as RecommendationReportOutcome,
       cumulativePips: candidate.pips as number,
       candidate,
-    })),
+    }));
+  const periodStates = buildRecommendationPeriodTradeStates({
+    periodStart,
+    periodEnd,
+    events: scoringEvents,
   });
 
   const trades: RecommendationTradeReportRow[] = periodStates
@@ -9013,7 +9033,7 @@ export async function getRecommendationMonthlyTradeReport(month: string, analyst
       .map((candidate) => candidate.message.parentId as number),
   ]);
 
-  return {
+  return { scoringEvents, report: {
     month: normalizedMonth,
     trades,
     unresolved,
@@ -9047,7 +9067,19 @@ export async function getRecommendationMonthlyTradeReport(month: string, analyst
       ...rootCoverage,
     },
     basis: 'cumulative_state_delta_month',
-  };
+  } };
+}
+
+export async function getRecommendationMonthlyTradeReport(month: string, analystUserId?: number): Promise<RecommendationMonthlyTradeReport> {
+  return (await loadRecommendationMonthlyReport(month, analystUserId)).report;
+}
+
+export async function getRecommendationCustomerPerformance(month: string) {
+  const now = new Date();
+  const { report, scoringEvents } = await loadRecommendationMonthlyReport(month, undefined, true);
+  return buildRecommendationPerformance({ month, events: scoringEvents, summary: report.summary,
+    unresolvedTrades: report.coverage.unresolved,
+    cancelledPending: report.coverage.cancelledPendingRecommendations, now });
 }
 
 export async function getRecommendationAnalystComparisonReport(month: string): Promise<{

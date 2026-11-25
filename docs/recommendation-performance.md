@@ -1,0 +1,50 @@
+# Customer recommendations performance
+
+Local implementation and verification: 25 November 2026. The owner explicitly approved the scoped production export, deployment and private release-metadata checks. Production release preparation is in progress.
+
+## Confirmed requirements
+
+- Every valid signed-in customer/student account may view aggregate daily, weekly and monthly reported performance, regardless of recommendation subscription, study window, broker setup or subscription expiry. Existing session/account blocks, terms and survey gates remain.
+- Individual trade messages, prices, symbols, thread IDs, authors, delivery diagnostics and staff correction controls are absent from the customer response. Live recommendation entitlements and delivery audiences are unchanged.
+- Preserve cumulative progress, including updates on open trades. UTC calendar boundaries match the existing staff report. Display calculation time through `shared/academyLocale.ts`, using Palestine/Asia-Hebron seasonal time.
+- Optional dollar figures are arithmetic illustrations using explicit assumed dollars per reported pip and starting capital, without compounding or costs. They are not executable trading simulations, actual customer profits, or promised returns. Losses are shown consistently, including a clear limitation when the arithmetic would exhaust starting capital.
+- Customer snapshots may lag source updates by up to five minutes while fresh. Expired snapshots remain visibly marked until an explicit refresh or stale remount; no polling is introduced.
+
+## Implementation
+
+- Customer route: `/recommendations-performance`, under the Services navigation group. Its lazy page does not load report data on other routes. The existing recommendations paywall and live polling are unchanged.
+- Full-admin preview: `/admin/recommendations-performance`, linked from the existing monthly report controls. It uses the same aggregate API and freshness as customers. Staff lack this route in their allowed destination set. The API independently denies staff and analyst-role accounts, including an analyst with an inconsistent staff flag, before consulting the shared cache.
+- `recommendations.customerPerformance` uses existing authenticated/terms middleware, a strict supported-month schema, and a viewer ID checked against the signed-in identity. Viewer ID partitions browser query keys; it never selects another account's data. Full admins retain negative-ID preview access. The existing detailed report remains restricted to its current admin/analyst scope.
+- `backend/db.ts` shares the original parser/monthly calculation internally. Existing staff callers retain their original parent-query strategy and output. Customer calls hydrate only trades with follow-ups in the selected month, retain their earlier cumulative baselines, and use bounded 500-ID JSON arrays for parent PK lookups. Each JSON array is one bound parameter; existing D1 support and the primary-key plan are verified. No SQL string interpolation of user values or new index is introduced.
+- `backend/services/recommendation-performance.service.ts` projects only approved aggregate fields. One chronological pass computes daily/weekly deltas. For example, +50 Monday followed by cumulative +100 Tuesday yields +50 each day. UTC Sunday–Saturday weeks are clipped and labeled at month edges. Trade counts and win rates are calculated independently for each period; daily trade counts are not added to obtain monthly unique trade counts.
+- One month response contains summary, at most 31 daily rows and six weekly rows, coverage counts and freshness metadata. Switching views and changing illustration inputs causes no report requests.
+
+## Cache and performance limits
+
+- An internal sanitized Cache API entry is keyed by request origin, selected month and algorithm version. No authenticated RPC envelope, cookie, staff object or source text is cached. Public API responses keep the existing private/no-store behavior.
+- Memory retention is capped at 12 entries per isolate. Concurrent identical misses coalesce within that isolate. Cloudflare cache contents are data-center-local and may be evicted; neither global request coalescing nor global immediate correction invalidation is promised.
+- `calculatedAt` is captured before source loading and determines absolute `expiresAt`. The browser uses the same expiry, avoiding stacked server/browser TTLs. Explicit refresh respects server cache age. Focus/reconnect polling and automatic retries are off; stale remounts fetch normally. A one-shot timer only changes the expiry label and never fetches data.
+- This is not constant-cost historical reporting: cold requests still read earlier child messages. The customer path skips parsing/hydration for unrelated historical trades. Any future SQL optimization or materialized rollup should be justified by measured workloads while preserving prior milestones.
+- Synthetic local benchmark, five cold runs per size: 100 roots/400 messages: 3 calls, ~26 ms median; 1,000/4,000: 4 calls, ~148 ms; 5,000/20,000: 12 calls, ~766 ms. Earlier 50-ID hydration used 4/22/102 calls respectively. The 5,000-root local wall time was essentially unchanged (~770 ms earlier); reduced calls do not prove reduced Cloudflare CPU or production latency. These figures were collected before the additional unrelated-history parsing filter.
+- Each synthetic response was approximately 6.1 KB. One hundred warm cache hits added zero report database queries. Existing authentication, terms and role reads are excluded from those warm-hit counts. No provider attempts occurred.
+- No new database table, migration, schedule, financial write, notification send or runtime dependency.
+
+## Verification
+
+- Isolated release source excludes pre-existing pending staff-review changes in the main checkout.
+- TypeScript, frontend/server and Worker builds, private-route SEO checks, and diff hygiene passed.
+- Isolated critical suite: 38 files / 266 tests passed. Isolated focused report/parser/navigation suite: five files / 56 tests passed. Additional main-checkout focused run: seven files / 72 tests passed.
+- Actual local D1-adapter tests cover score parity, management-prose exclusion, manual zero-pip corrections, missing results, UTC/cross-month state, empty periods, more than 500 parents, bound-parameter counts and existing PK query plans. Raw originals are not rewritten by reporting.
+- Synthetic intercepted browser checks passed English 1440/390 px and Arabic 390/320 px, month changes, view/calculator zero-request behavior, retained-snapshot failure labels, retry, empty results, fresh SPA remount reuse, explicit expiry refresh and account switching. Full-admin preview passed on isolated release assets. No unknown API requests or application exceptions remained. A preview fixture initially omitted required existing feature metadata; correcting that fixture resolved its layout exception without an application change. External Google Fonts were intentionally blocked.
+- Physical devices/Safari and actual signed-in production customer/admin journeys are not verified.
+
+## Production evidence and pending work
+
+- Authorized read-only shape checks found 2,864 recommendation messages through ID 3002, with earliest records in April 2026. The exact JSON parent-lookup EXPLAIN used the existing INTEGER PRIMARY KEY and read/wrote zero customer rows. Across the count/schema/plan statements: 3,457 rows read, zero written, changed_db=false.
+- Automatic approval review initially rejected the sensitive message export and release-metadata read. The owner subsequently explicitly approved both scopes. The authorized export contains 2,864 scoring-source rows through ID3002, masks user IDs and excludes diagnostics/closing actors; it is retained only in ignored `output/recommendation-performance/prd-messages.json`. Its metadata confirms zero production rows written and changed_db=false.
+- The private production-schema rehearsal passed all eight exported months, April–November2026. Customer/staff summary values agree exactly, and daily/weekly net pips reconcile to monthly totals. The November snapshot used three customer report queries versus19 staff queries, with a6,277-byte customer payload and ~75ms local wall time. Other months used three customer queries each. These are local observations on an exported snapshot, not production Worker CPU/latency guarantees. Provider attempts were zero; source originals and production business data were not changed.
+- Current Worker/Pages versions, 31 binding descriptors, non-secret runtime configuration and four schedules were captured privately for release verification. No secret values were saved.
+- Production release must use the isolated report source, verify current configuration/bindings/schedules without exposing secrets, then deploy Worker before Pages. No migration is needed. Verify health, anonymous denial, private headers and exact deployed asset hashes. Customer/staff authenticated production verification remains a separate truthful gate; do not manufacture a production session.
+- Routine code rollback must preserve recommendation history and integrity guards. Do not restore the database or replay notifications.
+
+Security model: [recommendation-performance-threat-model.md](recommendation-performance-threat-model.md). Private fixtures, screenshots, logs, bounded benchmarks and release preparation are ignored under `output/recommendation-performance/` and `output/playwright/recommendation-performance/`.

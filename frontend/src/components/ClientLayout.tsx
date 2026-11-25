@@ -35,6 +35,7 @@ import {
   Briefcase,
   Key,
   Radio,
+  ChartNoAxesCombined,
 } from "lucide-react";
 
 interface ClientLayoutProps {
@@ -221,6 +222,12 @@ export default function ClientLayout({ children, subHeader }: ClientLayoutProps)
       label: t("dashboard.nav.rec"),
       icon: <MessageSquare className="h-4 w-4" />,
       match: "/recommendations",
+    },
+    {
+      href: "/recommendations-performance",
+      label: language === 'ar' ? 'أداء التوصيات' : 'Recommendations Performance',
+      icon: <ChartNoAxesCombined className="h-4 w-4" />,
+      match: "/recommendations-performance",
     },
     {
       href: "/documents",

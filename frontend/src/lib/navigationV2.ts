@@ -121,7 +121,7 @@ export const CLIENT_NAVIGATION_GROUPS = [
     id: "services",
     en: "Services",
     ar: "الخدمات",
-    paths: ["/lexai", "/recommendations", "/live-package"],
+    paths: ["/lexai", "/recommendations", "/recommendations-performance", "/live-package"],
   },
   { id: "support", en: "Support", ar: "الدعم", paths: ["/support", "/guides"] },
   {
