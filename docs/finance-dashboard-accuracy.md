@@ -1,6 +1,6 @@
 # Finance dashboard accuracy and receipt visibility
 
-Status: implemented locally; production release pending. Applies to `/admin/dashboard` and `/admin/finance`.
+Status: released to production on 2026-11-25. Applies to `/admin/dashboard` and `/admin/finance`.
 
 ## Business requirements in English
 
@@ -66,6 +66,10 @@ The exact isolated built assets passed 33 browser assertions: both screens recon
 
 ## Release and operational limits
 
-Finish the finance-only isolated checks before committing/deploying. Preserve the unrelated staff-review work. Deploy Worker before Pages; verify health, anonymous denial, private routes/assets and unchanged bindings/schedules. No migration or business-data repair is part of this release. Prior production deployment approval was for the recommendations feature; obtain scoped finance-release authorization after local review.
+The owner explicitly approved the finance-only production release after local review. All 22 committed files matched the isolated tested source; runtime commit `e8a2ff9853b715f8df4e442bc42f0f59033410fe` was pushed to the existing project branch. Worker deployed before Pages. The production Pages source/clean metadata matches that commit, and the expected Worker is active at 100%.
+
+Six Worker-stage checks and all 18 final production checks passed: API health, anonymous denial for the finance access/summary/dashboard and general stats APIs, preserved recommendation API denial, five site routes with private headers where applicable, and seven exact JavaScript/CSS asset hashes. All 31 binding descriptors/fingerprints, inspected runtime settings and four schedules match the pre-release snapshot. Private before/after recovery metadata and deployment logs are retained under ignored `output/finance-dashboard-review/`; recovery identifiers are not student-facing content.
+
+No migration, financial-record repair, customer transaction, synthetic production payment/refund, or customer message was performed for release verification. Unrelated pending staff-review/paid-plan changes remain uncommitted and undeployed. The authenticated production finance journey and independent bank/cash reconciliation remain unverified; production smoke checks do not claim either.
 
 Recorded approved cash remains dependent on correct payment confirmation and owner correction workflows. These dashboards cannot independently verify cash possession or bank settlement. Reclassification, invoice accounting, expense allocation and external statement reconciliation must not be inferred from operational events.
