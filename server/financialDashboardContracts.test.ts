@@ -17,7 +17,7 @@ describe("finance report presentation contract", () => {
     expect(source).not.toMatch(
       /grossRevenueIls|totalRevenueIls|revenueKeys|getPackageKeyPriceIls/
     );
-    expect(source).toContain("['pending', 'awaiting_confirmation']");
+    expect(source).toContain("OUTSTANDING_ORDER_STATUSES");
   });
   it("exports identical selected-scope and all-service totals with a disclosed calculation basis", () => {
     const totals = {

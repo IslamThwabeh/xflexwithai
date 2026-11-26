@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Download, Landmark, Printer, RefreshCw } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +22,12 @@ import {
 } from "@shared/financialReport";
 import { buildFinancialManagementCsv } from "@shared/financialReportCsv";
 import { formatAcademyDateTime } from "@shared/academyLocale";
+import {
+  financialReportPath,
+  isFinancialDate,
+  readFinancialReportLocation,
+  type FinancialFilters,
+} from "@shared/financialReportLocation";
 
 const categoryLabels: Record<string, { ar: string; en: string }> = {
   payroll: { en: "Payroll", ar: "الرواتب" },
@@ -68,41 +74,22 @@ export default function AdminFinancialDashboard() {
     checking,
     error: accessError,
   } = useFinanceReportAccess();
-  const [initial] = useState(() => {
-    const defaults = currentFinancialMonth(),
-      params = new URLSearchParams(window.location.search);
-    const valid = (value: string | null) => {
-      if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-      const date = new Date(`${value}T00:00:00Z`);
-      return (
-        Number.isFinite(date.getTime()) &&
-        date.toISOString().slice(0, 10) === value
-      );
-    };
-    const range = {
-      ...defaults,
-      from: valid(params.get("from")) ? params.get("from")! : defaults.from,
-      to: valid(params.get("to")) ? params.get("to")! : defaults.to,
-    };
-    return range.from <= range.to ? range : defaults;
-  });
-  const [draftFilters, setDraftFilters] = useState<{
-    from: string;
-    to: string;
-    grouping: "month" | "year";
-  }>(initial);
-  const [filters, setFilters] = useState<{
-    from: string;
-    to: string;
-    grouping: "month" | "year";
-  }>(initial);
-  const [scope, setScope] = useState<ReceiptScope>(() =>
-    new URLSearchParams(window.location.search).get("scope") === "academy"
-      ? "academy"
-      : new URLSearchParams(window.location.search).get("scope") === "copier"
-        ? "copier"
-        : "all"
+  const routeSearch = useSearch();
+  const [, setLocation] = useLocation();
+  const [defaults] = useState(() => currentFinancialMonth());
+  const applied = useMemo(
+    () => readFinancialReportLocation(routeSearch, defaults),
+    [routeSearch, defaults]
   );
+  const filters = useMemo<FinancialFilters>(
+    () => ({ from: applied.from, to: applied.to, grouping: applied.grouping }),
+    [applied.from, applied.to, applied.grouping]
+  );
+  const [draftFilters, setDraftFilters] = useState<FinancialFilters>(filters);
+  useEffect(() => setDraftFilters(filters), [filters]);
+  const scope = applied.scope;
+  const setScope = (next: ReceiptScope) =>
+    setLocation(financialReportPath({ ...filters, scope: next }));
   const query = trpc.financialReports.dashboard.useQuery(
     { ...filters, viewerId, access: access ?? "viewer" },
     {
@@ -138,8 +125,8 @@ export default function AdminFinancialDashboard() {
   const selected = data ? scopedReceiptTotals(data.totals, scope) : null;
   const apply = () => {
     if (
-      !draftFilters.from ||
-      !draftFilters.to ||
+      !isFinancialDate(draftFilters.from) ||
+      !isFinancialDate(draftFilters.to) ||
       draftFilters.from > draftFilters.to
     ) {
       toast.error(ar ? "تحقق من نطاق التاريخ" : "Check the date range");
@@ -147,7 +134,7 @@ export default function AdminFinancialDashboard() {
     }
     if (JSON.stringify(filters) === JSON.stringify(draftFilters))
       void query.refetch();
-    else setFilters({ ...draftFilters });
+    else setLocation(financialReportPath({ ...draftFilters, scope }));
   };
   const preset = (kind: "month" | "previous" | "year") => {
     const now = new Date();
@@ -165,7 +152,7 @@ export default function AdminFinancialDashboard() {
       };
     }
     setDraftFilters(range);
-    setFilters(range);
+    setLocation(financialReportPath({ ...range, scope }));
   };
   const exportCsv = () => {
     if (!data) return;
@@ -195,17 +182,14 @@ export default function AdminFinancialDashboard() {
   );
   return (
     <DashboardLayout>
-      <main
-        className="print-title min-w-0 space-y-6 p-4 md:p-6"
-        dir={ar ? "rtl" : "ltr"}
-      >
+      <main className="print-title min-w-0 space-y-4" dir={ar ? "rtl" : "ltr"}>
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="flex items-center gap-2 text-2xl font-bold">
               <Landmark className="h-6 w-6 text-emerald-700" />
               {ar ? "لوحة الإدارة المالية" : "Financial Management Dashboard"}
             </h1>
-            <p className="mt-2 text-sm leading-7 text-slate-600">
+            <p className="mt-1 text-sm leading-6 text-slate-600">
               {ar
                 ? "مقبوضات مسجلة ومعتمدة بالشيكل، حسب تاريخ الدفع والتصحيح. طلبات الشراء وتفعيل المفاتيح لا تنشئ دخلاً."
                 : "Approved recorded cash in ILS, by payment and correction date. Order requests and key activations do not create income."}
@@ -232,7 +216,7 @@ export default function AdminFinancialDashboard() {
             </Button>
           </div>
         </header>
-        <section className="no-print space-y-4 rounded-2xl border bg-white p-4">
+        <section className="no-print space-y-3 rounded-2xl border bg-white p-3">
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" onClick={() => preset("month")}>
               {ar ? "هذا الشهر" : "This month"}
@@ -302,10 +286,10 @@ export default function AdminFinancialDashboard() {
               {ar ? "تحديث" : "Refresh"}
             </Button>
           </div>
-          <p className="text-sm text-slate-600">
+          <p className="text-xs text-slate-600">
             {ar
-              ? "حدود التقرير بتوقيت UTC. لا يوجد تحديث دوري؛ استخدم تحديث بعد اعتماد دفعة أو تصحيح."
-              : "Report boundaries use UTC. No polling; refresh after approving a payment or correction."}
+              ? "الفترات بتوقيت UTC. استخدم تحديث للاطلاع على آخر دفعة أو تصحيح معتمد."
+              : "Periods use UTC. Refresh to include the latest approved payment or correction."}
           </p>
           {(draftFilters.from !== filters.from ||
             draftFilters.to !== filters.to ||
@@ -359,7 +343,7 @@ export default function AdminFinancialDashboard() {
         )}
         {data && selected && (
           <>
-            <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm leading-7">
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs leading-6">
               <strong>
                 {ar ? "النطاق المعروض" : "Applied range"}: {data.from} —{" "}
                 {data.to} · UTC

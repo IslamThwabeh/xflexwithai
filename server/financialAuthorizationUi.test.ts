@@ -47,7 +47,7 @@ describe('financial authorization UI contracts', () => {
     expect(dashboardSource).toContain('data.totals.confirmedIncomeMinor');
     expect(dashboardSource).toContain('data.totals.operatingProfitLossMinor');
     expect(dashboardSource).toMatch(/printReport\(\s*ar\s*\?\s*["']تقرير المقبوضات والنتيجة التشغيلية/);
-    expect(dashboardSource).toContain('className="no-print space-y-4 rounded-2xl');
+    expect(dashboardSource).toMatch(/className="no-print [^"]*rounded-2xl/);
     expect(dashboardSource).toContain('print-title');
     expect(printSource).toContain('[data-slot="sidebar-gap"]');
     expect(printSource).toContain('[data-slot="sidebar-container"]');

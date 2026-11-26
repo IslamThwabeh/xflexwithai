@@ -1,7 +1,7 @@
 import AdminNavigation, { useAdminNavigationFavorites } from "./navigation/AdminNavigation";
 import NavigationSearchDialog from "./navigation/NavigationSearchDialog";
 import InterfaceAnnouncement from "./navigation/InterfaceAnnouncement";
-import { findActiveNavigationPath } from "@/lib/navigationV2";
+import { ADMIN_NAVIGATION_GROUPS, findActiveNavigationPath } from "@/lib/navigationV2";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -780,11 +780,11 @@ function DashboardLayoutContent({
       keywords: `${item.label?.en ?? ""} ${item.label?.ar ?? ""} ${item.path} ${item.descKey ? t(item.descKey) : ""}`,
       icon: <Icon className="h-4 w-4" />,
       badge: routeBadges?.[item.path] ?? 0,
-      featureEnabled: feature && adminCheck?.isAdmin && featureOverview ? featureOverview.modules[feature.overviewKey].enabled : undefined,
+      featureEnabled: feature && adminCheck?.isAdmin && featureOverview && !featureOverview.modules[feature.overviewKey].enabled ? false : undefined,
     };
   });
   const activePath = findActiveNavigationPath(navigationItems, location);
-  const activeMenuItem = visibleSections.flatMap(section => section.items).find(item => item.path === activePath);
+  const activeGroup = ADMIN_NAVIGATION_GROUPS.find(group => group.paths.some(path => path === activePath));
   const onNavigation = (path: string) => {
     setOpenMobile(false);
     if ((routeBadges?.[path] ?? 0) > 0) markReadByRoute.mutate({ actionUrl: path });
@@ -891,16 +891,11 @@ function DashboardLayoutContent({
             {/* Left: sidebar trigger + page title */}
             <div className="flex items-center gap-3">
               <SidebarTrigger className="flex h-11 w-11 items-center justify-center rounded-xl text-gray-500 hover:bg-gray-100 sm:h-9 sm:w-9 dark:text-gray-400 dark:hover:bg-white/[0.06]" />
-              <div className="hidden sm:block">
-                <h1 className="text-[17px] font-bold text-slate-900 dark:text-white leading-tight">
-                  {location === "/profile" ? profileLabel : activeMenuItem ? menuLabel(activeMenuItem) : APP_TITLE}
-                </h1>
-                <p className="text-[11px] text-gray-400 mt-0.5">
-                  {activeMenuItem?.descKey
-                    ? t(activeMenuItem.descKey)
-                    : t("admin.topbar.welcome")}
-                </p>
-              </div>
+              <nav aria-label={language === "ar" ? "مساحة العمل الحالية" : "Current workspace"} className="hidden min-w-0 sm:block">
+                <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
+                  {activeGroup ? (language === "ar" ? activeGroup.ar : activeGroup.en) : (language === "ar" ? "مساحة العمل" : "Workspace")}
+                </span>
+              </nav>
             </div>
 
             {/* Right: grouped action buttons */}

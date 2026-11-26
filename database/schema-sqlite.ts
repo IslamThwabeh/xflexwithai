@@ -1312,6 +1312,7 @@ export const orders = sqliteTable("orders", {
   financialReconciliationStatusIndex: index("idx_orders_financial_reconciliation_status_id")
     .on(table.status, table.id)
     .where(sql`${table.status} IN ('paid', 'completed')`),
+  reviewPurchaserStatusIndex: index("idx_orders_user_status_id").on(table.userId, table.status, table.id),
 }));
 
 export type Order = typeof orders.$inferSelect;

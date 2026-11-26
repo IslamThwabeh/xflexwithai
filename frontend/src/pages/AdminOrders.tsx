@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { useSearch } from 'wouter';
+import { useEffect, useRef, useState } from 'react';
+import { useLocation, useSearch } from 'wouter';
 import { ShoppingCart, CheckCircle, XCircle, Eye, ChevronDown, ChevronUp, FileCheck, Pencil, RefreshCw, Upload, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -22,6 +22,7 @@ import { formatPaymentMethodLabel } from '@/lib/paymentMethodLabel';
 import { trpc } from '@/lib/trpc';
 import DashboardLayout from '@/components/DashboardLayout';
 import OrderKeyDeliveryPanel from '@/components/OrderKeyDeliveryPanel';
+import OrderRelatedHistory from '@/components/admin/OrderRelatedHistory';
 import { useDataTable, DataTablePagination } from '@/components/DataTable';
 import { toast } from 'sonner';
 import { isLikelyValidEmail, normalizeEmailAddress } from '@shared/emailValidation';
@@ -29,6 +30,7 @@ import { filterOrdersForSearch, getFocusedOrderId, getOrderNoteAttachments } fro
 import { apiFetch } from '@/lib/apiBase';
 import { formatApprovalDateTime, parseApprovalDateTime } from '@/lib/orderApprovalTime';
 import { ACADEMY_TIME_LABEL_AR, ACADEMY_TIME_LABEL_EN } from '@shared/academyLocale';
+import { getOrderReviewFilter, orderReviewPath, orderAgeDays, type OrderReviewFilter } from '@shared/orderReview';
 
 const orderSortFns: Record<string, (a: any, b: any) => number> = {
   created: (a, b) => new Date(String(a.createdAt).replace(' ', 'T')).getTime() - new Date(String(b.createdAt).replace(' ', 'T')).getTime(),
@@ -72,8 +74,18 @@ export default function AdminOrders() {
   const { language } = useLanguage();
   const utils = trpc.useUtils();
   const routeSearch = useSearch();
+  const [, setLocation] = useLocation();
   const [search, setSearch] = useState(() => String(getFocusedOrderId(routeSearch) ?? ''));
-  const [filter, setFilter] = useState<string | undefined>(undefined);
+  const lastFocusedOrder = useRef(getFocusedOrderId(routeSearch));
+  const filter = getOrderReviewFilter(routeSearch);
+  const setFilter = (value?: OrderReviewFilter) => {
+    if (getFocusedOrderId(routeSearch)) {
+      setSearch('');
+      setExpandedId(null);
+    }
+    setLocation(orderReviewPath(value));
+    setPage(0);
+  };
   const [issueOrder, setIssueOrder] = useState<any | null>(null);
   const [uploadingProof, setUploadingProof] = useState(false);
   const [proofError, setProofError] = useState('');
@@ -107,7 +119,7 @@ export default function AdminOrders() {
     onSuccess: (data) => {
       utils.orders.adminList.invalidate();
       if (data.activationKeys?.length) {
-        setFilter(undefined);
+        setLocation(`/admin/orders?orderId=${data.order!.id}`);
         setSearch(String(data.order!.id));
         setPage(0);
         setExpandedId(data.order!.id);
@@ -175,10 +187,14 @@ export default function AdminOrders() {
     const id = getFocusedOrderId(routeSearch);
     if (id) {
       setSearch(String(id));
-      setFilter(undefined);
       setExpandedId(id);
       setPage(0);
+    } else if (lastFocusedOrder.current !== null) {
+      setSearch('');
+      setExpandedId(null);
+      setPage(0);
     }
+    lastFocusedOrder.current = id;
   }, [routeSearch, setPage]);
 
   const handleStatusChange = async (orderId: number, newStatus: string) => {
@@ -336,7 +352,7 @@ export default function AdminOrders() {
 
   return (
     <DashboardLayout>
-      <div className="p-6">
+      <div className="min-w-0">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <ShoppingCart className="w-6 h-6 text-emerald-600" />
@@ -345,9 +361,9 @@ export default function AdminOrders() {
         </div>
 
         <div className="mb-4 flex flex-wrap items-end gap-3">
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 basis-full sm:flex-1 sm:basis-0">
             <Label htmlFor="order-search">{language === 'ar' ? 'بحث برقم الطلب أو اسم العميل أو البريد' : 'Search by order number, customer name, or email'}</Label>
-            <Input id="order-search" value={search} onChange={event => { setSearch(event.target.value); setPage(0); }} placeholder={language === 'ar' ? 'مثال: #135 أو اسم العميل' : 'Example: #135 or customer name'} className="mt-2" />
+            <Input id="order-search" value={search} onChange={event => { setSearch(event.target.value); setPage(0); }} placeholder={language === 'ar' ? 'مثال: #135 أو اسم العميل' : 'Example: #135 or customer name'} className="mt-2 h-11" />
           </div>
           <Button variant="outline" disabled={isFetching} onClick={() => void refetch()}><RefreshCw className="me-2 h-4 w-4" />{language === 'ar' ? 'تحديث' : 'Refresh'}</Button>
         </div>
@@ -357,16 +373,20 @@ export default function AdminOrders() {
         <div className="flex flex-wrap gap-2 mb-6">
           {[
             { value: undefined, label: language === 'ar' ? 'الكل' : 'All' },
+            { value: 'outstanding', label: language === 'ar' ? 'بانتظار المراجعة' : 'Outstanding' },
             { value: 'pending', label: language === 'ar' ? 'معلق' : 'Pending' },
             { value: 'awaiting_confirmation', label: language === 'ar' ? 'بانتظار التأكيد' : 'Awaiting' },
             { value: 'paid', label: language === 'ar' ? 'مدفوع' : 'Paid' },
             { value: 'completed', label: language === 'ar' ? 'مكتمل' : 'Completed' },
+            { value: 'cancelled', label: language === 'ar' ? 'ملغي' : 'Cancelled' },
+            { value: 'refunded', label: language === 'ar' ? 'مسترد' : 'Refunded' },
           ].map((f) => (
             <Button
               key={f.value || 'all'}
               size="sm"
+              className="h-11 sm:h-9"
               variant={filter === f.value ? 'default' : 'outline'}
-              onClick={() => { setFilter(f.value); setPage(0); }}
+              onClick={() => setFilter(f.value as OrderReviewFilter | undefined)}
             >
               {f.label}
             </Button>
@@ -389,22 +409,26 @@ export default function AdminOrders() {
               const isCopierOrder = order.transactionPurpose === 'copier_subscription';
               return (
               <div key={order.id} className="bg-white border rounded-xl shadow-sm">
-                <div id={`order-${order.id}`} className="p-5 flex items-center justify-between cursor-pointer" onClick={() => setExpandedId(expandedId === order.id ? null : order.id)}>
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
+                <div id={`order-${order.id}`} role="button" tabIndex={0} aria-expanded={expandedId === order.id} aria-label={`${language === 'ar' ? 'تفاصيل الطلب' : 'Order details'} #${order.id}`} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setExpandedId(expandedId === order.id ? null : order.id); } }} className="p-4 flex items-center justify-between gap-3 cursor-pointer" onClick={() => setExpandedId(expandedId === order.id ? null : order.id)}>
+                  <div className="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
                       <h3 className="font-bold text-gray-900">#{order.id}</h3>
                       <Badge className={`text-xs ${statusColors[order.status] || 'bg-gray-100'}`}>
                         {language === 'ar' ? statusLabels[order.status]?.ar : statusLabels[order.status]?.en || order.status}
                       </Badge>
-                      {order.isGift ? <Badge variant="outline" className="text-xs">🎁 Gift</Badge> : null}
-                      {(order as any).isUpgrade ? <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">⬆ Upgrade</Badge> : null}
+                      {order.isGift ? <Badge variant="outline" className="text-xs">{language === 'ar' ? 'هدية' : 'Gift'}</Badge> : null}
+                      {(order as any).isUpgrade ? <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">{language === 'ar' ? 'ترقية' : 'Upgrade'}</Badge> : null}
                       {order.transactionPurpose && <Badge variant="outline" className="text-xs text-blue-700 border-blue-300">{purposeLabels[order.transactionPurpose]?.[language] || order.transactionPurpose}</Badge>}
                     </div>
+                    <p className="mb-1 text-sm font-semibold text-slate-800">{order.packageItems?.map((item: any) => language === 'ar' ? item.packageNameAr || item.packageNameEn : item.packageNameEn || item.packageNameAr).join('، ') || (isCopierOrder ? (language === 'ar' ? 'الناسخ' : 'Copier') : (language === 'ar' ? 'الباقة غير متاحة — راجع التفاصيل' : 'Package unavailable — review details'))}</p>
+                    <p className="mb-2 text-xs text-slate-600">
+                      {language === 'ar' ? 'العمر بالأيام' : 'Age in days'}: {orderAgeDays(order.createdAt) ?? '—'} · {order.paymentProofUrl ? (language === 'ar' ? 'يوجد إيصال مرفق' : 'Receipt attached') : (language === 'ar' ? 'لا يوجد إيصال مرفق' : 'No receipt attached')}
+                      {' · '}{order.isGift ? (language === 'ar' ? 'المستلم: ' : 'Recipient: ') + (order.giftEmail || '—') : (language === 'ar' ? 'للمشتري' : 'For purchaser')}
+                    </p>
                     {keyStatusLabels[order.fulfillment?.keyStatus] && <p className={`mb-2 text-sm font-medium ${order.fulfillment.keyStatus === 'issuance_pending' ? 'text-amber-800' : 'text-slate-600'}`}>
                       {keyStatusLabels[order.fulfillment.keyStatus][language]}
                     </p>}
 
-                    {!order.transactionPurpose && ['pending', 'awaiting_confirmation', 'paid'].includes(order.status) && canConfirmPayment && <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3"><p className="mb-2 text-sm font-semibold text-amber-950">{language === 'ar' ? 'يجب تصنيف غرض المعاملة مرة واحدة قبل تأكيد الدفع.' : 'Classify the immutable transaction purpose before confirming payment.'}</p><div className="grid gap-2 md:grid-cols-[180px_1fr_auto]"><select className="h-10 rounded-md border bg-white px-3" value={(purposeDrafts[order.id]?.purpose || (order.isUpgrade ? 'upgrade' : 'new_sale'))} onChange={e => setPurposeDrafts({ ...purposeDrafts, [order.id]: { purpose: e.target.value as any, reason: purposeDrafts[order.id]?.reason || '' } })}><option value="new_sale">{purposeLabels.new_sale[language]}</option><option value="renewal">{purposeLabels.renewal[language]}</option><option value="upgrade">{purposeLabels.upgrade[language]}</option></select><Input placeholder={language === 'ar' ? 'سبب التصنيف (5 أحرف على الأقل)' : 'Classification reason (at least 5 characters)'} value={purposeDrafts[order.id]?.reason || ''} onChange={e => setPurposeDrafts({ ...purposeDrafts, [order.id]: { purpose: purposeDrafts[order.id]?.purpose || (order.isUpgrade ? 'upgrade' : 'new_sale'), reason: e.target.value } })} /><Button variant="outline" disabled={classifyPurpose.isPending} onClick={() => classifyPurpose.mutate({ orderId: order.id, purpose: purposeDrafts[order.id]?.purpose || (order.isUpgrade ? 'upgrade' : 'new_sale'), reason: purposeDrafts[order.id]?.reason || '' })}>{language === 'ar' ? 'تثبيت التصنيف' : 'Lock classification'}</Button></div></div>}
                     <p className="text-sm text-gray-500">
                       {(order as any).userName || (order as any).userEmail || `User #${order.userId}`}
                       {(order as any).userEmail ? ` (${(order as any).userEmail})` : ''}
@@ -420,6 +444,8 @@ export default function AdminOrders() {
 
                 {expandedId === order.id && (
                   <div className="border-t px-5 py-4 bg-gray-50 rounded-b-xl">
+                    {!order.transactionPurpose && ['pending', 'awaiting_confirmation', 'paid'].includes(order.status) && canConfirmPayment && <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3"><p className="mb-2 text-sm font-semibold text-amber-950">{language === 'ar' ? 'يجب تصنيف غرض المعاملة مرة واحدة قبل تأكيد الدفع.' : 'Classify the immutable transaction purpose before confirming payment.'}</p><div className="grid gap-2 md:grid-cols-[180px_1fr_auto]"><select className="h-10 rounded-md border bg-white px-3" value={(purposeDrafts[order.id]?.purpose || (order.isUpgrade ? 'upgrade' : 'new_sale'))} onChange={e => setPurposeDrafts({ ...purposeDrafts, [order.id]: { purpose: e.target.value as any, reason: purposeDrafts[order.id]?.reason || '' } })}><option value="new_sale">{purposeLabels.new_sale[language]}</option><option value="renewal">{purposeLabels.renewal[language]}</option><option value="upgrade">{purposeLabels.upgrade[language]}</option></select><Input placeholder={language === 'ar' ? 'سبب التصنيف (5 أحرف على الأقل)' : 'Classification reason (at least 5 characters)'} value={purposeDrafts[order.id]?.reason || ''} onChange={e => setPurposeDrafts({ ...purposeDrafts, [order.id]: { purpose: purposeDrafts[order.id]?.purpose || (order.isUpgrade ? 'upgrade' : 'new_sale'), reason: e.target.value } })} /><Button variant="outline" disabled={classifyPurpose.isPending} onClick={() => classifyPurpose.mutate({ orderId: order.id, purpose: purposeDrafts[order.id]?.purpose || (order.isUpgrade ? 'upgrade' : 'new_sale'), reason: purposeDrafts[order.id]?.reason || '' })}>{language === 'ar' ? 'تثبيت التصنيف' : 'Lock classification'}</Button></div></div>}
+                    <OrderRelatedHistory key={order.id} orderId={order.id} />
                     <div className="grid md:grid-cols-2 gap-4 text-sm mb-4">
                       <div className="md:col-span-2 bg-emerald-50 rounded-lg px-3 py-2">
                         <span className="text-gray-500 font-medium">{language === 'ar' ? 'العميل' : 'Customer'}:</span>{' '}

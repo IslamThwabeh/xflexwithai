@@ -244,6 +244,7 @@ import {
 } from './services/financial-expense.service';
 import { type FinancialReportGrouping } from './services/financial-reporting.service';
 import { loadFinancialReport } from './services/financial-report-engine';
+import { OUTSTANDING_ORDER_STATUSES } from '../shared/orderReview';
 import {
   assertIndependentAdjustmentReviewer,
   canEditAdjustment,
@@ -4542,7 +4543,10 @@ export async function getDashboardStats() {
 
   // Pending orders (for attention banner)
   const [pendingOrdersResult] = await db.select({ count: sql<number>`count(*)` }).from(orders)
-    .where(inArray(orders.status, ['pending', 'awaiting_confirmation']));
+    .where(and(
+      inArray(orders.status, [...OUTSTANDING_ORDER_STATUSES]),
+      sql`NOT EXISTS (SELECT 1 FROM order_retirements retired WHERE retired.order_id = ${orders.id})`,
+    ));
 
   const packageKeyStats = await getPackageKeyStatistics();
 
@@ -18314,9 +18318,27 @@ export async function getAllOrders(status?: string) {
     .leftJoin(users, eq(orders.userId, users.id))
     .orderBy(desc(orders.createdAt));
   return q.where(and(
-    status ? eq(orders.status, status) : undefined,
+    status === 'outstanding' ? inArray(orders.status, [...OUTSTANDING_ORDER_STATUSES]) : status ? eq(orders.status, status) : undefined,
     sql`NOT EXISTS (SELECT 1 FROM order_retirements retired WHERE retired.order_id = ${orders.id})`,
   ));
+}
+
+/** Explicit order-review context, bounded to one purchaser and never loaded per list row. */
+export async function getRelatedCompletedOrdersForReview(orderId: number) {
+  const database = await getDb();
+  if (!database) throw new Error('Database not available');
+  const [source] = await database.select({ userId: orders.userId }).from(orders)
+    .where(eq(orders.id, orderId)).limit(1);
+  if (!source) return null;
+  const rows = await database.select({
+    id: orders.id, userId: orders.userId, status: orders.status,
+    createdAt: orders.createdAt, completedAt: orders.completedAt,
+    transactionPurpose: orders.transactionPurpose, isGift: orders.isGift, giftEmail: orders.giftEmail,
+  }).from(orders).where(and(
+    eq(orders.userId, source.userId), eq(orders.status, 'completed'), ne(orders.id, orderId),
+    sql`NOT EXISTS (SELECT 1 FROM order_retirements retired WHERE retired.order_id = ${orders.id})`,
+  )).orderBy(desc(orders.id)).limit(21);
+  return { orders: rows.slice(0, 20), hasMore: rows.length > 20 };
 }
 
 export async function getOrderPackageConfigurationSummaries(orderIds: number[]) {

@@ -5,7 +5,7 @@ vi.mock('../backend/db', async () => ({
   ...await vi.importActual<typeof import('../backend/db')>('../backend/db'),
   getAdminByEmail: vi.fn(), hasAnyRole: vi.fn(), getAllOrders: vi.fn(),
   getOrderPackageConfigurationSummaries: vi.fn(), getOrderById: vi.fn(),
-  getOrderKeyFulfillmentRows: vi.fn(),
+  getOrderKeyFulfillmentRows: vi.fn(), getRelatedCompletedOrdersForReview: vi.fn(),
   updateOrderStatus: vi.fn(), confirmOrderPayment: vi.fn(), createOrderActivationKeys: vi.fn(),
 }));
 import { appRouter } from '../backend/routers';
@@ -46,6 +46,41 @@ describe('read-only support order access', () => {
     const orders = await caller().orders.adminList({ status: 'awaiting_confirmation' });
     expect(db.getAllOrders).toHaveBeenCalledWith('awaiting_confirmation');
     expect(orders[0].termsAcceptedIpAddress).toBe('203.0.113.10');
+  });
+
+  it('passes the outstanding queue through the same protected, privacy-preserving read', async () => {
+    const orders = await caller().orders.adminList({ status: 'outstanding' });
+    expect(db.getAllOrders).toHaveBeenCalledWith('outstanding');
+    expect(orders[0]).toMatchObject({ id: 135, termsAcceptedIpAddress: null, termsAcceptedUserAgent: null });
+    expect(db.updateOrderStatus).not.toHaveBeenCalled();
+    expect(db.confirmOrderPayment).not.toHaveBeenCalled();
+  });
+
+  it('loads a bounded related-order projection for support without payment or browser evidence', async () => {
+    vi.mocked(db.getRelatedCompletedOrdersForReview).mockResolvedValue({ hasMore: true, orders: [{ id: 194, userId: 42, createdAt: '2026-11-23 10:00:00', completedAt: '2026-11-23 12:00:00', transactionPurpose: 'new_sale', isGift: false, giftEmail: null, paymentProofUrl: 'private-proof', termsAcceptedUserAgent: 'private-device' }] } as any);
+    const result = await caller().orders.adminRelatedCompleted({ orderId: 201 });
+    expect(db.getRelatedCompletedOrdersForReview).toHaveBeenCalledWith(201);
+    expect(db.getOrderPackageConfigurationSummaries).toHaveBeenCalledWith([194]);
+    expect(result).toEqual({ hasMore: true, orders: [{ id: 194, createdAt: '2026-11-23 10:00:00', completedAt: '2026-11-23 12:00:00', transactionPurpose: 'new_sale', isGift: false, giftEmail: null, packages: [] }] });
+  });
+
+  it('denies unrelated staff the related-order context and returns missing records explicitly', async () => {
+    roles = ['analyst'];
+    await expect(caller().orders.adminRelatedCompleted({ orderId: 201 })).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    expect(db.getRelatedCompletedOrdersForReview).not.toHaveBeenCalled();
+    roles = ['support'];
+    vi.mocked(db.getRelatedCompletedOrdersForReview).mockResolvedValue(null);
+    await expect(caller().orders.adminRelatedCompleted({ orderId: 999 })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+
+  it('does not expose related orders to customers or anonymous requests', async () => {
+    roles = [];
+    const context = { req: { headers: {}, method: 'GET' }, setCookie() {}, clearCookie() {} };
+    const student = appRouter.createCaller({ ...context, user: { id: 42, email: 'synthetic@example.test', isStaff: false } } as any);
+    const anonymous = appRouter.createCaller({ ...context, user: null } as any);
+    await expect(student.orders.adminRelatedCompleted({ orderId: 201 })).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    await expect(anonymous.orders.adminRelatedCompleted({ orderId: 201 })).rejects.toMatchObject({ code: 'UNAUTHORIZED' });
+    expect(db.getRelatedCompletedOrdersForReview).not.toHaveBeenCalled();
   });
 
   it('denies unrelated staff order access', async () => {

@@ -8152,6 +8152,19 @@ export const appRouter = router({
         ));
       }),
 
+    adminRelatedCompleted: adminOrRoleProcedure(['key_manager', 'finance_manager', 'support'])
+      .input(z.object({ orderId: z.number().int().positive() }))
+      .query(async ({ input }) => {
+        const context = await db.getRelatedCompletedOrdersForReview(input.orderId);
+        if (!context) throw new TRPCError({ code: 'NOT_FOUND', message: 'Order not found' });
+        const items = await db.getOrderPackageConfigurationSummaries(context.orders.map(order => order.id));
+        return { hasMore: context.hasMore, orders: context.orders.map(order => ({
+          id: order.id, createdAt: order.createdAt, completedAt: order.completedAt,
+          transactionPurpose: order.transactionPurpose, isGift: order.isGift, giftEmail: order.giftEmail,
+          packages: items.filter(item => item.orderId === order.id).map(item => ({ nameEn: item.packageNameEn, nameAr: item.packageNameAr })),
+        })) };
+      }),
+
     adminKeyDelivery: adminOrRoleProcedure(['key_manager', 'finance_manager'])
       .input(z.object({ orderId: z.number().int().positive() }))
       .query(async ({ input }) => {
