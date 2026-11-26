@@ -41,6 +41,8 @@ import { z } from "zod";
 import { FINANCIAL_PAYMENT_PURPOSES } from "../shared/financialTransactionPurpose";
 import { getInterfaceAnnouncementStatus, recordInterfaceAnnouncementAction } from "./services/interface-announcement.service";
 import { logger } from "./_core/logger";
+import { getDatabaseErrorDiagnostic, getDatabaseFailureCategory } from './_core/databaseErrors';
+import { ORDER_KEY_ISSUANCE_PENDING_MESSAGE } from '../shared/orderApprovalErrors';
 import * as db from "./db";
 import { filterRecipientsByMutedThreads } from "./services/recommendation-thread.service";
 import { protectRecommendationAuthors } from "./services/recommendation-privacy.service";
@@ -8609,10 +8611,13 @@ export const appRouter = router({
           } catch (error) {
             logger.error('[ORDER_DELIVERY] Key issuance failed after payment confirmation', {
               orderId: order.id, stage: 'key_issuance', code: 'issuance_failed',
+              category: getDatabaseFailureCategory(error),
+              diagnostic: getDatabaseErrorDiagnostic(error),
             });
             throw new TRPCError({
               code: 'BAD_REQUEST',
-              message: `Payment is confirmed, but key issuance needs a safe retry: ${error instanceof Error ? error.message : 'unknown key error'}`,
+              message: ORDER_KEY_ISSUANCE_PENDING_MESSAGE,
+              cause: error,
             });
           }
         }

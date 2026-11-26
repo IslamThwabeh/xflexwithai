@@ -4,6 +4,8 @@ Created: 2026-11-25. Updated: 2026-11-26. Status: first implementation batch rel
 
 This is the checklist for the follow-up work agreed after the signed-in Chrome review. Keep the stable IDs below when splitting work into releases. Mark an item complete only after its acceptance criteria are verified, and add the evidence/date in the progress log. Do not treat approval of recommendations as approval to cancel orders, approve payments, rewrite historical records or send messages.
 
+Priority interruption,2026-11-26: owner paused the next finance release after a confirmed-payment/key-issuance error on order206. Migration141 and its16-file batch remain local and unapproved. Track the separate recovery/privacy hotfix and the unconfirmed production INSERT cause in [the incident record](order-key-issuance-incident-2026-11-26.md). Do not resume other checklist items or attempt real key delivery without the corresponding authorization.
+
 ## Scope and existing work
 
 - Recommendations performance and the cash-reporting improvements are already deployed. This plan covers the subsequent admin review findings and the remaining student/communication work.

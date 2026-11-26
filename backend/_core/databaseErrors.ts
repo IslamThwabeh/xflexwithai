@@ -78,6 +78,27 @@ export function isDatabasePersistenceError(error: unknown): boolean {
   );
 }
 
+/** Fixed categories only: never copy SQL, parameters or arbitrary cause text. */
+export function getDatabaseFailureCategory(error: unknown): string {
+  const categories: Array<[string, RegExp]> = [
+    ["duplicate_unused_package_key", /duplicate active unused package key/i],
+    ["order_package_key_conflict", /unique constraint failed: registrationKeys\.orderId, registrationKeys\.packageId/i],
+    ["key_code_conflict", /unique constraint failed: registrationKeys\.keyCode/i],
+    ["foreign_key_constraint", /foreign key constraint/i],
+    ["not_null_constraint", /not null constraint/i],
+    ["check_constraint", /check constraint/i],
+    ["unique_constraint", /unique constraint/i],
+    ["database_authorization", /SQLITE_AUTH|not authorized/i],
+    ["database_io", /SQLITE_IOERR|SQLITE_CANTOPEN|SQLITE_CORRUPT/i],
+    ["schema_mismatch", /no such (?:table|column)|has no column|foreign key mismatch/i],
+    ["database_busy", /SQLITE_BUSY|database is locked|D1 DB is overloaded/i],
+    ["database_timeout", /timed? out|timeout|D1_EXEC_ERROR.*time/i],
+    ["database_limit", /too many sql variables|SQLITE_TOOBIG|SQLITE_FULL|exceeded.*limit/i],
+  ];
+  return categories.find(([, matcher]) => errorChainMatches(error, matcher))?.[0]
+    ?? (isDatabasePersistenceError(error) ? "database_error" : "application_error");
+}
+
 /** Metadata suitable for server logs; intentionally excludes SQL and params. */
 export function getDatabaseErrorDiagnostic(error: unknown) {
   return getErrorChain(error).map(item => {
@@ -86,9 +107,14 @@ export function getDatabaseErrorDiagnostic(error: unknown) {
     }
     const name = readErrorProperty(item, "name");
     const code = readErrorProperty(item, "code");
+    const message = readErrorProperty(item, "message");
+    const sqliteCode = typeof message === 'string'
+      ? message.match(/\bSQLITE_(?:ERROR|ABORT|AUTH|BUSY|LOCKED|CONSTRAINT(?:_(?:CHECK|FOREIGNKEY|NOTNULL|PRIMARYKEY|TRIGGER|UNIQUE))?|IOERR|CANTOPEN|CORRUPT|FULL|TOOBIG|INTERRUPT|READONLY|MISMATCH)\b/)?.[0]
+      : undefined;
     return {
       name: typeof name === "string" ? name : undefined,
       code: typeof code === "string" || typeof code === "number" ? code : undefined,
+      ...(sqliteCode ? { sqliteCode } : {}),
     };
   });
 }

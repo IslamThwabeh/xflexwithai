@@ -33,6 +33,7 @@ import { filterOrdersForSearch, getFocusedOrderId, getOrderNoteAttachments } fro
 import { apiFetch } from '@/lib/apiBase';
 import { formatApprovalDateTime, parseApprovalDateTime } from '@/lib/orderApprovalTime';
 import { ACADEMY_TIME_LABEL_AR, ACADEMY_TIME_LABEL_EN } from '@shared/academyLocale';
+import { formatOrderApprovalError } from '@shared/orderApprovalErrors';
 import { getOrderReviewFilter, orderReviewPath, orderAgeDays, type OrderReviewFilter } from '@shared/orderReview';
 
 const orderSortFns: Record<string, (a: any, b: any) => number> = {
@@ -146,7 +147,18 @@ export default function AdminOrders() {
       // Refresh the persisted state so the recovery action remains reachable.
       utils.orders.adminList.invalidate();
       void utils.orders.adminStatusHistory.invalidate({ orderId: variables.orderId });
-      toast.error(error.message);
+      if (error.message.startsWith('Payment is confirmed, but key issuance needs a safe retry')) {
+        // This response is sent only after the immutable confirmation exists.
+        // The dialog owns a snapshot, so invalidating the list alone leaves its
+        // original payment fields and approval action stale.
+        setIssueOrder((current: any) => current?.id === variables.orderId ? {
+          ...current, status: 'completed',
+          fulfillment: { ...current.fulfillment, paymentConfirmed: true },
+        } : current);
+        setFinancialPayment({ paidAt: '', baseAmountIls: '', rationale: '' });
+      } else {
+        toast.error(formatOrderApprovalError(error.message, language));
+      }
     },
   });
   const correctRecipientMutation = trpc.orders.adminCorrectActivationRecipient.useMutation({
@@ -804,7 +816,7 @@ export default function AdminOrders() {
                   {language === 'ar' ? 'لا توجد باقة مرتبطة بهذا الطلب.' : 'No package is linked to this order.'}
                 </p>
               )}
-              {updateMutation.error && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{updateMutation.error.message}</p>}
+              {updateMutation.error && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{formatOrderApprovalError(updateMutation.error.message, language)}</p>}
             </div>
             <DialogFooter className="shrink-0 border-t bg-background p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6">
               <Button

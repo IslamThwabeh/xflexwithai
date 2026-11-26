@@ -23,7 +23,10 @@ const databaseErrorBoundary = t.middleware(async ({ next, path }) => {
   const error = result.error;
   if (
     !isDatabasePersistenceError(error)
-    || (error instanceof TRPCError && error.code !== "INTERNAL_SERVER_ERROR")
+    || (error instanceof TRPCError && error.code !== "INTERNAL_SERVER_ERROR"
+      // Deliberate business messages may carry a database cause. Raw database
+      // messages must still be hidden when a route wraps them as BAD_REQUEST.
+      && !isDatabasePersistenceError({ message: error.message }))
   ) {
     return result;
   }

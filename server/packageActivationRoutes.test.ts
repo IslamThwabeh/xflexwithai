@@ -51,6 +51,8 @@ import * as db from '../backend/db';
 import { getOrderKeyDeliveryDetails, queueOrderKeyDelivery } from '../backend/services/order-key-delivery.service';
 import { dispatchOrderKey } from '../backend/services/order-key-dispatch.service';
 import { drainGenericEmailOutbox } from '../backend/services/email-outbox.service';
+import { logger } from '../backend/_core/logger';
+import { ORDER_KEY_ISSUANCE_PENDING_MESSAGE, formatOrderApprovalError } from '../shared/orderApprovalErrors';
 
 const user = {
   id: 96,
@@ -305,6 +307,28 @@ describe('package activation routes', () => {
     expect(db.confirmOrderPayment).toHaveBeenCalledTimes(1);
     expect(queueOrderKeyDelivery).not.toHaveBeenCalled();
     expect(db.createNotification).not.toHaveBeenCalled();
+  });
+
+  it('hides failed-insert SQL, customer details and generated keys while preserving payment recovery', async () => {
+    prepareRenewal('completed', true);
+    const cause = new Error('Failed query: insert into registrationKeys values (?)\nparams: private@example.invalid,XFLEX-PRIVATE-KEY', {
+      cause: Object.assign(new Error('FOREIGN KEY constraint failed'), {code: 'SQLITE_CONSTRAINT_FOREIGNKEY'}),
+    });
+    const log = vi.spyOn(logger, 'error').mockImplementation(() => {});
+    try {
+      vi.mocked(db.createOrderActivationKeys).mockRejectedValueOnce(cause);
+      const error = await createCaller().orders.adminUpdateStatus({orderId: 173, status: 'completed'}).catch(value => value);
+      expect(error.message).toBe(ORDER_KEY_ISSUANCE_PENDING_MESSAGE);
+      const visible = error.message + JSON.stringify(log.mock.calls)
+        + formatOrderApprovalError(`Payment is confirmed, but key issuance needs a safe retry: ${cause.message}`, 'ar');
+      for (const secret of ['insert into', 'params:', 'private@example.invalid', 'XFLEX-PRIVATE-KEY']) expect(visible).not.toContain(secret);
+      expect(log).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({category: 'foreign_key_constraint'}));
+      expect(db.confirmOrderPayment).not.toHaveBeenCalled();
+      expect(queueOrderKeyDelivery).not.toHaveBeenCalled();
+      await createCaller().orders.adminUpdateStatus({orderId: 173, status: 'completed'});
+      expect(db.confirmOrderPayment).not.toHaveBeenCalled();
+      expect(db.updateOrderStatus).not.toHaveBeenCalled();
+    } finally { log.mockRestore(); }
   });
 
   it('returns the saved approval and key with a visible warning when queueing fails', async () => {

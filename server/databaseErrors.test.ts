@@ -3,10 +3,13 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { drizzle } from "drizzle-orm/d1";
+import { TRPCError } from '@trpc/server';
+import { fetchRequestHandler } from '@trpc/server/adapters/fetch';
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import {
   errorChainMatches,
   getDatabaseErrorDiagnostic,
+  getDatabaseFailureCategory,
   getErrorChain,
   getErrorChainMessages,
   isDatabasePersistenceError,
@@ -75,6 +78,8 @@ describe("database error cause-chain handling", () => {
     expect(diagnostic).not.toContain("secret");
     expect(diagnostic).not.toContain("params");
     expect(diagnostic).toContain("SQLITE_CONSTRAINT");
+    expect(getDatabaseErrorDiagnostic(new Error('D1_ERROR: private_table: SQLITE_AUTH')))
+      .toEqual([{name: 'Error', code: undefined, sqliteCode: 'SQLITE_AUTH'}]);
   });
 
   it("sanitizes unexpected database failures at the tRPC boundary", async () => {
@@ -97,6 +102,48 @@ describe("database error cause-chain handling", () => {
       expect.objectContaining({ path: "fail" }),
     );
     expect(JSON.stringify(vi.mocked(logger.error).mock.calls)).not.toContain("private_table");
+  });
+
+  it.each(['BAD_REQUEST', 'CONFLICT', 'PRECONDITION_FAILED'] as const)(
+    'sanitizes database details even when wrapped as %s over HTTP', async code => {
+      vi.spyOn(logger, 'error').mockImplementation(() => {});
+      const app = router({
+        fail: publicProcedure.query(() => {
+          throw new TRPCError({code, message: `Approval failed: ${nestedError('CHECK constraint failed: private_table').message}`});
+        }),
+      });
+      const response = await fetchRequestHandler({
+        endpoint: '/trpc', req: new Request('https://test.invalid/trpc/fail'),
+        router: app, createContext: () => ({} as any),
+      });
+      const body = await response.text();
+      expect(body).toContain('The database operation could not be completed');
+      for (const secret of ['private_table', 'params:', 'secret', 'insert into']) expect(body).not.toContain(secret);
+    },
+  );
+
+  it('preserves a deliberately safe recovery message with a database cause', async () => {
+    vi.spyOn(logger, 'error').mockImplementation(() => {});
+    const app = router({
+      fail: publicProcedure.query(() => {
+        throw new TRPCError({code: 'BAD_REQUEST', message: 'Payment confirmed; retry key issuance.', cause: nestedError('FOREIGN KEY constraint failed')});
+      }),
+    });
+    const error = await app.createCaller({} as any).fail().catch(value => value);
+    expect(error).toMatchObject({code: 'BAD_REQUEST', message: 'Payment confirmed; retry key issuance.'});
+  });
+
+  it.each([
+    ['duplicate active unused package key', 'duplicate_unused_package_key'],
+    ['UNIQUE constraint failed: registrationKeys.orderId, registrationKeys.packageId', 'order_package_key_conflict'],
+    ['UNIQUE constraint failed: registrationKeys.keyCode', 'key_code_conflict'],
+    ['FOREIGN KEY constraint failed', 'foreign_key_constraint'],
+    ['no such table: private_table', 'schema_mismatch'],
+    ['D1 DB is overloaded', 'database_busy'],
+    ['D1 query timed out', 'database_timeout'],
+    ['opaque database failure', 'database_error'],
+  ])('classifies %s without copying its message', (message, category) => {
+    expect(getDatabaseFailureCategory(nestedError(message))).toBe(category);
   });
 
   it("reads real Drizzle errors from local SQLite through their nested causes", async () => {
