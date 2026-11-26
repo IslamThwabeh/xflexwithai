@@ -1,10 +1,12 @@
-export const FINANCIAL_TRANSACTION_PURPOSES = [
+export const FINANCIAL_PAYMENT_PURPOSES = [
   'new_sale',
   'renewal',
   'upgrade',
   'copier_subscription',
-  'legacy_migration',
 ] as const;
+
+export type FinancialPaymentPurpose = typeof FINANCIAL_PAYMENT_PURPOSES[number];
+export const FINANCIAL_TRANSACTION_PURPOSES = [...FINANCIAL_PAYMENT_PURPOSES, 'legacy_migration'] as const;
 
 export type FinancialTransactionPurpose = typeof FINANCIAL_TRANSACTION_PURPOSES[number];
 

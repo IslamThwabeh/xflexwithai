@@ -11,6 +11,8 @@ import ClientLayout from '@/components/ClientLayout';
 import { Checkbox } from '@/components/ui/checkbox';
 import { CURRENT_TERMS_VERSION } from '@/lib/legalVersions';
 import { toast } from 'sonner';
+import { useCheckoutIntent } from '@/lib/useCheckoutIntent';
+import CheckoutIntentNotice from '@/components/CheckoutIntentNotice';
 
 export default function MySubscriptions() {
   const { language, t } = useLanguage();
@@ -21,14 +23,21 @@ export default function MySubscriptions() {
   const { data: activePackage } = trpc.subscriptions.myActivePackage.useQuery();
   const pkg = (activePackage as any)?.package;
   const renewal = trpc.renewals.quote.useQuery(undefined, { retry: false, refetchOnWindowFocus: false });
+  const intent = useCheckoutIntent('renewal',{paymentMethod:'bank_transfer',termsAcceptedVersion:CURRENT_TERMS_VERSION},!!renewal.data);
   const createRenewal = trpc.renewals.createOrder.useMutation({
-    onSuccess: (result) => {
-      toast.success(isRtl ? 'تم إنشاء طلب التجديد. أرفقي إثبات الدفع لإرساله للمراجعة.' : 'Renewal order created. Attach payment proof for review.');
+    onSuccess: (result,variables) => {
+      intent.recordOrder(result.order.id,variables.checkoutIntentKey);
+      toast.success(result.idempotent ? (isRtl ? 'تم فتح طلب التجديد السابق دون إنشاء نسخة أخرى' : 'Existing renewal request opened') : (isRtl ? 'تم إنشاء طلب التجديد. أرفقي إثبات الدفع لإرساله للمراجعة.' : 'Renewal order created. Attach payment proof for review.'));
       navigate(`/orders/${result.order.id}`);
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error) => {toast.error(error.message);if(error.data?.code==='CONFLICT'){setAccepted(false);void renewal.refetch();}},
   });
   const money = (minor: number) => new Intl.NumberFormat(isRtl ? 'ar' : 'en', { style: 'currency', currency: 'ILS' }).format(minor / 100);
+  const submitRenewal = () => {
+    if (!accepted || createRenewal.isPending || !intent.ready) return;
+    const checkoutIntentKey = intent.beginSubmission();
+    if (checkoutIntentKey && renewal.data) createRenewal.mutate({expectedQuote:{packageId:renewal.data.packageId,amountIlsMinor:renewal.data.amountIlsMinor,entitlementDays:renewal.data.entitlementDays,recommendationsCurrentEndAt:renewal.data.recommendationsCurrentEndAt,lexaiCurrentEndAt:renewal.data.lexaiCurrentEndAt},paymentMethod:'bank_transfer',checkoutIntentKey,termsAcceptedAt:new Date().toISOString(),termsAcceptedVersion:CURRENT_TERMS_VERSION});
+  };
 
   return (
     <ClientLayout>
@@ -79,8 +88,9 @@ export default function MySubscriptions() {
               {renewal.data.includesLexai && <p><strong>LexAI {isRtl ? 'حتى:' : 'through:'}</strong> {formatLocalizedDate(renewal.data.lexaiProjectedEndAt!, language)}</p>}
             </div>
             <p className="mt-3 text-xs text-emerald-900">{isRtl ? 'يُسجّل الدخل مرة واحدة فقط عند تأكيد استلام دفعة التجديد. إنشاء الطلب أو إصدار المفتاح أو تفعيله لا يُنشئ إيرادًا.' : 'Income is recorded once only when the renewal payment is confirmed. Creating the order, issuing the key, or activating it does not create revenue.'}</p>
+            <div className="mt-4"><CheckoutIntentNotice intent={intent} busy={createRenewal.isPending} onNewPrepared={() => setAccepted(false)} /></div>
             <label className="mt-4 flex items-start gap-2 text-sm"><Checkbox checked={accepted} onCheckedChange={(value) => setAccepted(value === true)} /><span>{isRtl ? 'أوافق على ' : 'I agree to the '}<Link className="font-semibold underline" href="/terms">{isRtl ? 'الشروط والأحكام' : 'Terms and Conditions'}</Link>.</span></label>
-            <Button className="mt-4" disabled={!accepted || createRenewal.isPending} onClick={() => createRenewal.mutate({ paymentMethod: 'bank_transfer', termsAcceptedAt: new Date().toISOString(), termsAcceptedVersion: CURRENT_TERMS_VERSION })}><RefreshCw className="me-2 h-4 w-4" />{createRenewal.isPending ? (isRtl ? 'جاري الإنشاء...' : 'Creating...') : (isRtl ? 'إنشاء طلب التجديد' : 'Create renewal order')}</Button>
+            <Button className="mt-4" disabled={!accepted || createRenewal.isPending || !intent.ready} onClick={submitRenewal}><RefreshCw className="me-2 h-4 w-4" />{createRenewal.isPending ? (isRtl ? 'جاري الإنشاء...' : 'Creating...') : (isRtl ? 'إنشاء طلب التجديد' : 'Create renewal order')}</Button>
           </section>
         )}
 

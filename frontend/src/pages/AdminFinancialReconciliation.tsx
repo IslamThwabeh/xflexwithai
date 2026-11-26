@@ -8,6 +8,11 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { trpc } from '@/lib/trpc';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { toast } from 'sonner';
+import { useFinanceWorkspaceAccess, type FinanceWorkspaceAccess } from '@/lib/useFinanceWorkspaceAccess';
+import { isFinanceAccessDenied } from '@/lib/financeWorkspaceCache';
+import FinanceReadNotice from '@/components/admin/FinanceReadNotice';
+import { formatAcademyDateTime } from '@shared/academyLocale';
+
 
 type QueueStatus = 'unresolved' | 'approved_opening_balance' | 'approved_adjustment' | 'excluded';
 type Treatment = 'genuine_current_new_sale' | 'genuine_current_renewal' | 'genuine_upgrade' | 'legacy_migration_no_financial_impact' | 'historical_payment_known_date' | 'historical_payment_unknown' | 'requires_owner_review' | 'possible_duplicate' | 'excluded_nonfinancial';
@@ -17,6 +22,11 @@ const money = (minor: number) => new Intl.NumberFormat('en-US', { style: 'curren
 const today = () => new Date().toISOString().slice(0, 10);
 
 export default function AdminFinancialReconciliation() {
+  const scope = useFinanceWorkspaceAccess('controls');
+  return <AdminFinancialReconciliationWorkspace key={scope.identityKey} scope={scope} />;
+}
+
+function AdminFinancialReconciliationWorkspace({ scope }: { scope: FinanceWorkspaceAccess }) {
   const { language } = useLanguage();
   const isRtl = language === 'ar';
   const utils = trpc.useUtils();
@@ -30,9 +40,13 @@ export default function AdminFinancialReconciliation() {
   const [reason, setReason] = useState('');
   const [effectiveDate, setEffectiveDate] = useState(today());
   const [amount, setAmount] = useState('');
-  const queryOptions = { staleTime: 5 * 60_000, refetchOnWindowFocus: false, refetchOnMount: false } as const;
-  const preview = trpc.financialReconciliation.preview.useQuery(undefined, queryOptions);
-  const workspace = trpc.financialReconciliation.workspace.useQuery({ status }, queryOptions);
+  const viewerScope = { viewerId: scope.viewerId, access: scope.access ?? 'manager' } as const;
+  const queryOptions = { enabled: scope.allowed, staleTime: 5 * 60_000, retry: false, refetchOnWindowFocus: false, refetchOnReconnect: false, refetchOnMount: true } as const;
+  const previewQuery = trpc.financialReconciliation.preview.useQuery(viewerScope, queryOptions);
+  const preview = { ...previewQuery, data: scope.allowed && !scope.checking && !previewQuery.error && previewQuery.data?.viewerId === scope.viewerId && previewQuery.data?.access === scope.access ? previewQuery.data : undefined };
+  const workspaceQuery = trpc.financialReconciliation.workspace.useQuery({ ...viewerScope, status }, queryOptions);
+  const workspace = { ...workspaceQuery, data: scope.allowed && !scope.checking && !workspaceQuery.error && workspaceQuery.data?.viewerId === scope.viewerId && workspaceQuery.data?.access === scope.access ? workspaceQuery.data : undefined };
+  const mutationError = (error: any) => { if (isFinanceAccessDenied(error)) void scope.refetch(); toast.error(error.message); };
   const refresh = async () => {
     await Promise.all([
       utils.financialReconciliation.preview.invalidate(),
@@ -45,7 +59,7 @@ export default function AdminFinancialReconciliation() {
       await refresh();
       toast.success(isRtl ? `تمت إضافة ${result.itemsAdded} عناصر للمراجعة.` : `${result.itemsAdded} review items added.`);
     },
-    onError: error => toast.error(error.message),
+    onError: mutationError,
   });
   const updateDraft = trpc.financialReconciliation.updateDraft.useMutation({
     onSuccess: async () => {
@@ -53,7 +67,7 @@ export default function AdminFinancialReconciliation() {
       setDraft(null);
       toast.success(isRtl ? 'تم تحديث مسودة المطابقة مع سجل تدقيق.' : 'Reconciliation draft and audit trail updated.');
     },
-    onError: error => toast.error(error.message),
+    onError: mutationError,
   });
   const resolve = trpc.financialReconciliation.resolveItem.useMutation({
     onSuccess: async result => {
@@ -65,7 +79,7 @@ export default function AdminFinancialReconciliation() {
         ? (isRtl ? 'كان هذا القرار محفوظًا مسبقًا.' : 'This decision was already saved.')
         : (isRtl ? 'تم حفظ قرار المالك وسجل التدقيق.' : 'Owner decision and audit trail saved.'));
     },
-    onError: error => toast.error(error.message),
+    onError: mutationError,
   });
   const submitDecision = () => {
     if (!selected) return;
@@ -78,6 +92,23 @@ export default function AdminFinancialReconciliation() {
       amountIlsMinor: Number.isSafeInteger(amountMinor) ? amountMinor : null,
     });
   };
+  const workspaceTitle = isRtl ? 'المطابقة المالية التاريخية' : 'Historical Financial Reconciliation';
+  const retryRead = async () => {
+    const fresh = await scope.refetch();
+    const access = fresh.data?.access;
+    if (!fresh.error && fresh.data?.viewerId === scope.viewerId && (access === 'owner' || access === 'manager')) {
+      const verifiedScope = { viewerId: scope.viewerId, access };
+      await Promise.all([utils.financialReconciliation.preview.invalidate(verifiedScope), utils.financialReconciliation.workspace.invalidate({ ...verifiedScope, status })]);
+    }
+  };
+  const readError = previewQuery.error || workspaceQuery.error;
+  if (scope.checking) return <FinanceReadNotice title={workspaceTitle} state="loading" onRetry={() => void retryRead()} />;
+  if (scope.error) return <FinanceReadNotice title={workspaceTitle} state={isFinanceAccessDenied(scope.error) ? 'denied' : 'failure'} onRetry={() => void retryRead()} />;
+  if (!scope.verified) return <FinanceReadNotice title={workspaceTitle} state="failure" onRetry={() => void retryRead()} />;
+  if (!scope.allowed) return <FinanceReadNotice title={workspaceTitle} state="denied" onRetry={() => void retryRead()} />;
+  if (readError) return <FinanceReadNotice title={workspaceTitle} state={isFinanceAccessDenied(readError) ? 'denied' : 'failure'} onRetry={() => void retryRead()} />;
+  if (previewQuery.isPending || workspaceQuery.isPending) return <FinanceReadNotice title={workspaceTitle} state="loading" onRetry={() => void retryRead()} />;
+  if (!preview.data || !workspace.data) return <FinanceReadNotice title={workspaceTitle} state="failure" onRetry={() => void retryRead()} />;
   const counts = preview.data?.counts;
   const classifications = preview.data?.classifications;
   const isBusy = preview.isLoading || workspace.isLoading;
@@ -91,12 +122,14 @@ export default function AdminFinancialReconciliation() {
             <h1 className="flex items-center gap-2 text-2xl font-bold"><Scale className="h-6 w-6 text-emerald-700" />{isRtl ? 'المطابقة المالية التاريخية' : 'Historical Financial Reconciliation'}</h1>
             <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{isRtl ? 'مراجعة سجلات قديمة باستخدام أرقام المصادر فقط. الطلبات والمفاتيح الأصلية للقراءة فقط ولا يتم تغييرها.' : 'Review historic records using source IDs only. Original orders and keys stay read-only and are never changed.'}</p>
           </div>
+          <div className="flex flex-wrap gap-2"><Button variant="outline" disabled={scope.checking || previewQuery.isFetching || workspaceQuery.isFetching} onClick={() => void retryRead()}><RefreshCw className="me-2 h-4 w-4" />{isRtl ? 'تحديث العرض' : 'Refresh view'}</Button>
           {preview.data?.canMaterialize && <Button onClick={() => materialize.mutate()} disabled={materialize.isPending || !preview.data.safeToMaterialize}>
             {materialize.isPending ? <Loader2 className="me-2 h-4 w-4 animate-spin" /> : <RefreshCw className="me-2 h-4 w-4" />}
             {isRtl ? 'إنشاء/تحديث قائمة المراجعة' : 'Build/refresh review queue'}
-          </Button>}
+          </Button>}</div>
         </div>
 
+        <p className="text-xs text-muted-foreground">{isRtl ? 'وقت تحميل المعاينة: ' : 'Preview loaded: '}{formatAcademyDateTime(preview.data.generatedAt, language)} · {isRtl ? 'القائمة: ' : 'Queue: '}{formatAcademyDateTime(workspace.data.generatedAt, language)} · {isRtl ? 'بتوقيت فلسطين' : 'Palestine time'}</p>
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
           <div className="flex gap-2 font-semibold"><AlertTriangle className="h-5 w-5 shrink-0" />{isRtl ? 'هذه المعاينة لا تسجل دخلاً ولا تفترض تاريخ دفع.' : 'This preview records no income and assumes no payment date.'}</div>
           <p className="mt-1 ps-7">{isRtl ? 'الدفع التاريخي لا يدخل التقارير إلا كتسوية موثقة بتاريخ الدفع الحقيقي. المبلغ أو التاريخ غير المؤكد يبقى خارج قائمة الدخل، والاستبعاد لا يحذف شيئًا.' : 'Historic payment enters reports only as a documented adjustment on the genuine payment date. Unknown amount/date stays outside P&L, and exclusion deletes nothing.'}</p>

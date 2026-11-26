@@ -633,7 +633,7 @@ describe('package activation routes', () => {
     await expect(createCaller(financeManager).orders.adminUpdateStatus({
       orderId: order.id,
       status: 'cancelled',
-    })).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    })).rejects.toMatchObject({ code: 'BAD_REQUEST' }); // Cancellation now requires the explicit reviewed version, confirmation and reason.
   });
 
   it('does not re-recognize a legacy completed order as a new cash event', async () => {

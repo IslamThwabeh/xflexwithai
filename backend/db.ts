@@ -2,6 +2,9 @@ import { eq, desc, and, or, sql, ne, inArray, notInArray, isNotNull, isNull, gte
 import { drizzle } from "drizzle-orm/d1";
 import { executeRecommendationBatch } from './services/recommendation-integrity.service';
 import type { D1Database } from "@cloudflare/workers-types";
+import { findCheckoutIntent, bindCheckoutIntentToOrder, createOrderForCheckoutIntent, CheckoutIntentError, type CheckoutIntent, type CheckoutOrderPlan } from './services/checkout-intent.service';
+import { hashCheckoutRequest, type CheckoutFlow, type CheckoutIntentPayload } from '../shared/checkoutIntent';
+import { getCheckoutInvoiceAmounts } from '../shared/checkoutPricing';
 import {
   InsertUser, users,
   InsertAdmin, admins,
@@ -56,7 +59,7 @@ import {
   orderRenewalDetails, orderTransactionPurposeEvents,
   legacyCustomerMigrations, legacyCustomerMigrationEvents,
   tradeCopierSubscriptions, TradeCopierSubscription, InsertTradeCopierSubscription,
-  orderItems, OrderItem, InsertOrderItem,
+  orderItems, OrderItem, InsertOrderItem, orderPricingSnapshots,
   packageSubscriptions, PackageSubscription, InsertPackageSubscription,
   studentDocuments, StudentDocument, InsertStudentDocument,
   // Events & Articles imports
@@ -16916,11 +16919,96 @@ export async function createOrder(input: Omit<InsertOrder, 'id'>): Promise<Order
   return order ?? null;
 }
 
-export async function getOrderById(id: number): Promise<Order | null> {
-  const db = await getDb();
+export async function getOrderById(id: number, database?: any): Promise<Order | null> {
+  const db = database ?? await getDb();
   if (!db) return null;
   const [order] = await db.select().from(orders).where(eq(orders.id, id)).limit(1);
   return order ?? null;
+}
+
+export async function getCheckoutIntentOrder(
+  intent: CheckoutIntent,
+  database?: any
+): Promise<Order | null> {
+  const connection = database ?? (await getDb());
+  if (!connection?.$client)
+    throw new Error("Checkout database is unavailable.");
+  const orderId = await findCheckoutIntent(connection.$client, intent);
+  if (!orderId) return null;
+  const order = await getOrderById(orderId, connection);
+  if (!order || order.userId !== intent.userId)
+    throw new CheckoutIntentError(
+      "FORBIDDEN",
+      "The saved checkout order is unavailable."
+    );
+  return order;
+}
+
+export async function registerCheckoutIntentOrder(
+  intent: CheckoutIntent,
+  orderId: number,
+  database?: any
+): Promise<Order> {
+  const connection = database ?? (await getDb());
+  if (!connection?.$client)
+    throw new Error("Checkout database is unavailable.");
+  const resolved = await bindCheckoutIntentToOrder(
+    connection.$client,
+    intent,
+    orderId
+  );
+  const order = await getOrderById(resolved, connection);
+  if (!order || order.userId !== intent.userId)
+    throw new CheckoutIntentError(
+      "FORBIDDEN",
+      "The saved checkout order is unavailable."
+    );
+  return order;
+}
+
+export async function createCheckoutOrder(
+  plan: CheckoutOrderPlan,
+  database?: any
+) {
+  const connection = database ?? (await getDb());
+  if (!connection?.$client)
+    throw new Error("Checkout database is unavailable.");
+  const result = await createOrderForCheckoutIntent(connection.$client, plan);
+  const order = await getOrderById(result.orderId, connection);
+  if (!order || order.userId !== plan.intent.userId)
+    throw new CheckoutIntentError(
+      "FORBIDDEN",
+      "The saved checkout order is unavailable."
+    );
+  return { order, idempotent: !result.created };
+}
+
+async function domainCheckoutIntent(
+  input: CheckoutIntentPayload & {
+    userId: number;
+    checkoutIntent?: CheckoutIntent;
+  },
+  flow: CheckoutFlow
+) {
+  if (input.checkoutIntent) {
+    if (
+      input.checkoutIntent.userId !== input.userId ||
+      input.checkoutIntent.flow !== flow
+    )
+      throw new CheckoutIntentError(
+        "FORBIDDEN",
+        "Checkout identity does not match this request."
+      );
+    return input.checkoutIntent;
+  }
+  // Staff preparation preserves its existing "one open request" behavior.
+  // Customer checkout routes always supply a stable, reusable intent instead.
+  return {
+    userId: input.userId,
+    key: `internal:${crypto.randomUUID()}`,
+    requestHash: await hashCheckoutRequest(input.userId, flow, input),
+    flow,
+  };
 }
 
 export async function getOrderRenewalDetail(orderId: number, database?: any) {
@@ -16959,74 +17047,113 @@ export async function getPaidRenewalQuote(userId: number, database?: any) {
   };
 }
 
-export async function createPaidRenewalOrder(input: {
-  userId: number;
-  paymentMethod: 'bank_transfer';
-  termsAcceptedAt: string;
-  termsAcceptedVersion: string;
-  termsAcceptedIpAddress?: string | null;
-  termsAcceptedUserAgent?: string | null;
-  notes?: string | null;
-}, database?: any) {
-  const db = database ?? await getDb();
-  if (!db) throw new Error('Database not available');
-  const [existing] = await db.select().from(orders).where(and(
-    eq(orders.userId, input.userId),
-    eq(orders.transactionPurpose, 'renewal'),
-    inArray(orders.status, ['pending', 'awaiting_confirmation', 'paid']),
-  )).orderBy(desc(orders.id)).limit(1);
-  if (existing) return { order: existing, detail: await getOrderRenewalDetail(existing.id, db), idempotent: true };
-
-  const quote = await getPaidRenewalQuote(input.userId, db);
-  const vatRate = 16;
-  const vatAmount = Math.round(quote.amountIlsMinor * vatRate / (100 + vatRate));
-  const now = new Date().toISOString();
-  const [order] = await db.insert(orders).values({
-    userId: input.userId,
-    status: 'pending',
-    subtotal: quote.amountIlsMinor - vatAmount,
-    discountAmount: 0,
-    vatRate,
-    vatAmount,
-    totalAmount: quote.amountIlsMinor,
-    currency: 'ILS',
-    paymentMethod: input.paymentMethod,
-    isGift: false,
-    isUpgrade: false,
-    transactionPurpose: 'renewal',
-    notes: input.notes?.trim() || `Paid renewal for ${quote.packageNameEn}`,
-    termsAcceptedAt: input.termsAcceptedAt,
-    termsAcceptedVersion: input.termsAcceptedVersion,
-    termsAcceptedIpAddress: input.termsAcceptedIpAddress ?? null,
-    termsAcceptedUserAgent: input.termsAcceptedUserAgent ?? null,
-    createdAt: now,
-    updatedAt: now,
-  }).returning();
-  if (!order) throw new Error('Failed to create the renewal order.');
-  await db.batch([
-    db.insert(orderItems).values({
-      orderId: order.id,
-      itemType: 'package',
-      packageId: quote.packageId,
-      courseId: null,
-      priceAtPurchase: quote.amountIlsMinor,
-      currency: 'ILS',
-      transactionPurpose: 'renewal',
-    }),
-    db.insert(orderRenewalDetails).values({
-      orderId: order.id,
-      userId: input.userId,
-      packageId: quote.packageId,
-      entitlementDays: quote.entitlementDays,
-      amountIlsMinor: quote.amountIlsMinor,
-      recommendationsCurrentEndAt: quote.recommendationsCurrentEndAt,
-      lexaiCurrentEndAt: quote.lexaiCurrentEndAt,
-      recommendationsProjectedEndAt: quote.recommendationsProjectedEndAt,
-      lexaiProjectedEndAt: quote.lexaiProjectedEndAt,
-      createdAt: now,
-    }),
-  ]);
-  return { order, detail: await getOrderRenewalDetail(order.id, db), idempotent: false };
+export async function createPaidRenewalOrder(
+  input: {
+    userId: number;
+    paymentMethod: "bank_transfer";
+    termsAcceptedAt: string;
+    termsAcceptedVersion: string;
+    termsAcceptedIpAddress?: string | null;
+    termsAcceptedUserAgent?: string | null;
+    notes?: string | null;
+    checkoutIntent?: CheckoutIntent;
+    expectedQuote?: { packageId: number; amountIlsMinor: number; entitlementDays: number; recommendationsCurrentEndAt: string | null; lexaiCurrentEndAt: string | null };
+  },
+  database?: any
+) {
+  const connection = database ?? (await getDb());
+  if (!connection) throw new Error("Database not available");
+  const intent = await domainCheckoutIntent(input, "renewal");
+  const hydrate = async (order: Order, idempotent: boolean) => ({
+    order,
+    detail: await getOrderRenewalDetail(order.id, connection),
+    idempotent,
+  });
+  if (input.checkoutIntent) {
+    const resumed = await getCheckoutIntentOrder(intent, connection);
+    if (resumed) return hydrate(resumed, true);
+  }
+  const findOpen = async () => {
+    const [existing] = await connection
+      .select()
+      .from(orders)
+      .where(
+        and(
+          eq(orders.userId, input.userId),
+          eq(orders.transactionPurpose, "renewal"),
+          inArray(orders.status, ["pending", "awaiting_confirmation", "paid"])
+        )
+      )
+      .orderBy(desc(orders.id))
+      .limit(1);
+    return existing as Order | undefined;
+  };
+  const reuse = async (existing: Order) =>
+    hydrate(
+      input.checkoutIntent
+        ? await registerCheckoutIntentOrder(intent, existing.id, connection)
+        : existing,
+      true
+    );
+  const existing = await findOpen();
+  if (existing) return reuse(existing);
+  const quote = await getPaidRenewalQuote(input.userId, connection),
+    now = new Date().toISOString();
+  if (input.expectedQuote && Object.entries(input.expectedQuote).some(([key, value]) => (quote as any)[key] !== value)) {
+    throw new CheckoutIntentError("CONFLICT", "The renewal quote changed. Refresh it and review the new price and dates before submitting.");
+  }
+  const { grossSubtotalMinor, grossDiscountMinor, formatVersion, ...invoice } =
+    getCheckoutInvoiceAmounts(quote.amountIlsMinor, 0);
+  try {
+    const saved = await createCheckoutOrder(
+      {
+        intent,
+        order: {
+          userId: input.userId,
+          status: "pending",
+          ...invoice,
+          currency: "ILS",
+          paymentMethod: input.paymentMethod,
+          isGift: false,
+          isUpgrade: false,
+          transactionPurpose: "renewal",
+          notes:
+            input.notes?.trim() || "Paid renewal for " + quote.packageNameEn,
+          termsAcceptedAt: input.termsAcceptedAt,
+          termsAcceptedVersion: input.termsAcceptedVersion,
+          termsAcceptedIpAddress: input.termsAcceptedIpAddress ?? null,
+          termsAcceptedUserAgent: input.termsAcceptedUserAgent ?? null,
+          createdAt: now,
+          updatedAt: now,
+        },
+        item: {
+          itemType: "package",
+          packageId: quote.packageId,
+          courseId: null,
+          priceAtPurchase: quote.amountIlsMinor,
+          currency: "ILS",
+          transactionPurpose: "renewal",
+        },
+        renewal: {
+          userId: input.userId,
+          packageId: quote.packageId,
+          entitlementDays: quote.entitlementDays,
+          amountIlsMinor: quote.amountIlsMinor,
+          recommendationsCurrentEndAt: quote.recommendationsCurrentEndAt,
+          lexaiCurrentEndAt: quote.lexaiCurrentEndAt,
+          recommendationsProjectedEndAt: quote.recommendationsProjectedEndAt,
+          lexaiProjectedEndAt: quote.lexaiProjectedEndAt,
+          createdAt: now,
+        },
+      },
+      connection
+    );
+    return hydrate(saved.order, saved.idempotent);
+  } catch (error) {
+    const competing = await findOpen();
+    if (competing) return reuse(competing);
+    throw error;
+  }
 }
 
 export const TRADE_COPIER_SERVICE_KEY = 'trade_copier' as const;
@@ -17069,81 +17196,123 @@ export async function getUserOpenTradeCopierSubscription(userId: number, databas
   return row ?? null;
 }
 
-export async function createTradeCopierOrder(input: {
-  userId: number;
-  paymentMethod: 'bank_transfer';
-  termsAcceptedAt: string;
-  termsAcceptedVersion: string;
-  termsAcceptedIpAddress?: string | null;
-  termsAcceptedUserAgent?: string | null;
-  notes?: string | null;
-  accessDays?: number | null;
-}, database?: any) {
-  const db = database ?? await getDb();
-  if (!db) throw new Error('Database not available');
-
-  const existingSubscription = await getUserOpenTradeCopierSubscription(input.userId, db);
-  if (existingSubscription) {
-    const existingOrder = await getOrderById(existingSubscription.orderId);
-    if (existingOrder) return { order: existingOrder, subscription: existingSubscription, idempotent: true };
+export async function createTradeCopierOrder(
+  input: {
+    userId: number;
+    paymentMethod: "bank_transfer";
+    termsAcceptedAt: string;
+    termsAcceptedVersion: string;
+    termsAcceptedIpAddress?: string | null;
+    termsAcceptedUserAgent?: string | null;
+    notes?: string | null;
+    accessDays?: number | null;
+    checkoutIntent?: CheckoutIntent;
+    expectedOffer?: { amountIlsMinor: number; accessDays: number };
+  },
+  database?: any
+) {
+  const connection = database ?? (await getDb());
+  if (!connection) throw new Error("Database not available");
+  const intent = await domainCheckoutIntent(input, "copier");
+  const hydrate = async (order: Order, idempotent: boolean) => {
+    const subscription = await getTradeCopierSubscriptionByOrderId(
+      order.id,
+      connection
+    );
+    if (!subscription)
+      throw new Error(
+        "The saved copier request needs a service-detail review."
+      );
+    return { order, subscription, idempotent };
+  };
+  if (input.checkoutIntent) {
+    const resumed = await getCheckoutIntentOrder(intent, connection);
+    if (resumed) return hydrate(resumed, true);
   }
-
-  const accessDays = Math.max(1, Math.min(3650, Math.round(input.accessDays ?? TRADE_COPIER_DEFAULT_ACCESS_DAYS)));
-  const amountIlsMinor = TRADE_COPIER_AMOUNT_ILS_MINOR;
-  const vatRate = 16;
-  const vatAmount = Math.round(amountIlsMinor * vatRate / (100 + vatRate));
-  const now = new Date().toISOString();
-
-  const [order] = await db.insert(orders).values({
-    userId: input.userId,
-    status: 'pending',
-    subtotal: amountIlsMinor - vatAmount,
-    discountAmount: 0,
-    vatRate,
-    vatAmount,
-    totalAmount: amountIlsMinor,
-    currency: 'ILS',
-    paymentMethod: input.paymentMethod,
-    isGift: false,
-    isUpgrade: false,
-    transactionPurpose: 'copier_subscription',
-    notes: input.notes?.trim() || `Private trade copier subscription (${accessDays} days)`,
-    termsAcceptedAt: input.termsAcceptedAt,
-    termsAcceptedVersion: input.termsAcceptedVersion,
-    termsAcceptedIpAddress: input.termsAcceptedIpAddress ?? null,
-    termsAcceptedUserAgent: input.termsAcceptedUserAgent ?? null,
-    createdAt: now,
-    updatedAt: now,
-  }).returning();
-  if (!order) throw new Error('Failed to create the trade copier order.');
-
-  await db.batch([
-    db.insert(orderItems).values({
-      orderId: order.id,
-      itemType: 'service',
-      packageId: null,
-      courseId: null,
-      priceAtPurchase: amountIlsMinor,
-      currency: 'ILS',
-      transactionPurpose: 'copier_subscription',
-    }),
-    db.insert(tradeCopierSubscriptions).values({
-      userId: input.userId,
-      orderId: order.id,
-      status: 'pending_payment',
-      serviceKey: TRADE_COPIER_SERVICE_KEY,
-      amountIlsMinor,
-      accessDays,
-      createdByType: 'user',
-      createdById: input.userId,
-      createdAt: now,
-      updatedAt: now,
-    } as InsertTradeCopierSubscription),
-  ]);
-
-  const subscription = await getTradeCopierSubscriptionByOrderId(order.id, db);
-  if (!subscription) throw new Error('Failed to create the trade copier subscription.');
-  return { order, subscription, idempotent: false };
+  const reuse = async (subscription: TradeCopierSubscription) => {
+    const existing = await getOrderById(subscription.orderId, connection);
+    if (!existing || existing.userId !== input.userId)
+      throw new Error("The saved copier order needs review.");
+    return hydrate(
+      input.checkoutIntent
+        ? await registerCheckoutIntentOrder(intent, existing.id, connection)
+        : existing,
+      true
+    );
+  };
+  const existing = await getUserOpenTradeCopierSubscription(
+    input.userId,
+    connection
+  );
+  if (existing) return reuse(existing);
+  const accessDays = Math.max(
+      1,
+      Math.min(
+        3650,
+        Math.round(input.accessDays ?? TRADE_COPIER_DEFAULT_ACCESS_DAYS)
+      )
+    ),
+    amountIlsMinor = TRADE_COPIER_AMOUNT_ILS_MINOR,
+    now = new Date().toISOString();
+  if (input.expectedOffer && (input.expectedOffer.amountIlsMinor !== amountIlsMinor || input.expectedOffer.accessDays !== accessDays)) {
+    throw new CheckoutIntentError("CONFLICT", "The copier offer changed. Refresh it and review the new price and duration before submitting.");
+  }
+  const { grossSubtotalMinor, grossDiscountMinor, formatVersion, ...invoice } =
+    getCheckoutInvoiceAmounts(amountIlsMinor, 0);
+  try {
+    const saved = await createCheckoutOrder(
+      {
+        intent,
+        order: {
+          userId: input.userId,
+          status: "pending",
+          ...invoice,
+          currency: "ILS",
+          paymentMethod: input.paymentMethod,
+          isGift: false,
+          isUpgrade: false,
+          transactionPurpose: "copier_subscription",
+          notes:
+            input.notes?.trim() ||
+            "Private trade copier subscription (" + accessDays + " days)",
+          termsAcceptedAt: input.termsAcceptedAt,
+          termsAcceptedVersion: input.termsAcceptedVersion,
+          termsAcceptedIpAddress: input.termsAcceptedIpAddress ?? null,
+          termsAcceptedUserAgent: input.termsAcceptedUserAgent ?? null,
+          createdAt: now,
+          updatedAt: now,
+        },
+        item: {
+          itemType: "service",
+          packageId: null,
+          courseId: null,
+          priceAtPurchase: amountIlsMinor,
+          currency: "ILS",
+          transactionPurpose: "copier_subscription",
+        },
+        copier: {
+          userId: input.userId,
+          status: "pending_payment",
+          serviceKey: TRADE_COPIER_SERVICE_KEY,
+          amountIlsMinor,
+          accessDays,
+          createdByType: "user",
+          createdById: input.userId,
+          createdAt: now,
+          updatedAt: now,
+        },
+      },
+      connection
+    );
+    return hydrate(saved.order, saved.idempotent);
+  } catch (error) {
+    const competing = await getUserOpenTradeCopierSubscription(
+      input.userId,
+      connection
+    );
+    if (competing) return reuse(competing);
+    throw error;
+  }
 }
 
 export async function listTradeCopierSubscriptions(input?: {
@@ -18360,10 +18529,14 @@ export async function getOrderPackageConfigurationSummaries(orderIds: number[]) 
       lexaiCurrentEndAt: orderRenewalDetails.lexaiCurrentEndAt,
       recommendationsProjectedEndAt: orderRenewalDetails.recommendationsProjectedEndAt,
       lexaiProjectedEndAt: orderRenewalDetails.lexaiProjectedEndAt,
+      pricingFormatVersion: orderPricingSnapshots.formatVersion,
+      grossSubtotalMinor: orderPricingSnapshots.grossSubtotalMinor,
+      grossDiscountMinor: orderPricingSnapshots.grossDiscountMinor,
     })
     .from(orderItems)
     .innerJoin(packages, eq(packages.id, orderItems.packageId))
     .leftJoin(orderRenewalDetails, eq(orderRenewalDetails.orderId, orderItems.orderId))
+    .leftJoin(orderPricingSnapshots, eq(orderPricingSnapshots.orderId, orderItems.orderId))
     .where(and(
       inArray(orderItems.orderId, chunk),
       eq(orderItems.itemType, 'package'),

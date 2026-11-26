@@ -11,6 +11,8 @@ import { trpc } from '@/lib/trpc';
 import ClientLayout from '@/components/ClientLayout';
 import UpgradeCallout from '@/components/UpgradeCallout';
 import { toast } from 'sonner';
+import { useCheckoutIntent } from '@/lib/useCheckoutIntent';
+import CheckoutIntentNotice from '@/components/CheckoutIntentNotice';
 
 export default function Upgrade() {
   const { language } = useLanguage();
@@ -21,18 +23,24 @@ export default function Upgrade() {
   const [termsAccepted, setTermsAccepted] = useState(false);
 
   const { data: eligibility, isLoading, isError, refetch } = trpc.upgrade.checkEligibility.useQuery(undefined);
+  const intent = useCheckoutIntent('upgrade',{paymentMethod,targetPackageId:eligibility?.targetPackageId,notes,termsAcceptedVersion:CURRENT_TERMS_VERSION},!!eligibility&&eligibility.isUpgrade!==false);
 
   const createUpgradeOrder = trpc.upgrade.createOrder.useMutation({
-    onSuccess: (data) => {
-      toast.success(isRtl ? 'تم إنشاء طلب الترقية بنجاح' : 'Upgrade order created successfully');
+    onSuccess: (data,variables) => {
+      intent.recordOrder(data.id,variables.checkoutIntentKey);
+      toast.success(data.checkoutIntentReused ? (isRtl ? 'تم فتح طلب الترقية السابق دون إنشاء نسخة أخرى' : 'Existing upgrade request opened') : (isRtl ? 'تم إنشاء طلب الترقية بنجاح' : 'Upgrade order created successfully'));
       navigate(`/orders/${data.id}`);
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => { toast.error(e.message); if(e.data?.code==='CONFLICT'){setTermsAccepted(false);void refetch();} },
   });
 
   const handleSubmit = () => {
-    if (!eligibility || !termsAccepted || createUpgradeOrder.isPending) return;
+    if (!eligibility || !termsAccepted || createUpgradeOrder.isPending || !intent.ready) return;
+    const checkoutIntentKey = intent.beginSubmission();
+    if (!checkoutIntentKey) return;
     createUpgradeOrder.mutate({
+      checkoutIntentKey,
+      expectedQuote: {amountMinor:eligibility.upgradePrice,currentPackageId:eligibility.currentPackageId},
       targetPackageId: eligibility.targetPackageId,
       paymentMethod,
       notes: notes || undefined,
@@ -189,6 +197,7 @@ export default function Upgrade() {
               <Label>{isRtl ? 'ملاحظات (اختياري)' : 'Notes (optional)'}</Label>
               <Textarea
                 value={notes}
+                maxLength={2000}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={2}
                 className="mt-2"
@@ -239,6 +248,7 @@ export default function Upgrade() {
                   : 'Prices are shown in shekel (₪). The final amount and bank transfer instructions will be confirmed with the support team after the upgrade order is placed.'}
               </div>
 
+              <div className="mb-4"><CheckoutIntentNotice intent={intent} busy={createUpgradeOrder.isPending} onNewPrepared={() => setTermsAccepted(false)} /></div>
               <div className="mb-4 flex items-start gap-3 text-sm text-gray-600">
                 <input
                   id="upgrade-terms"
@@ -264,7 +274,7 @@ export default function Upgrade() {
 
               <Button
                 onClick={handleSubmit}
-                disabled={createUpgradeOrder.isPending || !termsAccepted}
+                disabled={createUpgradeOrder.isPending || !termsAccepted || !intent.ready}
                 className="w-full h-12 text-base"
                 size="lg"
               >

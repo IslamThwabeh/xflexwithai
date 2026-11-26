@@ -23,6 +23,9 @@ import { trpc } from '@/lib/trpc';
 import DashboardLayout from '@/components/DashboardLayout';
 import OrderKeyDeliveryPanel from '@/components/OrderKeyDeliveryPanel';
 import OrderRelatedHistory from '@/components/admin/OrderRelatedHistory';
+import OrderCancellationDialog from '@/components/admin/OrderCancellationDialog';
+import OrderStatusHistory from '@/components/admin/OrderStatusHistory';
+import OrderPriceBreakdown from '@/components/OrderPriceBreakdown';
 import { useDataTable, DataTablePagination } from '@/components/DataTable';
 import { toast } from 'sonner';
 import { isLikelyValidEmail, normalizeEmailAddress } from '@shared/emailValidation';
@@ -90,6 +93,8 @@ export default function AdminOrders() {
   const [uploadingProof, setUploadingProof] = useState(false);
   const [proofError, setProofError] = useState('');
   const [recipientOrder, setRecipientOrder] = useState<any | null>(null);
+  const [cancellationOrder, setCancellationOrder] = useState<any | null>(null);
+  useEffect(() => { setCancellationOrder(null); }, [routeSearch]);
   const [correctedIsGift, setCorrectedIsGift] = useState(false);
   const [correctedGiftEmail, setCorrectedGiftEmail] = useState('');
   const [correctionReason, setCorrectionReason] = useState('');
@@ -118,6 +123,7 @@ export default function AdminOrders() {
   const updateMutation = trpc.orders.adminUpdateStatus.useMutation({
     onSuccess: (data) => {
       utils.orders.adminList.invalidate();
+      if (data.order) void utils.orders.adminStatusHistory.invalidate({ orderId: data.order.id });
       if (data.activationKeys?.length) {
         setLocation(`/admin/orders?orderId=${data.order!.id}`);
         setSearch(String(data.order!.id));
@@ -135,10 +141,11 @@ export default function AdminOrders() {
         setFinancialPayment({ paidAt: '', baseAmountIls: '', rationale: '' });
       }
     },
-    onError: (error) => {
+    onError: (error, variables) => {
       // A late issuance failure can follow a committed cash confirmation.
       // Refresh the persisted state so the recovery action remains reachable.
       utils.orders.adminList.invalidate();
+      void utils.orders.adminStatusHistory.invalidate({ orderId: variables.orderId });
       toast.error(error.message);
     },
   });
@@ -196,13 +203,6 @@ export default function AdminOrders() {
     }
     lastFocusedOrder.current = id;
   }, [routeSearch, setPage]);
-
-  const handleStatusChange = async (orderId: number, newStatus: string) => {
-    await updateMutation.mutateAsync({
-      orderId,
-      status: newStatus as any,
-    }).catch(() => undefined);
-  };
 
   const openIssueDialog = (order: any) => {
     if (order.transactionPurpose === 'copier_subscription') {
@@ -446,6 +446,7 @@ export default function AdminOrders() {
                   <div className="border-t px-5 py-4 bg-gray-50 rounded-b-xl">
                     {!order.transactionPurpose && ['pending', 'awaiting_confirmation', 'paid'].includes(order.status) && canConfirmPayment && <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3"><p className="mb-2 text-sm font-semibold text-amber-950">{language === 'ar' ? 'يجب تصنيف غرض المعاملة مرة واحدة قبل تأكيد الدفع.' : 'Classify the immutable transaction purpose before confirming payment.'}</p><div className="grid gap-2 md:grid-cols-[180px_1fr_auto]"><select className="h-10 rounded-md border bg-white px-3" value={(purposeDrafts[order.id]?.purpose || (order.isUpgrade ? 'upgrade' : 'new_sale'))} onChange={e => setPurposeDrafts({ ...purposeDrafts, [order.id]: { purpose: e.target.value as any, reason: purposeDrafts[order.id]?.reason || '' } })}><option value="new_sale">{purposeLabels.new_sale[language]}</option><option value="renewal">{purposeLabels.renewal[language]}</option><option value="upgrade">{purposeLabels.upgrade[language]}</option></select><Input placeholder={language === 'ar' ? 'سبب التصنيف (5 أحرف على الأقل)' : 'Classification reason (at least 5 characters)'} value={purposeDrafts[order.id]?.reason || ''} onChange={e => setPurposeDrafts({ ...purposeDrafts, [order.id]: { purpose: purposeDrafts[order.id]?.purpose || (order.isUpgrade ? 'upgrade' : 'new_sale'), reason: e.target.value } })} /><Button variant="outline" disabled={classifyPurpose.isPending} onClick={() => classifyPurpose.mutate({ orderId: order.id, purpose: purposeDrafts[order.id]?.purpose || (order.isUpgrade ? 'upgrade' : 'new_sale'), reason: purposeDrafts[order.id]?.reason || '' })}>{language === 'ar' ? 'تثبيت التصنيف' : 'Lock classification'}</Button></div></div>}
                     <OrderRelatedHistory key={order.id} orderId={order.id} />
+                    <OrderStatusHistory key={`history-${order.id}`} orderId={order.id} />
                     <div className="grid md:grid-cols-2 gap-4 text-sm mb-4">
                       <div className="md:col-span-2 bg-emerald-50 rounded-lg px-3 py-2">
                         <span className="text-gray-500 font-medium">{language === 'ar' ? 'العميل' : 'Customer'}:</span>{' '}
@@ -462,17 +463,8 @@ export default function AdminOrders() {
                         <p className="whitespace-pre-wrap break-words">{order.notes}</p>
                         {getOrderNoteAttachments(order.notes).map(url => <a key={url} href={url} target="_blank" rel="noopener noreferrer" className="mt-3 block font-semibold text-amber-900 underline">{language === 'ar' ? 'إفادة دفع من صاحب العمل — الإيصال الفعلي قيد الانتظار' : 'Owner-reported payment note — actual receipt pending'}</a>)}
                       </div>}
-                      <div>
-                        <span className="text-gray-500">{language === 'ar' ? 'المبلغ الفرعي' : 'Subtotal'}:</span>{' '}
-                        {formatAdminCurrencyFromIls(order.displaySubtotalIls, language)}
-                      </div>
-                      <div>
-                        <span className="text-gray-500">VAT ({order.vatRate}%):</span>{' '}
-                        {formatAdminCurrencyFromIls(order.displayVatIls, language)}
-                      </div>
-                      <div>
-                        <span className="text-gray-500">{language === 'ar' ? 'الإجمالي' : 'Total'}:</span>{' '}
-                        <strong>{formatAdminCurrencyFromIls(order.displayTotalIls, language)}</strong>
+                      <div className="md:col-span-2">
+                        <OrderPriceBreakdown order={order} audience="admin" />
                       </div>
                       <div>
                         <span className="text-gray-500">{language === 'ar' ? 'طريقة الدفع' : 'Payment'}:</span>{' '}
@@ -585,8 +577,8 @@ export default function AdminOrders() {
                               <CheckCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'اعتماد الطلب وإرسال المفتاح' : 'Approve & send key'}
                             </Button>
                           )}
-                          {canManageOperationalOrders && (
-                            <Button size="sm" variant="outline" onClick={() => handleStatusChange(order.id, 'cancelled')} className="text-red-600">
+                          {(canManageOperationalOrders || (canConfirmPayment && !!order.paymentProofUrl)) && (
+                            <Button size="sm" variant="outline" onClick={() => setCancellationOrder(order)} className="text-red-600">
                               <XCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'إلغاء' : 'Cancel'}
                             </Button>
                           )}
@@ -599,8 +591,8 @@ export default function AdminOrders() {
                               <CheckCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'اعتماد الطلب وإرسال المفتاح' : 'Approve & send key'}
                             </Button>
                           )}
-                          {canManageOperationalOrders && (
-                            <Button size="sm" variant="outline" onClick={() => handleStatusChange(order.id, 'cancelled')} className="text-red-600">
+                          {(canManageOperationalOrders || (canConfirmPayment && !!order.paymentProofUrl)) && (
+                            <Button size="sm" variant="outline" onClick={() => setCancellationOrder(order)} className="text-red-600">
                               <XCircle className="w-3.5 h-3.5 me-1" />{language === 'ar' ? 'رفض' : 'Reject'}
                             </Button>
                           )}
@@ -624,6 +616,8 @@ export default function AdminOrders() {
             })}
           </div>
         )}
+
+        {cancellationOrder && <OrderCancellationDialog key={cancellationOrder.id} order={cancellationOrder} onClose={() => setCancellationOrder(null)} onCancelled={() => setCancellationOrder(null)} />}
 
         <Dialog open={!!retireOrder} onOpenChange={open => { if (!open && !retireLiveOrder.isPending) setRetireOrder(null); }}>
           <DialogContent dir={language === 'ar' ? 'rtl' : 'ltr'}>

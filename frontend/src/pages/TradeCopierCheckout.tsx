@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Link, useLocation } from 'wouter';
 import { ArrowLeft, Building2, CheckCircle, Copy, LogIn, Loader2, ShieldCheck, TrendingUp, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
+import { useCheckoutIntent } from '@/lib/useCheckoutIntent';
+import CheckoutIntentNotice from '@/components/CheckoutIntentNotice';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { RegisterForm } from '@/components/RegisterForm';
@@ -98,13 +100,15 @@ export default function TradeCopierCheckout() {
   const [notes, setNotes] = useState('');
   const [termsAccepted, setTermsAccepted] = useState(false);
 
-  const { data: offer, isLoading: offerLoading } = trpc.tradeCopier.offer.useQuery();
+  const { data: offer, isLoading: offerLoading, refetch: refreshOffer } = trpc.tradeCopier.offer.useQuery();
+  const intent = useCheckoutIntent('copier',{paymentMethod:'bank_transfer',notes,termsAcceptedVersion:CURRENT_TERMS_VERSION},isAuthenticated&&!!offer);
   const createOrder = trpc.tradeCopier.createOrder.useMutation({
-    onSuccess: (result) => {
-      toast.success(isRtl ? 'تم إنشاء طلب الناسخ بنجاح' : 'Trade copier order created');
+    onSuccess: (result,variables) => {
+      intent.recordOrder(result.order.id,variables.checkoutIntentKey);
+      toast.success(result.idempotent ? (isRtl ? 'تم فتح طلب الناسخ السابق دون إنشاء نسخة أخرى' : 'Existing copier request opened') : (isRtl ? 'تم إنشاء طلب الناسخ بنجاح' : 'Trade copier order created'));
       navigate(`/orders/${result.order.id}`);
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error) => {toast.error(error.message);if(error.data?.code==='CONFLICT'){setTermsAccepted(false);void refreshOffer();}},
   });
 
   if (authLoading || offerLoading || !offer) {
@@ -125,7 +129,12 @@ export default function TradeCopierCheckout() {
   const subtotalIls = totalIls - vatIls;
 
   const handleSubmit = () => {
+    if (!termsAccepted || createOrder.isPending || !intent.ready) return;
+    const checkoutIntentKey = intent.beginSubmission();
+    if (!checkoutIntentKey) return;
     createOrder.mutate({
+      checkoutIntentKey,
+      expectedOffer:{amountIlsMinor:offer.amountIlsMinor,accessDays:offer.accessDays},
       paymentMethod: 'bank_transfer',
       notes: notes.trim() || undefined,
       termsAcceptedAt: new Date().toISOString(),
@@ -198,6 +207,7 @@ export default function TradeCopierCheckout() {
                   <label className="font-medium">{isRtl ? 'ملاحظات للدعم (اختياري)' : 'Notes for support (optional)'}</label>
                   <Textarea
                     value={notes}
+                    maxLength={1000}
                     onChange={(event) => setNotes(event.target.value)}
                     rows={3}
                     className="mt-2"
@@ -240,6 +250,7 @@ export default function TradeCopierCheckout() {
                       : 'After receipt upload and payment approval, support will see the status and complete trading-account linking externally.'}
                   </div>
 
+                  <div className="mb-4"><CheckoutIntentNotice intent={intent} busy={createOrder.isPending} onNewPrepared={() => setTermsAccepted(false)} /></div>
                   <div className="mb-4 flex items-start gap-3 text-sm text-gray-600">
                     <input
                       id="copier-terms"
@@ -265,7 +276,7 @@ export default function TradeCopierCheckout() {
 
                   <Button
                     onClick={handleSubmit}
-                    disabled={createOrder.isPending || !termsAccepted}
+                    disabled={createOrder.isPending || !termsAccepted || !intent.ready}
                     className="h-12 w-full text-base"
                     size="lg"
                   >

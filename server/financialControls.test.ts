@@ -29,7 +29,7 @@ const owner: FinanceActor = { actorType: 'admin', actorId: 1, access: 'owner' };
 const manager: FinanceActor = { actorType: 'staff', actorId: 20, access: 'manager' };
 const secondManager: FinanceActor = { actorType: 'staff', actorId: 21, access: 'manager' };
 
-async function fixture() {
+async function fixture(purpose: 'new_sale' | 'copier_subscription' = 'new_sale') {
   const directory = mkdtempSync(join(tmpdir(), 'xflex-financial-controls-'));
   temporaryDirectories.push(directory);
   const filename = join(directory, 'fixture.sqlite');
@@ -44,7 +44,7 @@ async function fixture() {
     (entry_type, status, effective_at, reporting_month, amount_minor, currency, base_amount_ils_minor,
      order_id, source_type, source_reference, created_by_type, approved_by_type, approved_by_id, approved_at)
     VALUES ('payment', 'approved', '2026-07-05T00:00:00.000Z', '2026-07', 10000, 'ILS', 10000,
-      1, 'order_payment_new_sale', 'order:1', 'admin', 'admin', 1, '2026-07-05T00:00:00.000Z')`).run();
+      1, ?, 'order:1', 'admin', 'admin', 1, '2026-07-05T00:00:00.000Z')`).run(`order_payment_${purpose}`);
   sqlite.close();
   const database = await createLocalD1Database(filename);
   return { database, orm: drizzle(database) };
@@ -55,6 +55,28 @@ afterEach(() => {
 });
 
 describe('financial adjustment and period controls', () => {
+  it.each([
+    ['new_sale','copier_subscription'],
+    ['copier_subscription','new_sale'],
+  ] as const)('moves only receipt classification from %s to %s', async (previousPurpose, nextPurpose) => {
+    const { database, orm } = await fixture(previousPurpose);
+    try {
+      const source = await database.prepare('SELECT * FROM financial_ledger_entries WHERE id=1').first();
+      const result = await reclassifyFinancialPaymentPurpose({ actor: owner, entryId: 1, nextPurpose, reason: 'Owner compared the source receipt and service' }, orm);
+      expect(result).toMatchObject({previousPurpose,nextPurpose,idempotent:false});
+      expect(await database.prepare('SELECT * FROM financial_ledger_entries WHERE id=1').first()).toEqual(source);
+      const report = await getFinancialManagementDashboard({from:'2026-01-01',to:'2026-12-31',grouping:'year',includeLedger:true},orm);
+      expect(report.totals).toMatchObject({confirmedIncomeMinor:10000,netRevenueMinor:10000,operatingProfitLossMinor:10000,
+        copierMinor:nextPurpose==='copier_subscription'?10000:0,academyReceiptsMinor:nextPurpose==='new_sale'?10000:0});
+      const pair = await database.prepare("SELECT effective_at,base_amount_ils_minor,transaction_purpose FROM financial_ledger_entries WHERE source_type='financial_reclassification' ORDER BY id").all();
+      expect(pair.results).toEqual([
+        {effective_at:'2026-07-05T00:00:00.000Z',base_amount_ils_minor:-10000,transaction_purpose:previousPurpose},
+        {effective_at:'2026-07-05T00:00:00.000Z',base_amount_ils_minor:10000,transaction_purpose:nextPurpose},
+      ]);
+      expect(await reclassifyFinancialPaymentPurpose({actor:owner,entryId:1,nextPurpose,reason:'Safe retry of the same correction'},orm)).toMatchObject({idempotent:true});
+      expect((await database.prepare('SELECT count(*) AS count FROM financial_ledger_entries').first('count'))).toBe(3);
+    } finally { (database as any).close(); }
+  });
   it('uses the intended indexes for every financial-control read path', () => {
     const sqlite = new Database(':memory:');
     sqlite.exec(`

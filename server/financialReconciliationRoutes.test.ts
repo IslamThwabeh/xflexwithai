@@ -23,6 +23,27 @@ const actor = (access: FinanceActor['access']): FinanceActor => ({ actorType: ac
 const caller = () => appRouter.createCaller({ req: { headers: {}, method: 'POST', path: '/api/trpc/financialReconciliation' }, user, setCookie: () => {}, clearCookie: () => {} } as any);
 
 describe('financial reconciliation route authorization', () => {
+  it('returns verified user/role scope and fresh timestamps for read-only preview and queue reads', async () => {
+    vi.mocked(db.resolveFinanceActor).mockResolvedValue(actor('owner'));
+    const scope = { viewerId: 20, access: 'owner' as const };
+    await expect(caller().financialReconciliation.preview(scope)).resolves.toMatchObject({ ...scope, generatedAt: expect.any(String) });
+    await expect(caller().financialReconciliation.workspace({ ...scope, status: 'excluded' })).resolves.toMatchObject({ ...scope, generatedAt: expect.any(String) });
+    expect(db.getFinancialReconciliationDashboard).toHaveBeenCalledWith('excluded');
+    expect(db.prepareFinancialReconciliationQueue).not.toHaveBeenCalled();
+  });
+
+  it.each([{ viewerId: 1, access: 'owner' }, { viewerId: 20, access: 'manager' }] as const)('rejects changed preview scope %o before source reads', async input => {
+    vi.mocked(db.resolveFinanceActor).mockResolvedValue(actor('owner'));
+    await expect(caller().financialReconciliation.preview(input)).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    expect(db.previewFinancialReconciliation).not.toHaveBeenCalled();
+  });
+
+  it.each([{ viewerId: 21, access: 'owner' }, { viewerId: 20, access: 'manager' }, { viewerId: 20 }, { access: 'owner' }] as const)('rejects mismatched or partial queue scope %o before source reads', async input => {
+    vi.mocked(db.resolveFinanceActor).mockResolvedValue(actor('owner'));
+    await expect(caller().financialReconciliation.workspace({ status: 'unresolved', ...input })).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    expect(db.getFinancialReconciliationDashboard).not.toHaveBeenCalled();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(db.getAdminByEmail).mockResolvedValue(null as any);

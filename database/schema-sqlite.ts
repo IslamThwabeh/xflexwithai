@@ -274,6 +274,7 @@ export const registrationKeys = sqliteTable("registrationKeys", {
   orderActivationReconciliationIndex: index("idx_registration_keys_order_activation_reconciliation")
     .on(table.activatedAt, table.id)
     .where(sql`${table.orderId} IS NOT NULL`),
+  orderGuardIndex: index('idx_registration_keys_order_guard').on(table.orderId).where(sql`${table.orderId} IS NOT NULL`),
 }));
 
 export type RegistrationKey = typeof registrationKeys.$inferSelect;
@@ -1157,6 +1158,7 @@ export const livePackageEntitlements = sqliteTable("live_package_entitlements", 
 }, (table) => ({
   uniqueUserCohort: unique("uq_live_package_entitlements_user_cohort").on(table.userId, table.cohortKey),
   uniqueRegistrationKey: unique("uq_live_package_entitlements_registration_key").on(table.registrationKeyId),
+  orderGuardIndex: index('idx_live_entitlements_order_guard').on(table.orderId).where(sql`${table.orderId} IS NOT NULL`),
 }));
 
 export const livePackageSessions = sqliteTable("live_package_sessions", {
@@ -1318,6 +1320,26 @@ export const orders = sqliteTable("orders", {
 export type Order = typeof orders.$inferSelect;
 export type InsertOrder = typeof orders.$inferInsert;
 
+export const checkoutIntents = sqliteTable('checkout_intents', {
+  userId: integer('user_id').notNull(),
+  intentKey: text('intent_key').notNull(),
+  requestHash: text('request_hash').notNull(),
+  flow: text('flow').notNull(),
+  orderId: integer('order_id').references(() => orders.id),
+  createdAt: text('created_at').notNull(),
+}, table => ({
+  identityKey: primaryKey({ columns: [table.userId, table.intentKey] }),
+  orderLookup: index('idx_checkout_intents_order').on(table.orderId).where(sql`${table.orderId} IS NOT NULL`),
+}));
+
+export const orderPricingSnapshots = sqliteTable('order_pricing_snapshots', {
+  orderId: integer('order_id').primaryKey().references(() => orders.id),
+  formatVersion: integer('format_version').notNull(),
+  grossSubtotalMinor: integer('gross_subtotal_minor').notNull(),
+  grossDiscountMinor: integer('gross_discount_minor').notNull(),
+  createdAt: text('created_at').notNull(),
+});
+
 export const orderKeyDeliveryJobs = sqliteTable('order_key_delivery_jobs', {
   orderId: integer('order_id').primaryKey().references(() => orders.id),
   status: text('status').notNull().default('pending'),
@@ -1394,7 +1416,7 @@ export const orderStatusHistory = sqliteTable("order_status_history", {
   reason: text("reason"),
   ipAddress: text("ip_address"),
   createdAt: text("created_at").default(sql`(datetime('now'))`).notNull(),
-});
+}, table => ({ orderHistoryIndex: index('idx_order_status_history_order_id').on(table.orderId, table.id) }));
 
 export type OrderStatusHistory = typeof orderStatusHistory.$inferSelect;
 export type InsertOrderStatusHistory = typeof orderStatusHistory.$inferInsert;
@@ -1489,6 +1511,7 @@ export const financialLedgerEntries = sqliteTable("financial_ledger_entries", {
     .where(sql`${table.status} = 'approved'`),
   sourceLinkIndex: index("idx_financial_ledger_source_link")
     .on(table.sourceType, table.sourceReference, table.id),
+  orderGuardIndex: index('idx_financial_ledger_order_guard').on(table.orderId).where(sql`${table.orderId} IS NOT NULL`),
 }));
 
 export type FinancialLedgerEntry = typeof financialLedgerEntries.$inferSelect;
@@ -1705,7 +1728,7 @@ export const orderItems = sqliteTable("orderItems", {
   priceAtPurchase: integer("priceAtPurchase").default(0).notNull(),
   currency: text("currency", { length: 3 }).default("USD").notNull(),
   transactionPurpose: text("transactionPurpose"),
-});
+}, table => ({ orderLookup: index('idx_order_items_order_id').on(table.orderId) }));
 
 /** Immutable snapshot of the commercial and operational promise shown for a renewal order. */
 export const orderRenewalDetails = sqliteTable("order_renewal_details", {
@@ -1833,7 +1856,7 @@ export const packageSubscriptions = sqliteTable("packageSubscriptions", {
   upgradedAt: text("upgradedAt"),
   createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
   updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
-});
+}, table => ({ orderGuardIndex: index('idx_package_subscriptions_order_guard').on(table.orderId).where(sql`${table.orderId} IS NOT NULL`) }));
 
 export type PackageSubscription = typeof packageSubscriptions.$inferSelect;
 export type InsertPackageSubscription = typeof packageSubscriptions.$inferInsert;

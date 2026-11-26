@@ -10,6 +10,7 @@ import { formatPaymentMethodLabel } from '@/lib/paymentMethodLabel';
 import { apiFetch } from '@/lib/apiBase';
 import { trpc } from '@/lib/trpc';
 import ClientLayout from '@/components/ClientLayout';
+import OrderPriceBreakdown from '@/components/OrderPriceBreakdown';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
@@ -249,19 +250,8 @@ export default function OrderDetail() {
           </div>
 
           {/* Price breakdown */}
-          <div className="border-t pt-4 space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-gray-500">{isRtl ? 'المبلغ الفرعي' : 'Subtotal'}</span>
-              <span>{formatAdminCurrencyFromIls(order.displaySubtotalIls, language)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-500">VAT ({order.vatRate}%)</span>
-              <span>{formatAdminCurrencyFromIls(order.displayVatIls, language)}</span>
-            </div>
-            <div className="flex justify-between text-base font-bold border-t pt-2">
-              <span>{isRtl ? 'الإجمالي' : 'Total'}</span>
-              <span>{formatAdminCurrencyFromIls(order.displayTotalIls, language)}</span>
-            </div>
+          <div className="border-t pt-4">
+            <OrderPriceBreakdown order={order} />
           </div>
         </div>
 

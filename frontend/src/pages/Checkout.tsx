@@ -16,6 +16,11 @@ import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import { trackBeginCheckout, trackOrderRequest } from '@/lib/analytics';
 import { isLikelyValidEmail, normalizeEmailAddress } from '@shared/emailValidation';
+import { getCheckoutInvoiceAmounts } from '@shared/checkoutPricing';
+import { getOrderDisplayAmountsIls, getOrderDisplayTotalIls, getOrderInvoiceContextIls } from '@shared/orderPricing';
+import OrderPriceBreakdown from '@/components/OrderPriceBreakdown';
+import CheckoutIntentNotice from '@/components/CheckoutIntentNotice';
+import { useCheckoutIntent } from '@/lib/useCheckoutIntent';
 
 function CheckoutAccountGate({
   packageName,
@@ -156,9 +161,9 @@ export default function Checkout() {
   const params = useParams<{ slug: string }>();
   const [, navigate] = useLocation();
   const { isAuthenticated, loading: authLoading } = useAuth();
-  const { data: pkg, isLoading } = trpc.packages.bySlug.useQuery({ slug: params.slug || '' });
+  const { data: pkg, isLoading, refetch: refreshPackage } = trpc.packages.bySlug.useQuery({ slug: params.slug || '' });
   const { data: liveState } = trpc.packages.livePublicState.useQuery(undefined, { enabled: params.slug === 'live-package' });
-  const { data: liveQuote, isLoading: liveQuoteLoading } = trpc.livePackage.myPurchaseQuote.useQuery(
+  const { data: liveQuote, isLoading: liveQuoteLoading, refetch: refreshLiveQuote } = trpc.livePackage.myPurchaseQuote.useQuery(
     undefined,
     { enabled: params.slug === 'live-package' && isAuthenticated },
   );
@@ -176,27 +181,38 @@ export default function Checkout() {
   const [appliedCoupon, setAppliedCoupon] = useState<{ couponId: number; code: string; discount: number; discountType: string; discountValue: number } | null>(null);
   const [couponError, setCouponError] = useState('');
   const [couponLoading, setCouponLoading] = useState(false);
+  const couponContext = useRef('');
+  couponContext.current = JSON.stringify([pkg?.id,pkg?.price,couponCode.trim().toUpperCase()]);
+  useEffect(() => { setAppliedCoupon(null); setCouponError(''); },[pkg?.id,pkg?.price,liveQuote?.price]);
 
   const validateCoupon = trpc.coupons.validate.useQuery(
     { code: couponCode.trim(), subtotal: pkg?.price || 0, packageId: pkg?.id },
     { enabled: false }
   );
 
+  const intent = useCheckoutIntent('package',{paymentMethod,items:[{itemType:'package',packageId:pkg?.id}],isGift,giftEmail,giftMessage,notes,couponCode:appliedCoupon?.code,termsAcceptedVersion:CURRENT_TERMS_VERSION},isAuthenticated&&!!pkg&&(pkg.packageType!=='live'||!!liveQuote));
   const createOrder = trpc.orders.create.useMutation({
-    onSuccess: (data) => {
-      if (pkg) {
-        const pricing = getPackageDisplayPricing(pkg.slug, pkg.price, pkg.renewalPrice, pkg.currency);
+    onSuccess: (data,variables) => {
+      intent.recordOrder(data.id,variables.checkoutIntentKey);
+      if (pkg && !data.checkoutIntentReused) {
         trackOrderRequest({
           slug: pkg.slug,
           name: isRtl ? pkg.nameAr : pkg.nameEn,
-          valueIls: pkg.packageType === 'live' && liveQuote ? liveQuote.price / 100 : pricing.ilsPrice,
+          valueIls: getOrderDisplayTotalIls({totalAmount:data.totalAmount,currency:data.currency,packageSlug:pkg.slug,isUpgrade:!!data.isUpgrade}),
           language,
         });
       }
-      toast.success(isRtl ? 'تم إنشاء الطلب بنجاح' : 'Order created successfully');
+      toast.success(data.checkoutIntentReused ? (isRtl ? 'تم فتح الطلب السابق دون إنشاء نسخة أخرى' : 'Existing request opened; no extra order was created') : (isRtl ? 'تم إنشاء الطلب بنجاح' : 'Order created successfully'));
       navigate(`/orders/${data.id}`);
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => {
+      toast.error(e.message);
+      if (e.data?.code === 'CONFLICT') {
+        setTermsAccepted(false);
+        void refreshPackage();
+        if (params.slug === 'live-package') void refreshLiveQuote();
+      }
+    },
   });
 
   useEffect(() => {
@@ -253,8 +269,9 @@ export default function Checkout() {
     );
   }
 
-  const displayPricing = getPackageDisplayPricing(pkg.slug, pkg.price, pkg.renewalPrice, pkg.currency);
-  const effectivePriceIls = isLive && liveQuote ? liveQuote.price / 100 : displayPricing.ilsPrice;
+  const nativeGross = isLive && liveQuote ? liveQuote.price : pkg.price;
+  const priceContext = {currency:pkg.currency,packageSlug:pkg.slug};
+  const effectivePriceIls = getOrderDisplayTotalIls({...priceContext,totalAmount:nativeGross});
   const livePriceReason = !isLive || !liveQuote ? null : isRtl
     ? (liveQuote.tier === 'comprehensiveSubscriber'
         ? 'سعر عميل سابق في الشاملة'
@@ -266,15 +283,16 @@ export default function Checkout() {
         : liveQuote.tier === 'basicSubscriber'
           ? 'Previous Basic customer price'
           : 'Standard price for accounts without a previous qualifying purchase');
-  // Backend coupon `discount` is returned in USD cents (matches pkg.price). Convert to ILS
-  // using the same 3.5x reference rate used by packagePricing.ts so the on-screen summary stays
-  // consistent with the marketing ILS prices.
-  const USD_TO_ILS = 3.5;
-  const discountIls = appliedCoupon ? (appliedCoupon.discount / 100) * USD_TO_ILS : 0;
-  const totalIls = Math.max(effectivePriceIls - discountIls, 0);
-  const vatRate = 16;
-  const vatIls = totalIls * vatRate / (100 + vatRate);
-  const subtotalIls = totalIls - vatIls;
+  const invoicePreview = (() => {
+    try {
+      if (!['USD','ILS'].includes(pkg.currency)) return null;
+      const native = getCheckoutInvoiceAmounts(nativeGross,appliedCoupon?.discount??0);
+      const context = getOrderInvoiceContextIls({...native,...priceContext},native);
+      if (context.displayPricingSnapshotInvalid) return null;
+      return {...native,...getOrderDisplayAmountsIls({...native,...priceContext}),
+        ...context};
+    } catch { return null; }
+  })();
   const normalizedGiftEmail = normalizeEmailAddress(giftEmail);
   const giftEmailValid = !isGift || isLikelyValidEmail(normalizedGiftEmail);
 
@@ -282,10 +300,14 @@ export default function Checkout() {
     if (!couponCode.trim()) return;
     setCouponError('');
     setCouponLoading(true);
+    const requestedContext = couponContext.current;
     try {
       const result = await validateCoupon.refetch();
+      if (couponContext.current !== requestedContext) return;
+      if (result.error || !result.data) throw result.error || new Error(isRtl ? 'تعذّر التحقق من الكوبون' : 'Coupon could not be verified');
       if (result.data) {
         setAppliedCoupon(result.data);
+        setTermsAccepted(false);
         toast.success(isRtl ? 'تم تطبيق الكوبون!' : 'Coupon applied!');
       }
     } catch (err: any) {
@@ -303,11 +325,16 @@ export default function Checkout() {
   };
 
   const handleSubmit = () => {
+    if (!termsAccepted || createOrder.isPending || couponLoading || !intent.ready || !invoicePreview) return;
     if (!giftEmailValid) {
       toast.error(isRtl ? 'أدخل بريدًا إلكترونيًا صحيحًا لمستلم الهدية' : 'Enter a valid gift recipient email');
       return;
     }
+    const checkoutIntentKey = intent.beginSubmission();
+    if (!checkoutIntentKey) return;
     createOrder.mutate({
+      checkoutIntentKey,
+      expectedQuote: {grossSubtotalMinor: invoicePreview.grossSubtotalMinor, grossDiscountMinor: invoicePreview.grossDiscountMinor, currency: pkg.currency as 'USD'|'ILS', vatRate: invoicePreview.vatRate},
       items: [{ itemType: 'package', packageId: pkg.id }],
       paymentMethod,
       isGift,
@@ -411,7 +438,7 @@ export default function Checkout() {
                   </div>
                   <div>
                     <Label>{isRtl ? 'رسالة الهدية (اختياري)' : 'Gift message (optional)'}</Label>
-                    <Textarea value={giftMessage} onChange={(e) => setGiftMessage(e.target.value)} rows={2} className="mt-1" />
+                    <Textarea maxLength={2000} value={giftMessage} onChange={(e) => setGiftMessage(e.target.value)} rows={2} className="mt-1" />
                   </div>
                 </div>
               )}
@@ -427,20 +454,22 @@ export default function Checkout() {
               </div>
               {appliedCoupon ? (
                 <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl p-3">
-                  <div className="flex items-center gap-2 text-green-700">
+                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 text-green-700">
                     <CheckCircle className="w-4 h-4" />
-                    <span className="font-medium text-sm">{appliedCoupon.code}</span>
+                    <span className="min-w-0 break-all font-medium text-sm">{appliedCoupon.code}</span>
                     <span className="text-xs">
-                      ({appliedCoupon.discountType === 'percentage' ? `${appliedCoupon.discountValue}%` : `${formatIlsAmount((appliedCoupon.discountValue / 100) * USD_TO_ILS, true)}`} {isRtl ? 'خصم' : 'off'})
+                      ({appliedCoupon.discountType === 'percentage' ? `${appliedCoupon.discountValue}%` : invoicePreview && typeof invoicePreview.displaySavingsIls === 'number' ? formatIlsAmount(invoicePreview.displaySavingsIls, true) : (isRtl ? 'مراجعة' : 'Review')} {isRtl ? 'خصم' : 'off'})
                     </span>
                   </div>
-                  <button onClick={removeCoupon} className="text-gray-400 hover:text-red-500"><X className="w-4 h-4" /></button>
+                  <Button type="button" size="sm" variant="ghost" disabled={couponLoading} onClick={handleApplyCoupon}>{isRtl ? 'إعادة التحقق' : 'Recheck coupon'}</Button>
+                  <button type="button" aria-label={isRtl ? 'إزالة الكوبون' : 'Remove coupon'} onClick={removeCoupon} className="shrink-0 text-gray-400 hover:text-red-500"><X className="w-4 h-4" /></button>
                 </div>
               ) : (
                 <div>
                   <div className="flex gap-2">
                     <Input
                       value={couponCode}
+                      maxLength={50}
                       onChange={(e) => { setCouponCode(e.target.value.toUpperCase()); setCouponError(''); }}
                       placeholder={isRtl ? 'أدخل كود الخصم' : 'Enter coupon code'}
                       dir="ltr"
@@ -459,7 +488,7 @@ export default function Checkout() {
             {/* Notes */}
             <div className="bg-white border border-slate-200 rounded-[28px] p-6 shadow-[0_14px_36px_rgba(15,23,42,0.05)]">
               <Label>{isRtl ? 'ملاحظات (اختياري)' : 'Notes (optional)'}</Label>
-              <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className="mt-2" placeholder={isRtl ? 'أي ملاحظات إضافية...' : 'Any additional notes...'} />
+              <Textarea maxLength={2000} value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className="mt-2" placeholder={isRtl ? 'أي ملاحظات إضافية...' : 'Any additional notes...'} />
             </div>
           </div>
 
@@ -479,26 +508,8 @@ export default function Checkout() {
                 </div>
               </div>
 
-              <div className="space-y-2 text-sm mb-4">
-                <div className="flex justify-between">
-                  <span className="text-gray-500">{isRtl ? 'السعر قبل الضريبة' : 'Subtotal'}</span>
-                  <span>{formatIlsAmount(subtotalIls, true)}</span>
-                </div>
-                {appliedCoupon && (
-                  <div className="flex justify-between text-green-600">
-                    <span>{isRtl ? 'خصم' : 'Discount'}</span>
-                    <span>-{formatIlsAmount(discountIls, true)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between">
-                  <span className="text-gray-500">{isRtl ? `ضريبة القيمة المضافة (${vatRate}%)` : `VAT (${vatRate}%)`}</span>
-                  <span>{formatIlsAmount(vatIls, true)}</span>
-                </div>
-                <div className="flex justify-between font-bold text-base border-t pt-2">
-                  <span>{isRtl ? 'الإجمالي' : 'Total'}</span>
-                  <span>{formatIlsAmount(totalIls, true)}</span>
-                </div>
-              </div>
+              <div className="mb-4">{invoicePreview ? <OrderPriceBreakdown order={invoicePreview} /> : <p role="alert" className="text-sm text-amber-800">{isRtl ? 'تعذّر التحقق من السعر. أزل الكوبون أو تواصل مع الدعم قبل الدفع.' : 'The price could not be verified. Remove the coupon or contact support before paying.'}</p>}</div>
+              <div className="mb-4"><CheckoutIntentNotice intent={intent} busy={createOrder.isPending} onNewPrepared={() => setTermsAccepted(false)} /></div>
 
               <div className="rounded-xl bg-slate-50 border border-slate-200 px-3 py-3 text-xs text-slate-600 leading-6 mb-4">
                 {isRtl
@@ -531,7 +542,7 @@ export default function Checkout() {
 
               <Button
                 onClick={handleSubmit}
-                disabled={createOrder.isPending || !giftEmailValid || !termsAccepted}
+                disabled={createOrder.isPending || couponLoading || !giftEmailValid || !termsAccepted || !intent.ready || !invoicePreview}
                 className="w-full h-12 text-base"
                 size="lg"
               >

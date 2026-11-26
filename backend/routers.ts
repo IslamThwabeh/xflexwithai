@@ -38,6 +38,7 @@ import { authenticatedProcedure, publicProcedure, protectedProcedure, router } f
 import { CURRENT_TERMS_VERSION } from "../shared/legal";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import { FINANCIAL_PAYMENT_PURPOSES } from "../shared/financialTransactionPurpose";
 import { getInterfaceAnnouncementStatus, recordInterfaceAnnouncementAction } from "./services/interface-announcement.service";
 import { logger } from "./_core/logger";
 import * as db from "./db";
@@ -45,6 +46,10 @@ import { filterRecipientsByMutedThreads } from "./services/recommendation-thread
 import { protectRecommendationAuthors } from "./services/recommendation-privacy.service";
 import { parseDraftWithDiagnostics, recordParserSubmission, listParserDiagnostics } from "./services/recommendation-parser-diagnostics.service";
 import { retireReplacedLiveOrder, getRenewalCreditBalances, findRetiredOrder } from "./services/live-order-retirement.service";
+import { cancelReviewedUnpaidOrder, readOrderCancellationReview, readOrderStatusHistory, OrderCancellationError } from './services/order-cancellation.service';
+import { CheckoutIntentError } from './services/checkout-intent.service';
+import { hashCheckoutRequest, defaultCheckoutIntentKey, isCheckoutIntentKey, type CheckoutFlow, type CheckoutIntentPayload } from '../shared/checkoutIntent';
+import { getCheckoutInvoiceAmounts } from '../shared/checkoutPricing';
 import { describeOrderKeyFulfillment } from './services/order-key-fulfillment.service';
 import {
   PACKAGE_KEY_ISSUANCE_PURPOSES,
@@ -113,7 +118,7 @@ import { FINANCIAL_RECONCILIATION_TREATMENTS } from "./services/financial-reconc
 import { generateNumericCode, generateSaltBase64, normalizeEmail, sha256Base64 } from "./_core/otp";
 import { verifyUnsubscribeToken } from "./_core/emailPreferences";
 import { getCourseQuizLevelForEpisodeOrder, isCourseQuizLevelEnd } from "./courseQuizLevels";
-import { getOrderDisplayAmountsIls, getOrderDisplayTotalIls } from "../shared/orderPricing";
+import { getOrderDisplayAmountsIls, getOrderDisplayTotalIls, getOrderInvoiceContextIls } from "../shared/orderPricing";
 import {
   ADMIN_FEATURE_FLAG_KEYS,
   getAdminFeatureFlagUpdates,
@@ -1130,6 +1135,70 @@ const financeControlProcedure = protectedProcedure.use(async ({ ctx, next }) => 
   }
   return next({ ctx: { ...ctx, financeActor: financeActor as FinanceActor } });
 });
+
+const financeViewerScope = z.object({
+  viewerId: z.number().int(),
+  access: z.enum(['owner', 'manager', 'clerk', 'viewer']),
+}).strict();
+
+function assertFinanceViewerScope(ctx: { user: { id: number }; financeActor: FinanceActor }, input?: { viewerId?: number; access?: string }) {
+  if (input && (input.viewerId !== undefined || input.access !== undefined)
+    && (input.viewerId !== ctx.user.id || input.access !== ctx.financeActor.access)) {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Financial access changed. Recheck your access.' });
+  }
+}
+
+const orderCancellationVersion = z.object({
+  status: z.enum(['pending', 'awaiting_confirmation']),
+  updatedAt: z.string().min(1).max(100),
+  paymentProofUrl: z.string().max(2048).nullable(),
+}).strict();
+
+async function orderCancellationContext(ctx: { user: { id: number }; admin: { id: number } | null }) {
+  const [connection, financeActor, operational] = await Promise.all([
+    db.getDb(), db.resolveFinanceActor({ adminId: ctx.admin?.id ?? null, userId: ctx.user.id }),
+    ctx.admin ? Promise.resolve(true) : db.hasAnyRole(ctx.user.id, ['key_manager']),
+  ]);
+  if (!connection?.$client) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Order review is temporarily unavailable.' });
+  return { client: connection.$client, authority: { operational, financeReview: financeActor?.access === 'owner' || financeActor?.access === 'manager' } };
+}
+
+const checkoutIntentKeyInput = z
+  .string()
+  .refine(isCheckoutIntentKey, "Invalid checkout request key.")
+  .optional();
+async function checkoutIntentForUser(
+  userId: number,
+  flow: CheckoutFlow,
+  input: CheckoutIntentPayload & { checkoutIntentKey?: string }
+) {
+  if (userId <= 0)
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Use a customer account to create a purchase request.",
+    });
+  const requestHash = await hashCheckoutRequest(userId, flow, input);
+  const key = input.checkoutIntentKey ?? defaultCheckoutIntentKey(requestHash);
+  if (
+    key.startsWith("checkout:v1:") &&
+    key !== defaultCheckoutIntentKey(requestHash)
+  )
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message:
+        "The purchase details changed. Review the current form before submitting.",
+    });
+  return { userId, flow, key, requestHash };
+}
+async function checkoutOperation<T>(operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error instanceof CheckoutIntentError)
+      throw new TRPCError({ code: error.code, message: error.message });
+    throw error;
+  }
+}
 
 const legacyMigrationProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   const admin = await db.getAdminByEmail(ctx.user.email);
@@ -2425,7 +2494,12 @@ function attachOrderDisplayPricing<
     currency?: string | null;
     isUpgrade?: boolean | null;
   },
-  TPackageItem extends { packageSlug: string | null },
+  TPackageItem extends {
+    packageSlug: string | null;
+    pricingFormatVersion?: number | null;
+    grossSubtotalMinor?: number | null;
+    grossDiscountMinor?: number | null;
+  },
 >(order: TOrder, packageItems: TPackageItem[]) {
   const pricing = getOrderDisplayAmountsIls({
     subtotal: order.subtotal,
@@ -2433,10 +2507,36 @@ function attachOrderDisplayPricing<
     vatAmount: order.vatAmount,
     totalAmount: order.totalAmount,
     currency: order.currency,
-    packageSlug: packageItems.length === 1 ? packageItems[0]?.packageSlug : null,
+    packageSlug:
+      packageItems.length === 1 ? packageItems[0]?.packageSlug : null,
     isUpgrade: !!order.isUpgrade,
   });
-  return { ...order, ...pricing, packageItems };
+  const snapshot = packageItems.find(item => item.pricingFormatVersion != null);
+  const context = getOrderInvoiceContextIls(
+    {
+      totalAmount: order.totalAmount,
+      currency: order.currency,
+      packageSlug:
+        packageItems.length === 1 ? packageItems[0]?.packageSlug : null,
+      isUpgrade: !!order.isUpgrade,
+    },
+    snapshot
+      ? {
+          formatVersion: snapshot.pricingFormatVersion!,
+          grossSubtotalMinor: snapshot.grossSubtotalMinor ?? NaN,
+          grossDiscountMinor: snapshot.grossDiscountMinor ?? NaN,
+        }
+      : undefined
+  );
+  const publicItems = packageItems.map(
+    ({
+      pricingFormatVersion,
+      grossSubtotalMinor,
+      grossDiscountMinor,
+      ...item
+    }) => item
+  );
+  return { ...order, ...pricing, ...context, packageItems: publicItems };
 }
 
 export const appRouter = router({
@@ -6581,13 +6681,14 @@ export const appRouter = router({
   // Adjustments, append-only reversals, and accounting-period locks
   // =========================================================================
   financialControls: router({
-    workspace: financeControlProcedure.query(async ({ ctx }) => ({
-      access: ctx.financeActor.access,
-      canReview: true,
-      canReverse: ctx.financeActor.access === 'owner',
-      canManageLocks: ctx.financeActor.access === 'owner',
-      ...(await db.getFinancialControlWorkspace(ctx.financeActor)),
-    })),
+    workspace: financeControlProcedure.input(financeViewerScope.optional()).query(async ({ ctx, input }) => {
+      assertFinanceViewerScope(ctx, input);
+      return {
+        ...(await db.getFinancialControlWorkspace(ctx.financeActor)),
+        viewerId: ctx.user.id, access: ctx.financeActor.access, generatedAt: new Date().toISOString(),
+        canReview: true, canReverse: ctx.financeActor.access === 'owner', canManageLocks: ctx.financeActor.access === 'owner',
+      };
+    }),
 
     createAdjustment: financeControlProcedure
       .input(z.object({
@@ -6664,7 +6765,7 @@ export const appRouter = router({
     reclassifyPayment: financeControlProcedure
       .input(z.object({
         entryId: z.number().int().positive(),
-        nextPurpose: z.enum(['new_sale', 'renewal', 'upgrade']),
+        nextPurpose: z.enum(FINANCIAL_PAYMENT_PURPOSES),
         reason: z.string().trim().min(5).max(1000),
       }))
       .mutation(({ ctx, input }) => {
@@ -6679,25 +6780,29 @@ export const appRouter = router({
   // Historic financial reconciliation (source records remain read-only)
   // =========================================================================
   financialReconciliation: router({
-    preview: financeControlProcedure.query(({ ctx }) => db.previewFinancialReconciliation().then(result => ({
-      access: ctx.financeActor.access,
-      canMaterialize: true,
-      canManageDrafts: true,
-      canResolve: ctx.financeActor.access === 'owner',
-      ...result,
-    }))),
+    preview: financeControlProcedure.input(financeViewerScope.optional()).query(async ({ ctx, input }) => {
+      assertFinanceViewerScope(ctx, input);
+      return {
+        ...(await db.previewFinancialReconciliation()),
+        viewerId: ctx.user.id, access: ctx.financeActor.access, generatedAt: new Date().toISOString(),
+        canMaterialize: true, canManageDrafts: true, canResolve: ctx.financeActor.access === 'owner',
+      };
+    }),
 
     workspace: financeControlProcedure
       .input(z.object({
         status: z.enum(['unresolved', 'approved_opening_balance', 'approved_adjustment', 'excluded']).default('unresolved'),
-      }))
-      .query(async ({ ctx, input }) => ({
-        access: ctx.financeActor.access,
-        canMaterialize: true,
-        canManageDrafts: true,
-        canResolve: ctx.financeActor.access === 'owner',
-        ...(await db.getFinancialReconciliationDashboard(input.status)),
-      })),
+        viewerId: z.number().int().optional(),
+        access: financeViewerScope.shape.access.optional(),
+      }).strict())
+      .query(async ({ ctx, input }) => {
+        assertFinanceViewerScope(ctx, input);
+        return {
+          ...(await db.getFinancialReconciliationDashboard(input.status)),
+          viewerId: ctx.user.id, access: ctx.financeActor.access, generatedAt: new Date().toISOString(),
+          canMaterialize: true, canManageDrafts: true, canResolve: ctx.financeActor.access === 'owner',
+        };
+      }),
 
     materializeQueue: financeControlProcedure.mutation(({ ctx }) => db.prepareFinancialReconciliationQueue(ctx.financeActor)),
 
@@ -6730,10 +6835,20 @@ export const appRouter = router({
   // Financial expense workflow (owner/manager/clerk; viewer is report-only)
   // =========================================================================
   financeExpenses: router({
-    access: financeExpenseProcedure.query(({ ctx }) => ({
-      access: ctx.financeActor.access,
-      canReview: ctx.financeActor.access === 'owner' || ctx.financeActor.access === 'manager',
-    })),
+    access: financeExpenseProcedure.input(z.object({ viewerId: z.number().int() }).strict().optional()).query(({ ctx, input }) => {
+      if (input && input.viewerId !== ctx.user.id) throw new TRPCError({ code: 'FORBIDDEN' });
+      return { viewerId: ctx.user.id, access: ctx.financeActor.access,
+        canReview: ctx.financeActor.access === 'owner' || ctx.financeActor.access === 'manager' };
+    }),
+
+    workspaceList: financeExpenseProcedure.input(financeViewerScope.extend({
+      status: z.enum(FINANCIAL_EXPENSE_STATUSES).optional(),
+      limit: z.number().int().min(1).max(200).default(100),
+    }).strict()).query(async ({ ctx, input }) => {
+      assertFinanceViewerScope(ctx, input);
+      return { expenses: await db.listFinancialExpenses({ actor: ctx.financeActor, status: input.status, limit: input.limit }),
+        viewerId: ctx.user.id, access: ctx.financeActor.access, generatedAt: new Date().toISOString() };
+    }),
 
     list: financeExpenseProcedure
       .input(z.object({
@@ -7855,15 +7970,17 @@ export const appRouter = router({
       .input(z.object({
         items: z.array(z.object({
           itemType: z.enum(['package']),
-          packageId: z.number().optional(),
+          packageId: z.number().int().positive(),
           courseId: z.number().optional(),
-        })),
+        })).min(1).max(1),
         paymentMethod: z.literal('bank_transfer'),
         isGift: z.boolean().default(false),
         giftEmail: z.string().max(320).optional(),
         giftMessage: z.string().max(2000).optional(),
-        notes: z.string().optional(),
-        couponCode: z.string().optional(),
+        notes: z.string().max(2000).optional(),
+        couponCode: z.string().max(50).optional(),
+        checkoutIntentKey: checkoutIntentKeyInput,
+        expectedQuote: z.object({ grossSubtotalMinor: z.number().int().nonnegative(), grossDiscountMinor: z.number().int().nonnegative(), currency: z.enum(['USD', 'ILS']), vatRate: z.number().int().min(0).max(100) }).optional(),
         termsAcceptedAt: z.string().optional(),
         termsAcceptedVersion: z.string().optional(),
       }).superRefine((input, ctx) => {
@@ -7880,6 +7997,9 @@ export const appRouter = router({
         if (!input.termsAcceptedAt || input.termsAcceptedVersion !== CURRENT_TERMS_VERSION) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'Terms acceptance is required' });
         }
+        const intent = await checkoutIntentForUser(ctx.user.id, 'package', input);
+        const resumed = await checkoutOperation(() => db.getCheckoutIntentOrder(intent));
+        if (resumed) return { ...resumed, checkoutIntentReused: true };
         const termsAcceptedAt = new Date().toISOString();
         const termsAcceptedIpAddress = getRequestIp(ctx.req) || null;
         const termsAcceptedUserAgent = getRequestUserAgent(ctx.req) || null;
@@ -7894,7 +8014,7 @@ export const appRouter = router({
         let liveUpgradeFromPackageId: number | null = null;
         let liveIsAddon = false;
         let containsLivePackage = false;
-        const resolvedItems: Array<{ itemType: string; packageId?: number; courseId?: number; price: number; currency: string; packageSlug: string }> = [];
+        const resolvedItems: Array<{ itemType: string; packageId?: number; courseId?: number; price: number; currency: string; packageSlug: string; packageName: string }> = [];
 
         for (const item of input.items) {
           if (item.itemType === 'package' && item.packageId) {
@@ -7930,7 +8050,7 @@ export const appRouter = router({
               const offer = await db.checkUpgradeEligibility(ctx.user.id, pkg.id);
               if (offer?.isUpgrade === false && offer.pendingOrderId) {
                 const existingOrder = await db.getOrderById(offer.pendingOrderId);
-                if (existingOrder) return existingOrder;
+                if (existingOrder && !input.checkoutIntentKey?.startsWith('new:')) return { ...await checkoutOperation(() => db.registerCheckoutIntentOrder(intent, existingOrder.id)), checkoutIntentReused: true };
               }
             }
             if (pkg.currency !== 'USD' && pkg.currency !== 'ILS') {
@@ -7938,33 +8058,30 @@ export const appRouter = router({
             }
             orderCurrency = pkg.currency;
             subtotal += itemPrice;
-            resolvedItems.push({ itemType: 'package', packageId: item.packageId, price: itemPrice, currency: pkg.currency, packageSlug: pkg.slug });
+            resolvedItems.push({ itemType: 'package', packageId: item.packageId, price: itemPrice, currency: pkg.currency, packageSlug: pkg.slug, packageName: pkg.nameEn || pkg.nameAr || 'Package' });
           }
         }
 
         // Apply coupon discount
-        let discountAmount = 0;
-        let couponId: number | null = null;
+        let grossDiscount = 0;
+        let appliedCouponRow: NonNullable<Awaited<ReturnType<typeof db.getCouponByCode>>> | undefined;
         if (input.couponCode) {
           if (orderCurrency !== 'USD') {
             throw new TRPCError({ code: 'BAD_REQUEST', message: 'Coupons are not configured for this package currency.' });
           }
           const coupon = await db.getCouponByCode(input.couponCode);
-          if (coupon) {
-            const packageId = resolvedItems[0]?.packageId;
-            const validation = db.validateCoupon(coupon, subtotal, packageId);
-            if (validation.valid) {
-              discountAmount = db.calculateDiscount(coupon, subtotal);
-              couponId = coupon.id;
-            }
-          }
+          if (!coupon) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Coupon not found. Remove it or apply a valid code.' });
+          const validation = db.validateCoupon(coupon, subtotal, resolvedItems[0]?.packageId);
+          if (!validation.valid) throw new TRPCError({ code: 'BAD_REQUEST', message: validation.error || 'Coupon is unavailable.' });
+          grossDiscount = db.calculateDiscount(coupon, subtotal);
+          appliedCouponRow = coupon;
         }
 
-        const vatRate = 16;
-        // Prices are VAT-inclusive: extract VAT from the total
-        const totalAmount = subtotal - discountAmount;
-        const vatAmount = Math.round(totalAmount * vatRate / (100 + vatRate));
-        const subtotalExVat = totalAmount - vatAmount;
+        const { grossSubtotalMinor, grossDiscountMinor, formatVersion, ...invoice } = getCheckoutInvoiceAmounts(subtotal, grossDiscount);
+        const { totalAmount } = invoice;
+        if (input.expectedQuote && (input.expectedQuote.grossSubtotalMinor !== grossSubtotalMinor || input.expectedQuote.grossDiscountMinor !== grossDiscountMinor || input.expectedQuote.currency !== orderCurrency || input.expectedQuote.vatRate !== invoice.vatRate)) {
+          throw new TRPCError({ code: 'CONFLICT', message: 'The checkout price or coupon changed. Refresh the price, recheck your coupon and review the total before submitting.' });
+        }
 
         // Re-read the manual switch at the write boundary. A checkout page that
         // was opened earlier cannot create an order after an admin closes registration.
@@ -7972,21 +8089,18 @@ export const appRouter = router({
           throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Live package registration was closed before the order was created.' });
         }
 
-        // Create order
-        const order = await db.createOrder({
+        const now = new Date().toISOString(), item = resolvedItems[0];
+        if (!item) throw new TRPCError({ code: 'BAD_REQUEST', message: 'A valid package is required.' });
+        const saved = await checkoutOperation(() => db.createCheckoutOrder({ intent, order: {
           userId: ctx.user.id,
           status: 'pending',
-          subtotal: subtotalExVat,
-          discountAmount,
-          vatRate,
-          vatAmount,
-          totalAmount,
+          ...invoice,
           currency: orderCurrency,
           paymentMethod: input.paymentMethod,
           isGift: input.isGift,
           giftEmail: input.isGift ? normalizeEmailAddress(input.giftEmail ?? '') : null,
           giftMessage: input.isGift ? input.giftMessage?.trim() || null : null,
-          notes: input.notes || null,
+          notes: input.notes?.trim() || null,
           isUpgrade: liveIsAddon,
           upgradeFromPackageId: liveUpgradeFromPackageId,
           transactionPurpose: liveIsAddon ? 'upgrade' : 'new_sale',
@@ -7994,38 +8108,21 @@ export const appRouter = router({
           termsAcceptedVersion: CURRENT_TERMS_VERSION,
           termsAcceptedIpAddress,
           termsAcceptedUserAgent,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        });
-
-        if (!order) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create order' });
-
-        // Increment coupon usage
-        if (couponId) {
-          db.incrementCouponUsage(couponId).catch(() => {});
-        }
-
-        // Add order items
-        let packageName = 'Package';
-        let packageSlug: string | null = null;
-        for (const item of resolvedItems) {
-          await db.addOrderItem({
-            orderId: order.id,
+          createdAt: now,
+          updatedAt: now,
+        }, item: {
             itemType: item.itemType,
             packageId: item.packageId || null,
-            courseId: item.courseId || null,
+            courseId: null,
             priceAtPurchase: item.price,
             currency: item.currency,
             transactionPurpose: liveIsAddon ? 'upgrade' : 'new_sale',
-          });
-          if (item.packageId) {
-            const pkg = await db.getPackageById(item.packageId);
-            if (pkg) {
-              packageName = pkg.nameEn || pkg.nameAr || 'Package';
-              packageSlug = pkg.slug;
-            }
-          }
-        }
+          }, pricing: grossDiscountMinor > 0 ? { grossSubtotalMinor, grossDiscountMinor, formatVersion, createdAt: now } : undefined,
+          coupon: appliedCouponRow,
+        }));
+        const order = saved.order;
+        if (saved.idempotent) return { ...order, checkoutIntentReused: true };
+        const packageName = item.packageName, packageSlug = item.packageSlug;
 
         // In Workers, detached promises can be dropped before the provider call completes.
         const totalUsd = orderCurrency === 'USD' ? totalAmount / 100 : null;
@@ -8065,9 +8162,9 @@ export const appRouter = router({
           contentEn: `${ctx.user.email} placed a bank transfer order.`,
           contentAr: `${ctx.user.email} قام بتقديم طلب حوالة بنكية.`,
           metadata: { orderId: order.id, userId: ctx.user.id, packageName, totalUsd, totalIls },
-        });
+        }).catch(() => logger.warn('[ORDER_NOTIFICATION] Request saved; staff notification needs follow-up', { orderId: order.id, stage: 'staff_notification' }));
 
-        return order;
+        return { ...order, checkoutIntentReused: false };
       }),
 
     myRenewalCredit: protectedProcedure.query(async ({ ctx }) => ({
@@ -8307,13 +8404,38 @@ export const appRouter = router({
     termsCompliance: adminOrRoleProcedure(['key_manager', 'support', 'client_lookup'])
       .query(async () => db.getClientTermsCompliance()),
 
-    // Admin/Key Manager: update order status
+    adminStatusHistory: adminOrRoleProcedure(['key_manager', 'finance_manager', 'support', 'client_lookup'])
+      .input(z.object({ orderId: z.number().int().positive(), viewerId: z.number().int(), beforeId: z.number().int().positive().optional() }).strict())
+      .query(async ({ ctx, input }) => {
+        if (input.viewerId !== ctx.user.id) throw new TRPCError({ code: 'FORBIDDEN', message: 'The signed-in account changed. Reload the order history.' });
+        const connection = await db.getDb();
+        if (!connection?.$client) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Order history is temporarily unavailable.' });
+        try { return { ...await readOrderStatusHistory(connection.$client, input.orderId, input.beforeId), viewerId: ctx.user.id }; }
+        catch (error) {
+          if (error instanceof OrderCancellationError) throw new TRPCError({ code: error.code, message: error.message });
+          throw error;
+        }
+      }),
+
+    adminCancellationReview: adminOrRoleProcedure(['key_manager', 'finance_manager'])
+      .input(z.object({ orderId: z.number().int().positive() }).strict())
+      .query(async ({ ctx, input }) => {
+        const { client, authority } = await orderCancellationContext(ctx);
+        try { return await readOrderCancellationReview(client, input.orderId, authority); }
+        catch (error) {
+          if (error instanceof OrderCancellationError) throw new TRPCError({ code: error.code, message: error.message });
+          throw error;
+        }
+      }),
+
+    // Admin/Key Manager: update order status; receipt cancellation requires finance review.
     adminUpdateStatus: adminOrRoleProcedure(['key_manager', 'finance_manager'])
       .input(z.object({
         orderId: z.number(),
         status: z.enum(['pending', 'awaiting_confirmation', 'paid', 'completed', 'cancelled', 'refunded']),
         paymentReference: z.string().optional(),
         reason: z.string().max(500).optional(),
+        cancellationReview: z.object({ confirmed: z.literal(true), version: orderCancellationVersion }).strict().optional(),
         financialPayment: z.object({
           paidAt: z.string().datetime(),
           baseAmountIlsMinor: z.number().int().positive().max(1_000_000_000),
@@ -8333,6 +8455,24 @@ export const appRouter = router({
 
         const actorType = ctx.admin ? 'admin' as const : 'staff' as const;
         const actorId = ctx.admin?.id ?? ctx.user.id;
+        if (input.status === 'cancelled') {
+          if (!input.cancellationReview || !input.reason || input.reason.trim().length < 5) {
+            throw new TRPCError({ code: 'BAD_REQUEST', message: 'Open the cancellation review, confirm it and enter a reason of at least 5 characters.' });
+          }
+          const { client, authority } = await orderCancellationContext(ctx);
+          try {
+            const cancellation = await cancelReviewedUnpaidOrder(client, {
+              orderId: order.id, reason: input.reason, ...input.cancellationReview,
+              actorType, actorId, authority, ipAddress: getRequestIp(ctx.req) || null,
+            });
+            const updated = await db.getOrderById(order.id);
+            if (!updated) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Cancellation was recorded; refresh the order list to verify its current state.' });
+            return { order: updated, activationKeys: [], keyDeliveryQueued: null, keySupportDelivered: null, cancellationIdempotent: cancellation.idempotent };
+          } catch (error) {
+            if (error instanceof OrderCancellationError) throw new TRPCError({ code: error.code, message: error.message });
+            throw error;
+          }
+        }
         let activationKeys: Array<{ id: number; keyCode: string; packageId: number }> = [];
         let resolvedKeyConfigurations = input.keyConfigurations ?? [];
         let preserveExistingKeys = false;
@@ -8489,7 +8629,7 @@ export const appRouter = router({
           createdAt: new Date().toISOString(),
         });
 
-        if (input.status === 'cancelled' || input.status === 'refunded') {
+        if (input.status === 'refunded') {
           await db.deactivateUnusedOrderActivationKeys(
             order.id,
             `${input.status} by ${actorType} #${actorId}`,
@@ -8652,6 +8792,8 @@ export const appRouter = router({
         termsAcceptedAt: z.string().min(1),
         termsAcceptedVersion: z.string().min(1),
         notes: z.string().max(1000).nullable().optional(),
+        checkoutIntentKey: checkoutIntentKeyInput,
+        expectedQuote: z.object({ packageId: z.number().int().positive(), amountIlsMinor: z.number().int().nonnegative(), entitlementDays: z.number().int().positive(), recommendationsCurrentEndAt: z.string().nullable(), lexaiCurrentEndAt: z.string().nullable() }).optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
@@ -8659,7 +8801,8 @@ export const appRouter = router({
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'Current Terms acceptance is required.' });
         }
         try {
-          return await db.createPaidRenewalOrder({
+          const checkoutIntent = await checkoutIntentForUser(ctx.user.id, 'renewal', input);
+          return await checkoutOperation(() => db.createPaidRenewalOrder({
             userId: ctx.user.id,
             paymentMethod: input.paymentMethod,
             termsAcceptedAt: new Date().toISOString(),
@@ -8667,9 +8810,12 @@ export const appRouter = router({
             termsAcceptedIpAddress: getRequestIp(ctx.req) || null,
             termsAcceptedUserAgent: getRequestUserAgent(ctx.req) || null,
             notes: input.notes,
-          });
+            checkoutIntent,
+            expectedQuote: input.expectedQuote,
+          }));
         } catch (error) {
-          throw new TRPCError({ code: 'BAD_REQUEST', message: error instanceof Error ? error.message : 'Renewal order could not be created.' });
+          if (error instanceof TRPCError) throw error;
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Renewal order could not be saved. Refresh the quote and retry.' });
         }
       }),
 
@@ -8722,6 +8868,8 @@ export const appRouter = router({
         termsAcceptedAt: z.string().min(1),
         termsAcceptedVersion: z.string().min(1),
         notes: z.string().max(1000).nullable().optional(),
+        checkoutIntentKey: checkoutIntentKeyInput,
+        expectedOffer: z.object({ amountIlsMinor: z.number().int().nonnegative(), accessDays: z.number().int().positive() }).optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED' });
@@ -8729,7 +8877,8 @@ export const appRouter = router({
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'Current Terms acceptance is required.' });
         }
         try {
-          return await db.createTradeCopierOrder({
+          const checkoutIntent = await checkoutIntentForUser(ctx.user.id, 'copier', input);
+          return await checkoutOperation(() => db.createTradeCopierOrder({
             userId: ctx.user.id,
             paymentMethod: input.paymentMethod,
             termsAcceptedAt: new Date().toISOString(),
@@ -8737,11 +8886,14 @@ export const appRouter = router({
             termsAcceptedIpAddress: getRequestIp(ctx.req) || null,
             termsAcceptedUserAgent: getRequestUserAgent(ctx.req) || null,
             notes: input.notes,
-          });
+            checkoutIntent,
+            expectedOffer: input.expectedOffer,
+          }));
         } catch (error) {
+          if (error instanceof TRPCError) throw error;
           throw new TRPCError({
             code: 'BAD_REQUEST',
-            message: error instanceof Error ? error.message : 'Trade copier order could not be created.',
+            message: 'Copier order could not be saved. Refresh the offer and retry.',
           });
         }
       }),
@@ -9220,7 +9372,9 @@ export const appRouter = router({
       .input(z.object({
         targetPackageId: z.number().int().positive(),
         paymentMethod: z.literal('bank_transfer'),
-        notes: z.string().optional(),
+        notes: z.string().max(2000).optional(),
+        checkoutIntentKey: checkoutIntentKeyInput,
+        expectedQuote: z.object({ amountMinor: z.number().int().nonnegative(), currentPackageId: z.number().int().positive() }).optional(),
         termsAcceptedAt: z.string().optional(),
         termsAcceptedVersion: z.string().optional(),
       }))
@@ -9229,6 +9383,9 @@ export const appRouter = router({
         if (!input.termsAcceptedAt || input.termsAcceptedVersion !== CURRENT_TERMS_VERSION) {
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'Terms acceptance is required' });
         }
+        const intent = await checkoutIntentForUser(ctx.user.id, 'upgrade', input);
+        const resumed = await checkoutOperation(() => db.getCheckoutIntentOrder(intent));
+        if (resumed) return { ...resumed, checkoutIntentReused: true };
         const termsAcceptedAt = new Date().toISOString();
         const termsAcceptedIpAddress = getRequestIp(ctx.req) || null;
         const termsAcceptedUserAgent = getRequestUserAgent(ctx.req) || null;
@@ -9237,29 +9394,24 @@ export const appRouter = router({
         if (!eligibility || eligibility.isUpgrade === false) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Not eligible for upgrade. Live Package customers can purchase Comprehensive from its checkout.' });
         if (eligibility.pendingOrderId) {
           const existingOrder = await db.getOrderById(eligibility.pendingOrderId);
-          if (existingOrder) return existingOrder;
+          if (existingOrder) return { ...await checkoutOperation(() => db.registerCheckoutIntentOrder(intent, existingOrder.id)), checkoutIntentReused: true };
         }
 
-        const vatRate = 16;
-        // Prices are VAT-inclusive: extract VAT from the upgrade price
-        const totalAmount = eligibility.upgradePrice;
-        const vatAmount = Math.round(totalAmount * vatRate / (100 + vatRate));
-        const subtotal = totalAmount - vatAmount;
-
-        const order = await db.createUpgradeOrderWithItem({
+        const { grossSubtotalMinor, grossDiscountMinor, formatVersion, ...invoice } = getCheckoutInvoiceAmounts(eligibility.upgradePrice, 0);
+        if (input.expectedQuote && (input.expectedQuote.amountMinor !== eligibility.upgradePrice || input.expectedQuote.currentPackageId !== eligibility.currentPackageId)) {
+          throw new TRPCError({ code: 'CONFLICT', message: 'The upgrade quote changed. Refresh it and review the new price before submitting.' });
+        }
+        const { totalAmount } = invoice, now = new Date().toISOString();
+        const saved = await checkoutOperation(() => db.createCheckoutOrder({ intent, order: {
           userId: ctx.user.id,
           status: 'pending',
-          subtotal,
-          discountAmount: 0,
-          vatRate,
-          vatAmount,
-          totalAmount,
+          ...invoice,
           currency: 'USD',
           paymentMethod: input.paymentMethod,
           isGift: false,
           giftEmail: null,
           giftMessage: null,
-          notes: input.notes || `Upgrade from ${eligibility.currentPackageName} to ${eligibility.targetPackageName}`,
+          notes: input.notes?.trim() || `Upgrade from ${eligibility.currentPackageName} to ${eligibility.targetPackageName}`,
           isUpgrade: true,
           upgradeFromPackageId: eligibility.currentPackageId,
           transactionPurpose: 'upgrade',
@@ -9267,9 +9419,11 @@ export const appRouter = router({
           termsAcceptedVersion: CURRENT_TERMS_VERSION,
           termsAcceptedIpAddress,
           termsAcceptedUserAgent,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        }, input.targetPackageId);
+          createdAt: now,
+          updatedAt: now,
+        }, item: { itemType: 'package', packageId: input.targetPackageId, courseId: null, priceAtPurchase: totalAmount, currency: 'USD', transactionPurpose: 'upgrade' } }));
+        const order = saved.order;
+        if (saved.idempotent) return { ...order, checkoutIntentReused: true };
 
         // In Workers, detached promises can be dropped before the provider call completes.
         const totalUsd = totalAmount / 100;
@@ -9317,7 +9471,7 @@ export const appRouter = router({
           orderId: order.id, error: error instanceof Error ? error.message : String(error),
         }));
 
-        return order;
+        return { ...order, checkoutIntentReused: false };
       }),
 
     // Admin/Key Manager: process/approve an upgrade after payment confirmed

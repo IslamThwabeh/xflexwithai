@@ -37,6 +37,32 @@ function caller() {
 const actor = (access: FinanceActor['access']): FinanceActor => ({ actorType: 'staff', actorId: 20, access });
 
 describe('financial expense route authorization', () => {
+  it.each(['owner', 'manager', 'clerk'] as const)('uses the existing actor-filtered expense reader for verified %s scope', async access => {
+    vi.mocked(db.resolveFinanceActor).mockResolvedValue(actor(access));
+    await expect(caller().financeExpenses.access({ viewerId: 20 })).resolves.toMatchObject({ viewerId: 20, access });
+    await expect(caller().financeExpenses.workspaceList({ viewerId: 20, access, status: 'draft', limit: 25 })).resolves.toMatchObject({ viewerId: 20, access, expenses: [], generatedAt: expect.any(String) });
+    expect(db.listFinancialExpenses).toHaveBeenCalledWith({ actor: actor(access), status: 'draft', limit: 25 });
+  });
+
+  it.each([{ viewerId: 21, access: 'clerk' }, { viewerId: 20, access: 'owner' }] as const)('denies stale expense scope %o without reading expense rows', async input => {
+    vi.mocked(db.resolveFinanceActor).mockResolvedValue(actor('clerk'));
+    await expect(caller().financeExpenses.workspaceList(input)).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    expect(db.listFinancialExpenses).not.toHaveBeenCalled();
+  });
+
+  it('denies a spoofed access identity and report-only expense workspace access', async () => {
+    vi.mocked(db.resolveFinanceActor).mockResolvedValue(actor('owner'));
+    await expect(caller().financeExpenses.access({ viewerId: 21 })).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    vi.mocked(db.resolveFinanceActor).mockResolvedValue(actor('viewer'));
+    await expect(caller().financeExpenses.workspaceList({ viewerId: 20, access: 'viewer' })).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    expect(db.listFinancialExpenses).not.toHaveBeenCalled();
+  });
+
+  it('retains the legacy list response for existing clients', async () => {
+    vi.mocked(db.resolveFinanceActor).mockResolvedValue(actor('clerk'));
+    await expect(caller().financeExpenses.list({ limit: 10 })).resolves.toEqual([]);
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(db.getAdminByEmail).mockResolvedValue(null as any);

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Check, FileDown, Loader2, Pencil, Plus, Receipt, Send, X } from 'lucide-react';
+import { RefreshCw, Check, FileDown, Loader2, Pencil, Plus, Receipt, Send, X } from 'lucide-react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,11 @@ import { formatAdminCurrencyFromIls } from '@/lib/adminCurrency';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
+import { useFinanceWorkspaceAccess, type FinanceWorkspaceAccess } from '@/lib/useFinanceWorkspaceAccess';
+import { isFinanceAccessDenied } from '@/lib/financeWorkspaceCache';
+import FinanceReadNotice from '@/components/admin/FinanceReadNotice';
+import { formatAcademyDateTime } from '@shared/academyLocale';
+
 
 const categories = [
   ['payroll', 'Payroll', 'الرواتب'],
@@ -79,6 +84,11 @@ function receiptName(value?: string | null) {
 }
 
 export default function AdminExpenses() {
+  const scope = useFinanceWorkspaceAccess('expenses');
+  return <AdminExpensesWorkspace key={scope.identityKey} scope={scope} />;
+}
+
+function AdminExpensesWorkspace({ scope }: { scope: FinanceWorkspaceAccess }) {
   const { language } = useLanguage();
   const isRtl = language === 'ar';
   const utils = trpc.useUtils();
@@ -87,14 +97,15 @@ export default function AdminExpenses() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [reviewReasons, setReviewReasons] = useState<Record<number, string>>({});
   const [uploadingId, setUploadingId] = useState<number | null>(null);
-  const { data: access, isLoading: accessLoading, error: accessError } = trpc.financeExpenses.access.useQuery();
-  const { data: expenses = [], isLoading } = trpc.financeExpenses.list.useQuery(
-    { status: status ? status as any : undefined, limit: 100 },
-    { enabled: Boolean(access) },
+  const query = trpc.financeExpenses.workspaceList.useQuery(
+    { viewerId: scope.viewerId, access: scope.access ?? 'clerk', status: status ? status as any : undefined, limit: 100 },
+    { enabled: scope.allowed, staleTime: 5 * 60_000, retry: false, refetchOnWindowFocus: false, refetchOnReconnect: false, refetchOnMount: true },
   );
-
-  const refresh = () => utils.financeExpenses.list.invalidate();
-  const mutationError = (error: unknown) => toast.error(error instanceof Error ? error.message : (isRtl ? 'تعذر إكمال العملية' : 'Action failed'));
+  const data = scope.allowed && !scope.checking && !query.error && query.data?.viewerId === scope.viewerId && query.data?.access === scope.access ? query.data : undefined;
+  const expenses = data?.expenses ?? [];
+  const isLoading = query.isPending;
+  const refresh = () => Promise.all([utils.financeExpenses.workspaceList.invalidate(), utils.financeExpenses.list.invalidate()]);
+  const mutationError = (error: unknown) => { if (isFinanceAccessDenied(error)) void scope.refetch(); toast.error(error instanceof Error ? error.message : (isRtl ? 'تعذر إكمال العملية' : 'Action failed')); };
   const createDraft = trpc.financeExpenses.createDraft.useMutation({
     onSuccess: () => { toast.success(isRtl ? 'تم حفظ المسودة' : 'Draft saved'); setDraft(emptyDraft()); void refresh(); },
     onError: mutationError,
@@ -167,23 +178,41 @@ export default function AdminExpenses() {
         body: file,
       });
       const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.message || 'Receipt upload failed');
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) void scope.refetch();
+        throw new Error(result.message || 'Receipt upload failed');
+      }
       toast.success(isRtl ? 'تم إرفاق الإيصال' : 'Receipt attached');
       await refresh();
     } catch (error) { mutationError(error); } finally { setUploadingId(null); }
   };
 
-  if (accessLoading) return <DashboardLayout><div className="p-8">{isRtl ? 'جاري التحميل...' : 'Loading...'}</div></DashboardLayout>;
-  if (accessError || !access) return <DashboardLayout><div className="p-8"><div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-amber-900">{isRtl ? 'لا تملك صلاحية إدارة المصروفات.' : 'You do not have expense-management access.'}</div></div></DashboardLayout>;
 
-  const canReview = access.canReview;
+  const workspaceTitle = isRtl ? 'إدارة المصروفات' : 'Expense Management';
+  const retryRead = async () => {
+    const fresh = await scope.refetch();
+    const access = fresh.data?.access;
+    if (!fresh.error && fresh.data?.viewerId === scope.viewerId && (access === 'owner' || access === 'manager' || access === 'clerk')) {
+      await utils.financeExpenses.workspaceList.invalidate({ viewerId: scope.viewerId, access, status: status ? status as any : undefined, limit: 100 });
+    }
+  };
+  if (scope.checking) return <FinanceReadNotice title={workspaceTitle} state="loading" onRetry={() => void retryRead()} />;
+  if (scope.error) return <FinanceReadNotice title={workspaceTitle} state={isFinanceAccessDenied(scope.error) ? 'denied' : 'failure'} onRetry={() => void retryRead()} />;
+  if (!scope.verified) return <FinanceReadNotice title={workspaceTitle} state="failure" onRetry={() => void retryRead()} />;
+  if (!scope.allowed) return <FinanceReadNotice title={workspaceTitle} state="denied" onRetry={() => void retryRead()} />;
+  if (query.error) return <FinanceReadNotice title={workspaceTitle} state={isFinanceAccessDenied(query.error) ? 'denied' : 'failure'} onRetry={() => void retryRead()} />;
+  if (query.isPending) return <FinanceReadNotice title={workspaceTitle} state="loading" onRetry={() => void retryRead()} />;
+  if (!data) return <FinanceReadNotice title={workspaceTitle} state="failure" onRetry={() => void retryRead()} />;
+
+  const canReview = scope.access === 'owner' || scope.access === 'manager';
   return (
     <DashboardLayout>
       <main className="space-y-6 p-4 md:p-6" dir={isRtl ? 'rtl' : 'ltr'}>
-        <div>
+        <header className="flex flex-wrap items-start justify-between gap-3"><div>
           <h1 className="flex items-center gap-2 text-2xl font-bold"><Receipt className="h-6 w-6 text-emerald-700" />{isRtl ? 'إدارة المصروفات' : 'Expense Management'}</h1>
           <p className="mt-1 text-sm text-muted-foreground">{isRtl ? 'سجّل المصروف بالشيكل، أرفق الإيصال، ثم أرسله لمراجعة مستقلة.' : 'Record expenses in ILS, attach evidence, then submit for independent review.'}</p>
-        </div>
+        </div><Button variant="outline" disabled={query.isFetching || scope.checking} onClick={() => void retryRead()}><RefreshCw className="me-2 h-4 w-4" />{isRtl ? 'تحديث العرض' : 'Refresh view'}</Button></header>
+        <p className="text-xs text-muted-foreground">{isRtl ? 'وقت تحميل السجل: ' : 'Register loaded: '}{formatAcademyDateTime(data.generatedAt, language)} · {isRtl ? 'بتوقيت فلسطين؛ حتى 100 نتيجة حسب الفلاتر والصلاحيات.' : 'Palestine time; up to 100 records matching filters and access.'}</p>
 
         <section className="rounded-2xl border bg-card p-5 shadow-sm">
           <div className="mb-4 flex items-center justify-between">
@@ -209,7 +238,7 @@ export default function AdminExpenses() {
 
         <section className="rounded-2xl border bg-card p-5 shadow-sm">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h2 className="font-semibold">{isRtl ? 'سجل المصروفات' : 'Expense register'}</h2><select className="h-9 rounded-md border bg-background px-3 text-sm" value={status} onChange={e => setStatus(e.target.value)}><option value="">{isRtl ? 'كل الحالات' : 'All statuses'}</option>{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label[language]}</option>)}</select></div>
-          {isLoading ? <div className="flex justify-center p-8"><Loader2 className="h-6 w-6 animate-spin" /></div> : expenses.length === 0 ? <p className="p-8 text-center text-muted-foreground">{isRtl ? 'لا توجد مصروفات.' : 'No expenses found.'}</p> : <div className="space-y-3">{expenses.map((expense: any) => {
+          {isLoading ? <div className="flex justify-center p-8"><Loader2 className="h-6 w-6 animate-spin" /></div> : expenses.length === 0 ? <p className="p-8 text-center text-muted-foreground">{isRtl ? 'لا توجد مصروفات مطابقة للفلاتر والصلاحيات الحالية.' : 'No expenses match the current filters and access.'}</p> : <div className="space-y-3">{expenses.map((expense: any) => {
             const reason = reviewReasons[expense.id] || '';
             const attached = receiptName(expense.receiptMetadata);
             return <article key={expense.id} className="rounded-xl border p-4">

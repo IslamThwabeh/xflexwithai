@@ -37,6 +37,18 @@ function caller() {
 }
 
 describe('financial control route authorization', () => {
+  it('binds workspace reads to the signed-in user rather than the finance actor primary key', async () => {
+    vi.mocked(db.resolveFinanceActor).mockResolvedValue(actor('owner'));
+    await expect(caller().financialControls.workspace({ viewerId: 20, access: 'owner' })).resolves.toMatchObject({ viewerId: 20, access: 'owner', generatedAt: expect.any(String) });
+    expect(db.getFinancialControlWorkspace).toHaveBeenCalledWith(actor('owner'));
+  });
+
+  it.each([{ viewerId: 1, access: 'owner' }, { viewerId: 21, access: 'owner' }, { viewerId: 20, access: 'manager' }] as const)('rejects a stale or spoofed control workspace scope %o before reading financial records', async input => {
+    vi.mocked(db.resolveFinanceActor).mockResolvedValue(actor('owner'));
+    await expect(caller().financialControls.workspace(input)).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    expect(db.getFinancialControlWorkspace).not.toHaveBeenCalled();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(db.getAdminByEmail).mockResolvedValue(null as any);
@@ -45,6 +57,24 @@ describe('financial control route authorization', () => {
     vi.mocked(db.setFinancialPeriodLock).mockResolvedValue({ lock: null, idempotent: false } as any);
     vi.mocked(db.reverseFinancialLedgerEntry).mockResolvedValue({ reversal: { id: 2 }, replacement: null, idempotent: false } as any);
     vi.mocked(db.reclassifyFinancialPaymentPurpose).mockResolvedValue({ entries: [{ id: 2 }, { id: 3 }], idempotent: false } as any);
+  });
+
+  it.each(['new_sale','renewal','upgrade','copier_subscription'] as const)('accepts the shared %s receipt category for the owner', async nextPurpose => {
+    vi.mocked(db.resolveFinanceActor).mockResolvedValue(actor('owner'));
+    await caller().financialControls.reclassifyPayment({ entryId: 1, nextPurpose, reason: 'Owner verified the recorded service category' });
+    expect(db.reclassifyFinancialPaymentPurpose).toHaveBeenCalledWith({ actor: actor('owner'), entryId: 1, nextPurpose, reason: 'Owner verified the recorded service category' });
+  });
+
+  it.each([null,'clerk','viewer','manager'] as const)('keeps Copier reclassification unavailable to %s authority', async access => {
+    vi.mocked(db.resolveFinanceActor).mockResolvedValue(access ? actor(access) : null);
+    await expect(caller().financialControls.reclassifyPayment({ entryId: 1, nextPurpose: 'copier_subscription', reason: 'Attempted category correction' })).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    expect(db.reclassifyFinancialPaymentPurpose).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-receipt purposes before invoking the correction workflow', async () => {
+    vi.mocked(db.resolveFinanceActor).mockResolvedValue(actor('owner'));
+    await expect(caller().financialControls.reclassifyPayment({ entryId: 1, nextPurpose: 'legacy_migration' as any, reason: 'Cannot turn cash into nonfinancial migration' })).rejects.toMatchObject({ code: 'BAD_REQUEST' });
+    expect(db.reclassifyFinancialPaymentPurpose).not.toHaveBeenCalled();
   });
 
   it.each([null, 'clerk', 'viewer'] as const)('denies workspace access to %s authority', async access => {
