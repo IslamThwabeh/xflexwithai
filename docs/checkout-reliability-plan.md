@@ -1,6 +1,6 @@
 # Checkout retry safety and discounted invoice lines
 
-Status: locally implemented and validated on November 26; not released. Follow-up R09 and the owner's confirmed R26 invoice convention in [the main plan](admin-finance-follow-up-plan-2026-11-25.md). The preceding finance and cancellation batches remain separately sealed; this work does not authorize production deployment, old-order closure or historical financial repair.
+Status: released and deployment-verified on November26. Follow-up R09 and the owner's confirmed R26 invoice convention in [the main plan](admin-finance-follow-up-plan-2026-11-25.md). The earlier finance/cancellation archives are retained; the combined production release was explicitly approved separately. No old-order closure or historical financial repair is authorized.
 
 ## Intended behavior
 
@@ -39,4 +39,9 @@ Prepare the exact source and a new additive migration for review. Migration139 r
 - Combined isolated source:49 files, with24 checkout files over the preceding sealed29-file batch. Unrelated staff/navigation/memory work is excluded. Exact source/hashes/artifacts and browser records are privately retained under `output/checkout-reliability/`; prior archives remain intact.
 - Combined focused regressions:17 files/209 tests passed; the final additional upgrade stale-quote case passed in its10-test file, bringing that focused coverage to210 distinct cases. This includes real SQLite controller/adapter/concurrency/rollback/ownership/coupon tests and6,000 independent integer-oracle invoice combinations. The existing critical suite passed38 files/266 tests with overlap. Isolated TypeScript, app/server/Worker builds and SEO/private-route checks passed.
 - Final local browser artifact passed32 workflow/layout assertions and14 edge assertions: Arabic/English1440/390/320; displayed/stored invoice agreement; lost-response/reload retries; separate gifts/new-request confirmation; all four flows; changed-quote rejection; blocked storage; customer/admin boundary; opaque cache; no extra package read on checkbox changes. The settled Arabic320px confirmation was separately inspected, fully inside the viewport with an opaque background. No page runtime errors. An unrelated optional announcement-status read used a null synthetic response. External providers were blocked. Physical devices/Safari and production checkout journeys remain unverified.
-- Production remains unchanged. No real checkout, notification, cash/key/access action, historical repair, cancellation or migration was performed. Migrations139/140 and the corresponding release still need their specific production decision; deployment order is Worker then Pages after migrations are reviewed/applied.
+- Local QA performed no real checkout, notification, cash/key/access action, historical repair or cancellation. Subsequently, the owner explicitly approved migrations139/140 and the combined production release; both migrations and Worker→Pages deployment are verified below.
+
+
+## November26 production verification
+
+Production release verified November26: the approved49-file source plus supporting documents is committed/pushed; additive migrations139/140 are applied. Worker→Pages rollout passed11 Worker-stage and41 final read-only route/privacy/asset checks. Configuration/bindings/four schedules were preserved. No historical financial rewrite, real order cancellation, checkout or message was used for verification. Signed-in UI recheck of this combined release is pending because the Chrome connector is unavailable and no Chrome window is currently open. Earlier real student/admin reviews remain dated evidence.

@@ -1,6 +1,6 @@
 # Finance workspace reliability
 
-Status: local implementation; production release pending. Follow-up items R13–R16 in [the session plan](admin-finance-follow-up-plan-2026-11-25.md).
+Status: released and deployment-verified on November26. Follow-up items R13–R16 in [the session plan](admin-finance-follow-up-plan-2026-11-25.md).
 
 ## What changes
 
@@ -25,3 +25,8 @@ Seven focused test files / 73 tests passed both in the working tree and in an is
 The final artifact passed 65 synthetic Chrome assertions: 29 refresh/failure/empty/role/draft cases, 21 classification/copy/form cases, and 15 focus/responsive cases, including Arabic/English at 1440/390/320px. Focus revalidated authority without rereading an unchanged financial snapshot. Refresh issued one controls read, two historical reads, or one expense-register read; no financial mutation was sent. All fixture APIs were known and no browser exceptions occurred. Arabic 320px controls/reconciliation screenshots were inspected. No actual order, receipt, correction or expense was changed for QA. Evidence: `output/order-pricing-rounding/` and `output/playwright/order-pricing-rounding/`.
 
 Deploy the Worker before Pages so the scoped responses are available to the new clients. Preserve all business records during a code rollback. Real signed-in production checks and physical mobile/Safari remain separate from local browser verification.
+
+
+## November26 production verification
+
+Production release verified November26: the approved49-file source plus supporting documents is committed/pushed; additive migrations139/140 are applied. Worker→Pages rollout passed11 Worker-stage and41 final read-only route/privacy/asset checks. Configuration/bindings/four schedules were preserved. No historical financial rewrite, real order cancellation, checkout or message was used for verification. Signed-in UI recheck of this combined release is pending because the Chrome connector is unavailable and no Chrome window is currently open. Earlier real student/admin reviews remain dated evidence.

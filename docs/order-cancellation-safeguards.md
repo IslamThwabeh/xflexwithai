@@ -1,6 +1,6 @@
 # Audited cancellation of unpaid requests
 
-Status: locally complete; not deployed. Plan item R08 in [the follow-up checklist](admin-finance-follow-up-plan-2026-11-25.md). This feature does not authorize cancellation of any real outstanding order.
+Status: released and deployment-verified on November26. Plan item R08 in [the follow-up checklist](admin-finance-follow-up-plan-2026-11-25.md). This feature does not authorize cancellation of any real outstanding order.
 
 ## Policy and workflow
 
@@ -18,7 +18,7 @@ Expanded order details include **Load status history**. Authorized order readers
 
 Review is requested only when opening/rechecking the dialog. Related completed orders remain a separate explicit, bounded read. No polling, scheduler, provider call, new dependency or production-data export.
 
-Additive migration139 adds five non-unique lookup indexes on order links in keys, ledger entries, Live entitlements and package subscriptions, plus order/status history. Existing primary/unique keys cover confirmations, Copier subscriptions and retirement. Local EXPLAIN shows indexed searches rather than relationship-table scans. The indexes add small write/storage costs to their existing tables; they do not rewrite business fields or establish uniqueness. Deploy the migration before the Worker and then Pages after the exact release scope is approved. Migration139 has **not** been applied to production.
+Additive migration139 adds five non-unique lookup indexes on order links in keys, ledger entries, Live entitlements and package subscriptions, plus order/status history. Existing primary/unique keys cover confirmations, Copier subscriptions and retirement. Local EXPLAIN shows indexed searches rather than relationship-table scans. The indexes add small write/storage costs to their existing tables; they do not rewrite business fields or establish uniqueness. Deploy the migration before the Worker and then Pages after the exact release scope is approved. Migration139 was applied in the approved November26 combined release.
 
 ## Validation and remaining acceptance
 
@@ -26,4 +26,9 @@ Four affected files / 89 tests passed locally; the combined isolated regression 
 
 Isolated TypeScript, app/server/Worker builds and SEO/private-route checks passed. Final artifact passed 52 cancellation/history browser assertions and 54 pricing assertions, including English/Arabic at 1440/390/320px, fixed visible confirmation controls at 600px height, access/conflict/failure/version handling, history cursor pages and explicit reads. Supplementary bilingual 320px audit entries and the Arabic dialog were visually inspected. A viewport assertion initially ran before resize layout settled; the bounded settling wait and rerun passed without changing application styles. The expired synthetic browser was restored after automatic approval review's temporary usage-limit failure; no approval gate was bypassed.
 
-The tested combined source is sealed under `output/order-cancellation/` (29 runtime/test files including the preceding 19-file finance batch; 12 files belong to this cancellation/history batch). Browser evidence: `output/playwright/order-cancellation/`. No actual outstanding request is cancelled for QA. BO/support must still review each item in the plan's order decision register and authorize exact dispositions separately. Production release and migration139 authorization remain pending.
+The tested combined source is sealed under `output/order-cancellation/` (29 runtime/test files including the preceding 19-file finance batch; 12 files belong to this cancellation/history batch). Browser evidence: `output/playwright/order-cancellation/`. No actual outstanding request is cancelled for QA. BO/support must still review each item in the plan's order decision register and authorize exact dispositions separately. Production release and migration139 were explicitly approved and verified November26; this does not authorize any real order disposition.
+
+
+## November26 production verification
+
+Production release verified November26: the approved49-file source plus supporting documents is committed/pushed; additive migrations139/140 are applied. Worker→Pages rollout passed11 Worker-stage and41 final read-only route/privacy/asset checks. Configuration/bindings/four schedules were preserved. No historical financial rewrite, real order cancellation, checkout or message was used for verification. Signed-in UI recheck of this combined release is pending because the Chrome connector is unavailable and no Chrome window is currently open. Earlier real student/admin reviews remain dated evidence.

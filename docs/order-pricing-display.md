@@ -1,6 +1,6 @@
 # Order price display consistency
 
-Status: implemented and verified locally; not deployed. This addresses R10 in [the follow-up plan](admin-finance-follow-up-plan-2026-11-25.md), following the separately released home/order-review batch.
+Status: released and deployment-verified on November26. This addresses R10 in [the follow-up plan](admin-finance-follow-up-plan-2026-11-25.md), following the separately released home/order-review batch.
 
 The reviewed Basic order could show ₪603.44 subtotal plus ₪96.57 VAT beside a ₪700.00 total. Its legacy USD components were converted and rounded independently. The display projection now uses integer conversion ratios and allocates any conversion pennies by largest remainder, with a stable tie order. That case displays **₪603.44 + ₪96.56 = ₪700.00**. The recorded subtotal, discount, tax rate, VAT, currency, total and actual confirmed cash are not rewritten.
 
@@ -18,4 +18,9 @@ Exact allocation requires safe integer source values and conversion products. Le
 - 54 synthetic Chrome checks passed across admin/customer pages, Arabic/English and 1440/390/320px: visible balanced amounts, discounts, source warnings, unchanged commercial totals, no negative-zero display, no page overflow, no additional history query and no order/financial mutation. Visual inspection included the Arabic 320px customer warning and the desktop admin discount breakdown. No real order was used or changed.
 - After optimizing the ILS path, all six server-generated visible fixtures were byte-for-byte unchanged. Local JavaScript medians for 203/1,000/5,000 synthetic orders were about 0.31/1.92/9.07ms, versus 0.17/0.81/5.19ms for the earlier helper. These are local arithmetic measurements, not production CPU/latency limits or a production data distribution.
 
-Ignored source manifests, fixtures, benchmark and build evidence: `output/order-pricing-rounding/`; browser evidence: `output/playwright/order-pricing-rounding/`. Subsequent control-copy/category work has its own recorded scope and verification. Deploy the Worker before Pages if this change is approved for a later release. No production deployment of this pricing repair has occurred.
+Ignored source manifests, fixtures, benchmark and build evidence: `output/order-pricing-rounding/`; browser evidence: `output/playwright/order-pricing-rounding/`. Subsequent control-copy/category work has its own recorded scope and verification. The November26 approved release deployed the Worker before Pages and verified the exact tested assets.
+
+
+## November26 production verification
+
+Production release verified November26: the approved49-file source plus supporting documents is committed/pushed; additive migrations139/140 are applied. Worker→Pages rollout passed11 Worker-stage and41 final read-only route/privacy/asset checks. Configuration/bindings/four schedules were preserved. No historical financial rewrite, real order cancellation, checkout or message was used for verification. Signed-in UI recheck of this combined release is pending because the Chrome connector is unavailable and no Chrome window is currently open. Earlier real student/admin reviews remain dated evidence.
