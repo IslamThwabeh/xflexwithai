@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Download, Landmark, Printer, RefreshCw } from "lucide-react";
 import { Link, useLocation, useSearch } from "wouter";
 import DashboardLayout from "@/components/DashboardLayout";
+import FinancePeriodChecklist from "@/components/admin/FinancePeriodChecklist";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -557,6 +558,7 @@ export default function AdminFinancialDashboard() {
                   ? "صافي المقبوضات بعد الاستردادات ناقص المصروفات المعتمدة بعد تصحيحاتها. لا يتم توزيع المصروفات المشتركة على الأكاديمية أو الناسخ افتراضياً."
                   : "Net receipts after refunds less approved expenses after corrections. Shared expenses are not assumed to belong to Academy or Copier."}
               </p>
+              <FinancePeriodChecklist netExpensesMinor={data.totals.expensesMinor} />
               {metrics([
                 [
                   ar ? "صافي إيراد كل الخدمات" : "All-service net cash revenue",

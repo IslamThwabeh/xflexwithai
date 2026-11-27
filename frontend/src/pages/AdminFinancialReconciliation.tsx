@@ -1,230 +1,427 @@
-import { useState } from 'react';
-import { AlertTriangle, ClipboardCheck, Loader2, RefreshCw, Scale } from 'lucide-react';
-import DashboardLayout from '@/components/DashboardLayout';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { trpc } from '@/lib/trpc';
-import { useLanguage } from '@/contexts/LanguageContext';
-import { toast } from 'sonner';
-import { useFinanceWorkspaceAccess, type FinanceWorkspaceAccess } from '@/lib/useFinanceWorkspaceAccess';
-import { isFinanceAccessDenied } from '@/lib/financeWorkspaceCache';
-import FinanceReadNotice from '@/components/admin/FinanceReadNotice';
-import { formatAcademyDateTime } from '@shared/academyLocale';
-
-
-type QueueStatus = 'unresolved' | 'approved_opening_balance' | 'approved_adjustment' | 'excluded';
-type Treatment = 'genuine_current_new_sale' | 'genuine_current_renewal' | 'genuine_upgrade' | 'legacy_migration_no_financial_impact' | 'historical_payment_known_date' | 'historical_payment_unknown' | 'requires_owner_review' | 'possible_duplicate' | 'excluded_nonfinancial';
-type QueueItem = { id: number; sourceType: string; sourceReference: string; issueType: string; confidenceLevel: string; status: string; proposedTreatment: Treatment; proposedAmountIlsMinor?: number | null; notes?: string | null };
-
-const money = (minor: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'ILS' }).format(minor / 100);
-const today = () => new Date().toISOString().slice(0, 10);
+import { useState } from "react";
+import { Link } from "wouter";
+import { AlertTriangle, RefreshCw, Scale } from "lucide-react";
+import DashboardLayout from "@/components/DashboardLayout";
+import { Button } from "@/components/ui/button";
+import { trpc } from "@/lib/trpc";
+import { useLanguage } from "@/contexts/LanguageContext";
+import {
+  useFinanceWorkspaceAccess,
+  type FinanceWorkspaceAccess,
+} from "@/lib/useFinanceWorkspaceAccess";
+import { isFinanceAccessDenied } from "@/lib/financeWorkspaceCache";
+import { formatAdminCurrencyFromIls } from "@/lib/adminCurrency";
+import HistoricalReviewQueue from "@/components/admin/HistoricalReviewQueue";
+import FinancialActionConfirmation, {
+  type FinancialActionReview,
+} from "@/components/admin/FinancialActionConfirmation";
+import { formatAcademyDateTime } from "@shared/academyLocale";
+import { toast } from "sonner";
 
 export default function AdminFinancialReconciliation() {
-  const scope = useFinanceWorkspaceAccess('controls');
-  return <AdminFinancialReconciliationWorkspace key={scope.identityKey} scope={scope} />;
+  const scope = useFinanceWorkspaceAccess("controls");
+  return <ReconciliationWorkspace key={scope.identityKey} scope={scope} />;
 }
 
-function AdminFinancialReconciliationWorkspace({ scope }: { scope: FinanceWorkspaceAccess }) {
-  const { language } = useLanguage();
-  const isRtl = language === 'ar';
-  const utils = trpc.useUtils();
-  const [status, setStatus] = useState<QueueStatus>('unresolved');
-  const [selected, setSelected] = useState<QueueItem | null>(null);
-  const [decision, setDecision] = useState<'excluded' | 'approved_opening_balance' | 'approved_adjustment'>('excluded');
-  const [draft, setDraft] = useState<QueueItem | null>(null);
-  const [draftTreatment, setDraftTreatment] = useState<Treatment>('requires_owner_review');
-  const [draftAmount, setDraftAmount] = useState('');
-  const [draftNotes, setDraftNotes] = useState('');
-  const [reason, setReason] = useState('');
-  const [effectiveDate, setEffectiveDate] = useState(today());
-  const [amount, setAmount] = useState('');
-  const viewerScope = { viewerId: scope.viewerId, access: scope.access ?? 'manager' } as const;
-  const queryOptions = { enabled: scope.allowed, staleTime: 5 * 60_000, retry: false, refetchOnWindowFocus: false, refetchOnReconnect: false, refetchOnMount: true } as const;
-  const previewQuery = trpc.financialReconciliation.preview.useQuery(viewerScope, queryOptions);
-  const preview = { ...previewQuery, data: scope.allowed && !scope.checking && !previewQuery.error && previewQuery.data?.viewerId === scope.viewerId && previewQuery.data?.access === scope.access ? previewQuery.data : undefined };
-  const workspaceQuery = trpc.financialReconciliation.workspace.useQuery({ ...viewerScope, status }, queryOptions);
-  const workspace = { ...workspaceQuery, data: scope.allowed && !scope.checking && !workspaceQuery.error && workspaceQuery.data?.viewerId === scope.viewerId && workspaceQuery.data?.access === scope.access ? workspaceQuery.data : undefined };
-  const mutationError = (error: any) => { if (isFinanceAccessDenied(error)) void scope.refetch(); toast.error(error.message); };
-  const refresh = async () => {
+function ReconciliationWorkspace({ scope }: { scope: FinanceWorkspaceAccess }) {
+  const { language } = useLanguage(),
+    ar = language === "ar",
+    utils = trpc.useUtils();
+  const text = (en: string, arabic: string) => (ar ? arabic : en);
+  const money = (minor: number) =>
+    formatAdminCurrencyFromIls(minor / 100, language);
+  const access =
+    scope.access === "owner" ? ("owner" as const) : ("manager" as const);
+  const viewerScope = { viewerId: scope.viewerId, access };
+  const [confirmation, setConfirmation] =
+    useState<FinancialActionReview | null>(null);
+  const options = {
+    enabled: scope.allowed,
+    staleTime: 5 * 60_000,
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    refetchOnMount: true,
+  } as const;
+  const previewQuery = trpc.financialReconciliation.preview.useQuery(
+    viewerScope,
+    options
+  );
+  const workspaceQuery = trpc.financialReconciliation.workspace.useQuery(
+    { ...viewerScope, status: "unresolved", includeItems: false },
+    options
+  );
+  const verified = <T extends { viewerId: number; access: string }>(
+    data: T | undefined,
+    error: unknown
+  ) =>
+    !error && data?.viewerId === scope.viewerId && data.access === scope.access
+      ? data
+      : undefined;
+  const preview = verified(previewQuery.data, previewQuery.error),
+    workspace = verified(workspaceQuery.data, workspaceQuery.error);
+  const onAccessFailure = (error: unknown) => {
+    if (isFinanceAccessDenied(error)) void scope.refetch();
+  };
+  const refreshStats = async () => {
     await Promise.all([
-      utils.financialReconciliation.preview.invalidate(),
-      utils.financialReconciliation.workspace.invalidate(),
-      utils.financialReports.dashboard.invalidate(),
+      utils.financialReconciliation.preview.invalidate(viewerScope),
+      utils.financialReconciliation.workspace.invalidate({
+        ...viewerScope,
+        status: "unresolved",
+        includeItems: false,
+      }),
     ]);
   };
-  const materialize = trpc.financialReconciliation.materializeQueue.useMutation({
-    onSuccess: async result => {
-      await refresh();
-      toast.success(isRtl ? `تمت إضافة ${result.itemsAdded} عناصر للمراجعة.` : `${result.itemsAdded} review items added.`);
-    },
-    onError: mutationError,
-  });
-  const updateDraft = trpc.financialReconciliation.updateDraft.useMutation({
-    onSuccess: async () => {
-      await refresh();
-      setDraft(null);
-      toast.success(isRtl ? 'تم تحديث مسودة المطابقة مع سجل تدقيق.' : 'Reconciliation draft and audit trail updated.');
-    },
-    onError: mutationError,
-  });
-  const resolve = trpc.financialReconciliation.resolveItem.useMutation({
-    onSuccess: async result => {
-      await refresh();
-      setSelected(null);
-      setReason('');
-      setAmount('');
-      toast.success(result?.idempotent
-        ? (isRtl ? 'كان هذا القرار محفوظًا مسبقًا.' : 'This decision was already saved.')
-        : (isRtl ? 'تم حفظ قرار المالك وسجل التدقيق.' : 'Owner decision and audit trail saved.'));
-    },
-    onError: mutationError,
-  });
-  const submitDecision = () => {
-    if (!selected) return;
-    const amountMinor = decision !== 'excluded' ? Math.round(Number(amount) * 100) : null;
-    resolve.mutate({
-      itemId: selected.id,
-      decision,
-      reason: reason.trim(),
-      effectiveDate: decision !== 'excluded' ? effectiveDate : null,
-      amountIlsMinor: Number.isSafeInteger(amountMinor) ? amountMinor : null,
-    });
-  };
-  const workspaceTitle = isRtl ? 'المطابقة المالية التاريخية' : 'Historical Financial Reconciliation';
   const retryRead = async () => {
-    const fresh = await scope.refetch();
-    const access = fresh.data?.access;
-    if (!fresh.error && fresh.data?.viewerId === scope.viewerId && (access === 'owner' || access === 'manager')) {
-      const verifiedScope = { viewerId: scope.viewerId, access };
-      await Promise.all([utils.financialReconciliation.preview.invalidate(verifiedScope), utils.financialReconciliation.workspace.invalidate({ ...verifiedScope, status })]);
+    const fresh = await scope.refetch(),
+      freshAccess = fresh.data?.access;
+    if (
+      !fresh.error &&
+      fresh.data?.viewerId === scope.viewerId &&
+      (freshAccess === "owner" || freshAccess === "manager")
+    ) {
+      const freshScope = { viewerId: scope.viewerId, access: freshAccess };
+      await Promise.all([
+        utils.financialReconciliation.preview.invalidate(freshScope),
+        utils.financialReconciliation.workspace.invalidate({
+          ...freshScope,
+          status: "unresolved",
+          includeItems: false,
+        }),
+        utils.financialReconciliation.items.invalidate(freshScope),
+      ]);
     }
   };
-  const readError = previewQuery.error || workspaceQuery.error;
-  if (scope.checking) return <FinanceReadNotice title={workspaceTitle} state="loading" onRetry={() => void retryRead()} />;
-  if (scope.error) return <FinanceReadNotice title={workspaceTitle} state={isFinanceAccessDenied(scope.error) ? 'denied' : 'failure'} onRetry={() => void retryRead()} />;
-  if (!scope.verified) return <FinanceReadNotice title={workspaceTitle} state="failure" onRetry={() => void retryRead()} />;
-  if (!scope.allowed) return <FinanceReadNotice title={workspaceTitle} state="denied" onRetry={() => void retryRead()} />;
-  if (readError) return <FinanceReadNotice title={workspaceTitle} state={isFinanceAccessDenied(readError) ? 'denied' : 'failure'} onRetry={() => void retryRead()} />;
-  if (previewQuery.isPending || workspaceQuery.isPending) return <FinanceReadNotice title={workspaceTitle} state="loading" onRetry={() => void retryRead()} />;
-  if (!preview.data || !workspace.data) return <FinanceReadNotice title={workspaceTitle} state="failure" onRetry={() => void retryRead()} />;
-  const counts = preview.data?.counts;
-  const classifications = preview.data?.classifications;
-  const isBusy = preview.isLoading || workspace.isLoading;
-  const sourcePath = (item: QueueItem) => item.sourceType === 'order' ? `/admin/orders?orderId=${item.sourceReference}` : '/admin/package-keys';
-
+  const materialize = trpc.financialReconciliation.materializeQueue.useMutation(
+    {
+      onSuccess: result => {
+        setConfirmation(null);
+        toast.success(
+          text(
+            result.itemsAdded +
+              " review candidates added; no income recognized.",
+            "تمت إضافة " + result.itemsAdded + " مرشح مراجعة دون احتساب دخل."
+          )
+        );
+        void Promise.all([
+          refreshStats(),
+          utils.financialReconciliation.items.invalidate(viewerScope),
+        ]);
+      },
+      onError: error => {
+        setConfirmation(null);
+        onAccessFailure(error);
+        toast.error(error.message);
+      },
+    }
+  );
+  const readError = scope.error || previewQuery.error || workspaceQuery.error;
+  const readState = scope.checking
+    ? "loading"
+    : scope.error
+      ? isFinanceAccessDenied(scope.error)
+        ? "denied"
+        : "failure"
+      : !scope.verified
+        ? "failure"
+        : !scope.allowed
+          ? "denied"
+          : readError
+            ? isFinanceAccessDenied(readError)
+              ? "denied"
+              : "failure"
+            : previewQuery.isFetching || workspaceQuery.isFetching
+              ? "loading"
+              : !preview || !workspace
+                ? "failure"
+                : null;
+  const ready = readState === null;
+  const counts = preview?.counts,
+    classifications = preview?.classifications;
+  const createQueue = () => {
+    if (!ready || !preview?.safeToMaterialize) return;
+    setConfirmation({
+      title: text("Build review queue", "إنشاء قائمة المراجعة"),
+      lines: [
+        text(
+          preview.totalCandidates +
+            " source candidates. Existing review items are preserved.",
+          preview.totalCandidates +
+            " مرشحًا من المصادر. تبقى عناصر المراجعة الموجودة محفوظة."
+        ),
+        text(
+          "This adds review candidates and audit records only. It does not recognize cash or change orders, keys or customer access.",
+          "تضيف هذه العملية مرشحي مراجعة وسجلات تدقيق فقط. لا تحتسب أموالًا ولا تغيّر الطلبات أو المفاتيح أو وصول العملاء."
+        ),
+      ],
+      confirm: () => materialize.mutate(),
+    });
+  };
   return (
     <DashboardLayout>
-      <div className="space-y-6 p-4 md:p-6" dir={isRtl ? 'rtl' : 'ltr'}>
+      <main className="space-y-5 p-4 md:p-6" dir={ar ? "rtl" : "ltr"}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="flex items-center gap-2 text-2xl font-bold"><Scale className="h-6 w-6 text-emerald-700" />{isRtl ? 'المطابقة المالية التاريخية' : 'Historical Financial Reconciliation'}</h1>
-            <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{isRtl ? 'مراجعة سجلات قديمة باستخدام أرقام المصادر فقط. الطلبات والمفاتيح الأصلية للقراءة فقط ولا يتم تغييرها.' : 'Review historic records using source IDs only. Original orders and keys stay read-only and are never changed.'}</p>
+            <h1 className="flex items-center gap-2 text-2xl font-bold">
+              <Scale className="h-6 w-6 shrink-0 text-emerald-700" />
+              {text(
+                "Historical Financial Reconciliation",
+                "المطابقة المالية التاريخية"
+              )}
+            </h1>
+            <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+              {text(
+                "Review source references and evidence. Source orders and keys remain unchanged; candidate prices and classifications do not prove payment.",
+                "راجع أرقام المصادر وإثباتاتها. تبقى الطلبات والمفاتيح الأصلية دون تغيير؛ أسعار المرشحين وتصنيفاتهم لا تثبت الدفع."
+              )}
+            </p>
           </div>
-          <div className="flex flex-wrap gap-2"><Button variant="outline" disabled={scope.checking || previewQuery.isFetching || workspaceQuery.isFetching} onClick={() => void retryRead()}><RefreshCw className="me-2 h-4 w-4" />{isRtl ? 'تحديث العرض' : 'Refresh view'}</Button>
-          {preview.data?.canMaterialize && <Button onClick={() => materialize.mutate()} disabled={materialize.isPending || !preview.data.safeToMaterialize}>
-            {materialize.isPending ? <Loader2 className="me-2 h-4 w-4 animate-spin" /> : <RefreshCw className="me-2 h-4 w-4" />}
-            {isRtl ? 'إنشاء/تحديث قائمة المراجعة' : 'Build/refresh review queue'}
-          </Button>}</div>
-        </div>
-
-        <p className="text-xs text-muted-foreground">{isRtl ? 'وقت تحميل المعاينة: ' : 'Preview loaded: '}{formatAcademyDateTime(preview.data.generatedAt, language)} · {isRtl ? 'القائمة: ' : 'Queue: '}{formatAcademyDateTime(workspace.data.generatedAt, language)} · {isRtl ? 'بتوقيت فلسطين' : 'Palestine time'}</p>
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-          <div className="flex gap-2 font-semibold"><AlertTriangle className="h-5 w-5 shrink-0" />{isRtl ? 'هذه المعاينة لا تسجل دخلاً ولا تفترض تاريخ دفع.' : 'This preview records no income and assumes no payment date.'}</div>
-          <p className="mt-1 ps-7">{isRtl ? 'الدفع التاريخي لا يدخل التقارير إلا كتسوية موثقة بتاريخ الدفع الحقيقي. المبلغ أو التاريخ غير المؤكد يبقى خارج قائمة الدخل، والاستبعاد لا يحذف شيئًا.' : 'Historic payment enters reports only as a documented adjustment on the genuine payment date. Unknown amount/date stays outside P&L, and exclusion deletes nothing.'}</p>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {[
-            [isRtl ? 'طلبات بلا تأكيد دفع' : 'Orders without confirmation', counts?.ordersWithoutConfirmation ?? 0],
-            [isRtl ? 'مفاتيح يدوية بسعر' : 'Priced manual keys', counts?.manualPricedKeys ?? 0],
-            [isRtl ? 'مفاتيح تجديد' : 'Renewal keys', counts?.renewalKeys ?? 0],
-            [isRtl ? 'مفاتيح ترقية' : 'Upgrade keys', counts?.upgradeKeys ?? 0],
-          ].map(([label, value]) => <div key={String(label)} className="rounded-xl border bg-white p-4"><p className="text-sm text-muted-foreground">{label}</p><p className="mt-1 text-2xl font-bold">{value}</p></div>)}
-        </div>
-
-        <div className="rounded-xl border bg-slate-50 p-4 text-sm">
-          <p className="font-semibold">{isRtl ? 'تصنيف المعاينة' : 'Dry-run classification'}</p>
-          <p className="mt-1 text-muted-foreground">{isRtl
-            ? `يحتاج قرار المالك: ${classifications?.requiresOwnerReview ?? 0} · دفع تاريخي بتاريخ غير مؤكد: ${classifications?.historicalPaymentUnknown ?? 0} · مستبعد غير مالي: ${classifications?.excludedNonfinancial ?? 0}`
-            : `Requires owner review: ${classifications?.requiresOwnerReview ?? 0} · Historic payment with unknown date: ${classifications?.historicalPaymentUnknown ?? 0} · Non-financial excluded: ${classifications?.excludedNonfinancial ?? 0}`}</p>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          <div className="rounded-xl border bg-white p-4"><p className="text-xs text-muted-foreground">{isRtl ? 'غير محسوم' : 'Unresolved'}</p><p className="text-xl font-bold text-amber-700">{workspace.data?.counts.unresolved ?? 0}</p><p className="text-xs text-muted-foreground">{isRtl ? 'القيمة المقترحة فقط:' : 'Proposed value only:'} {money(workspace.data?.counts.unresolvedProposedMinor ?? 0)}</p></div>
-          <div className="rounded-xl border bg-white p-4"><p className="text-xs text-muted-foreground">{isRtl ? 'أرصدة معتمدة' : 'Opening balances'}</p><p className="text-xl font-bold text-emerald-700">{workspace.data?.counts.approvedOpeningBalance ?? 0}</p></div>
-          <div className="rounded-xl border bg-white p-4"><p className="text-xs text-muted-foreground">{isRtl ? 'تسويات معتمدة' : 'Adjustments'}</p><p className="text-xl font-bold text-emerald-700">{workspace.data?.counts.approvedAdjustment ?? 0}</p></div>
-          <div className="rounded-xl border bg-white p-4"><p className="text-xs text-muted-foreground">{isRtl ? 'مستبعد' : 'Excluded'}</p><p className="text-xl font-bold">{workspace.data?.counts.excluded ?? 0}</p></div>
-          <div className="rounded-xl border bg-white p-4"><p className="text-xs text-muted-foreground">{isRtl ? 'الصافي التاريخي المعتمد' : 'Recognized historical net'}</p><p className="text-xl font-bold">{money(workspace.data?.recognized.historicalNetMinor ?? 0)}</p></div>
-        </div>
-
-        <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
-          <p className="font-semibold text-blue-950">{isRtl ? 'مؤشرات تشغيلية للمطابقة — ليست إيرادًا' : 'Operational reconciliation indicators — not revenue'}</p>
-          <div className="mt-2 grid gap-2 text-sm sm:grid-cols-3">
-            <span>{isRtl ? 'دفعات مؤكدة' : 'Confirmed payments'}: {workspace.data?.operationalIndicators.confirmedPayments ?? 0}</span>
-            <span>{isRtl ? 'مفاتيح مرتبطة بطلب صادرة' : 'Order-linked keys issued'}: {workspace.data?.operationalIndicators.issuedOrderKeys ?? 0}</span>
-            <span>{isRtl ? 'مفاتيح مرتبطة بطلب مفعلة' : 'Order-linked keys activated'}: {workspace.data?.operationalIndicators.activatedOrderKeys ?? 0}</span>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              disabled={readState === "loading" || materialize.isPending}
+              onClick={() => void retryRead()}
+            >
+              <RefreshCw className="me-2 h-4 w-4" />
+              {text("Refresh view", "تحديث العرض")}
+            </Button>
+            {ready && preview?.canMaterialize && (
+              <Button
+                onClick={createQueue}
+                disabled={materialize.isPending || !preview.safeToMaterialize}
+              >
+                {text("Build review queue", "إنشاء قائمة المراجعة")}
+              </Button>
+            )}
           </div>
         </div>
-
-        <div className="overflow-hidden rounded-xl border bg-white">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
-            <div><h2 className="font-bold">{isRtl ? 'قائمة مراجعة المالك' : 'Owner review queue'}</h2><p className="text-xs text-muted-foreground">{isRtl ? 'لا تظهر أسماء أو بيانات عملاء.' : 'No client names or personal data are displayed.'}</p></div>
-            <select className="rounded-md border bg-background px-3 py-2 text-sm" value={status} onChange={event => setStatus(event.target.value as QueueStatus)}>
-              <option value="unresolved">{isRtl ? 'غير محسوم' : 'Unresolved'}</option>
-              <option value="approved_opening_balance">{isRtl ? 'رصيد افتتاحي معتمد' : 'Approved opening balance'}</option>
-              <option value="approved_adjustment">{isRtl ? 'تسوية تاريخية معتمدة' : 'Approved historical adjustment'}</option>
-              <option value="excluded">{isRtl ? 'مستبعد' : 'Excluded'}</option>
-            </select>
+        {readState && (
+          <div
+            role={readState === "loading" ? "status" : "alert"}
+            className="space-y-3 rounded-xl border p-5"
+          >
+            <p>
+              {readState === "loading"
+                ? text(
+                    "Checking access and loading the workspace…",
+                    "جارٍ التحقق من الصلاحيات وتحميل العرض…"
+                  )
+                : readState === "denied"
+                  ? text(
+                      "This financial workspace is not available with your current access. Recheck access.",
+                      "هذا العرض المالي غير متاح بصلاحياتك الحالية. أعد التحقق من الوصول."
+                    )
+                  : text(
+                      "The financial data could not be loaded or verified. Retry before reviewing or changing records.",
+                      "تعذر تحميل البيانات المالية أو التحقق منها. أعد المحاولة قبل المراجعة أو إجراء تغيير."
+                    )}
+            </p>
+            {readState !== "loading" && (
+              <Button variant="outline" onClick={() => void retryRead()}>
+                {text("Retry", "إعادة المحاولة")}
+              </Button>
+            )}
           </div>
-          {isBusy ? <div className="p-8 text-center"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div>
-            : !workspace.data?.items.length ? <div className="p-8 text-center text-sm text-muted-foreground">{isRtl ? 'لا توجد عناصر بهذه الحالة.' : 'No items with this status.'}</div>
-            : <div className="divide-y">{workspace.data.items.map((item: any) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
-              <div><p className="font-medium">{item.issueType.replaceAll('_', ' ')}</p><p className="mt-1 font-mono text-xs text-muted-foreground">{item.sourceType} #{item.sourceReference} · {isRtl ? 'عنصر' : 'item'} #{item.id} · {item.confidenceLevel}</p><p className="mt-1 text-xs text-muted-foreground">{item.proposedTreatment.replaceAll('_', ' ')}</p>{item.proposedAmountIlsMinor != null && <p className="mt-1 text-sm">{money(item.proposedAmountIlsMinor)}</p>}{workspace.data?.access === 'owner' && <a className="mt-1 inline-block text-xs text-emerald-700 underline" href={sourcePath(item)}>{isRtl ? 'فتح المصدر التشغيلي' : 'Open operational source'}</a>}</div>
-              {item.status === 'unresolved' && <div className="flex gap-2">{workspace.data?.canManageDrafts && <Button size="sm" variant="outline" onClick={() => { setDraft(item); setDraftTreatment(item.proposedTreatment); setDraftAmount(item.proposedAmountIlsMinor == null ? '' : String(item.proposedAmountIlsMinor / 100)); setDraftNotes(item.notes ?? ''); }}>{isRtl ? 'تحديث المسودة' : 'Edit draft'}</Button>}{workspace.data?.canResolve && <Button size="sm" onClick={() => { setSelected(item); setDecision('excluded'); setReason(''); setAmount(item.proposedAmountIlsMinor == null ? '' : String(item.proposedAmountIlsMinor / 100)); }}>{isRtl ? 'قرار المالك' : 'Owner decision'}</Button>}</div>}
-            </div>)}</div>}
-          {workspace.data?.truncated && <div className="border-t p-3 text-xs text-muted-foreground">{isRtl ? 'تظهر أحدث 100 نتيجة فقط.' : 'Only the latest 100 results are shown.'}</div>}
-        </div>
-      </div>
-
-      <Dialog open={!!selected} onOpenChange={open => { if (!open && !resolve.isPending) setSelected(null); }}>
-        <DialogContent dir={isRtl ? 'rtl' : 'ltr'}>
-          <DialogHeader><DialogTitle>{isRtl ? 'قرار المطابقة' : 'Reconciliation decision'}</DialogTitle><DialogDescription>{isRtl ? 'السجل الأصلي لن يتغير. لا تعتمد تسوية إلا بعد توثيق تاريخ الدفع الحقيقي والمبلغ.' : 'The source record will not change. Approve an adjustment only after verifying the genuine payment date and amount.'}</DialogDescription></DialogHeader>
-          <div className="space-y-3">
-            <select className="w-full rounded-md border bg-background px-3 py-2" value={decision} onChange={event => setDecision(event.target.value as typeof decision)}>
-              <option value="excluded">{isRtl ? 'استبعاد — قبل وبعد: ₪0' : 'Exclude — before and after: ₪0'}</option>
-              <option value="approved_adjustment">{isRtl ? 'اعتماد تسوية تاريخية' : 'Approve historical adjustment'}</option>
-            </select>
-            {decision !== 'excluded' && <div className="grid gap-3 sm:grid-cols-2"><div><label className="text-sm">{isRtl ? 'تاريخ القيد' : 'Posting date'}</label><Input type="date" value={effectiveDate} max={today()} onChange={event => setEffectiveDate(event.target.value)} /></div><div><label className="text-sm">{isRtl ? 'المبلغ بالشيكل (+ أو -)' : 'ILS amount (+ or -)'}</label><Input type="number" step="0.01" value={amount} onChange={event => setAmount(event.target.value)} /></div></div>}
-            <Textarea value={reason} maxLength={1000} onChange={event => setReason(event.target.value)} placeholder={isRtl ? 'سبب موثق للقرار (5 أحرف على الأقل)' : 'Documented reason (at least 5 characters)'} />
-            {decision !== 'excluded' && amount && <div className="rounded-md bg-slate-50 p-3 text-sm"><ClipboardCheck className="me-1 inline h-4 w-4" />{isRtl ? `قبل: ₪0 — بعد: ${money(Math.round(Number(amount) * 100))}` : `Before: ₪0 — after: ${money(Math.round(Number(amount) * 100))}`}</div>}
-          </div>
-          <DialogFooter><Button variant="outline" onClick={() => setSelected(null)} disabled={resolve.isPending}>{isRtl ? 'إلغاء' : 'Cancel'}</Button><Button onClick={submitDecision} disabled={resolve.isPending || reason.trim().length < 5 || (decision !== 'excluded' && (!effectiveDate || !amount || Number(amount) === 0))}>{resolve.isPending && <Loader2 className="me-2 h-4 w-4 animate-spin" />}{isRtl ? 'حفظ قرار المالك' : 'Save owner decision'}</Button></DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={!!draft} onOpenChange={open => { if (!open && !updateDraft.isPending) setDraft(null); }}>
-        <DialogContent dir={isRtl ? 'rtl' : 'ltr'}>
-          <DialogHeader><DialogTitle>{isRtl ? 'تحديث مسودة المطابقة' : 'Update reconciliation draft'}</DialogTitle><DialogDescription>{isRtl ? 'هذا اقتراح فقط ولا يدخل أي مبلغ في التقارير.' : 'This is only a proposal and recognizes no amount.'}</DialogDescription></DialogHeader>
-          <div className="space-y-3">
-            <select className="w-full rounded-md border bg-background px-3 py-2" value={draftTreatment} onChange={event => setDraftTreatment(event.target.value as Treatment)}>
-              <option value="genuine_current_new_sale">{isRtl ? 'بيع جديد حالي صحيح' : 'Genuine current new sale'}</option>
-              <option value="genuine_current_renewal">{isRtl ? 'تجديد حالي صحيح' : 'Genuine current renewal'}</option>
-              <option value="genuine_upgrade">{isRtl ? 'ترقية صحيحة' : 'Genuine upgrade'}</option>
-              <option value="legacy_migration_no_financial_impact">{isRtl ? 'ترحيل قديم — بلا أثر مالي' : 'Legacy migration — no financial impact'}</option>
-              <option value="historical_payment_known_date">{isRtl ? 'دفعة تاريخية بتاريخ معروف' : 'Historical payment — known date'}</option>
-              <option value="historical_payment_unknown">{isRtl ? 'دفعة تاريخية غير مؤكدة' : 'Historical payment — unknown'}</option>
-              <option value="requires_owner_review">{isRtl ? 'يتطلب مراجعة المالك' : 'Requires owner review'}</option>
-              <option value="possible_duplicate">{isRtl ? 'تكرار محتمل' : 'Possible duplicate'}</option>
-              <option value="excluded_nonfinancial">{isRtl ? 'مستبعد غير مالي' : 'Excluded non-financial'}</option>
-            </select>
-            <Input type="number" step="0.01" value={draftAmount} onChange={event => setDraftAmount(event.target.value)} placeholder={isRtl ? 'مبلغ مقترح بالشيكل (اختياري)' : 'Proposed ILS amount (optional)'} />
-            <Textarea value={draftNotes} maxLength={1000} onChange={event => setDraftNotes(event.target.value)} placeholder={isRtl ? 'ملاحظات وإثباتات المسودة' : 'Draft evidence notes'} />
-          </div>
-          <DialogFooter><Button variant="outline" onClick={() => setDraft(null)} disabled={updateDraft.isPending}>{isRtl ? 'إلغاء' : 'Cancel'}</Button><Button disabled={updateDraft.isPending || !draft} onClick={() => draft && updateDraft.mutate({ itemId: draft.id, proposedTreatment: draftTreatment, proposedAmountIlsMinor: draftAmount ? Math.round(Number(draftAmount) * 100) : null, notes: draftNotes })}>{isRtl ? 'حفظ المسودة' : 'Save draft'}</Button></DialogFooter>
-        </DialogContent>
-      </Dialog>
+        )}
+        {ready && preview && workspace && (
+          <>
+            <p className="text-xs text-muted-foreground">
+              {text("Preview loaded: ", "تحميل المعاينة: ")}
+              {formatAcademyDateTime(preview.generatedAt, language)} ·{" "}
+              {text("Summary loaded: ", "تحميل الملخص: ")}
+              {formatAcademyDateTime(workspace.generatedAt, language)} ·{" "}
+              {text("Palestine time", "بتوقيت فلسطين")}
+            </p>
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+              <p className="flex gap-2 font-semibold">
+                <AlertTriangle className="h-5 w-5 shrink-0" />
+                {text(
+                  "Candidates are not income and have no assumed payment date.",
+                  "المرشحون ليسوا دخلًا وليس لهم تاريخ دفع مفترض."
+                )}
+              </p>
+              <p className="mt-2">
+                {text(
+                  "Unknown cash or payment dates stay unresolved. A verified historical receipt requires an owner preview and confirmation using its genuine date and ILS amount. Exclusion deletes nothing.",
+                  "تبقى الأموال أو تواريخ الدفع غير المؤكدة غير محسومة. تتطلب الدفعة التاريخية الموثقة معاينة وتأكيد المالك باستخدام تاريخها الحقيقي ومبلغها بالشيكل. الاستبعاد لا يحذف شيئًا."
+                )}
+              </p>
+              {!preview.safeToMaterialize && (
+                <p className="mt-2 font-semibold">
+                  {text(
+                    "A source category exceeds the queue-building safety limit. Ask the finance owner to review it; records will not be silently truncated.",
+                    "تتجاوز إحدى فئات المصادر حد الأمان لإنشاء القائمة. اطلب مراجعة المالك؛ لن يتم اقتطاع السجلات بصمت."
+                  )}
+                </p>
+              )}
+            </div>
+            <section
+              aria-label={text(
+                "Unfiltered reconciliation summary",
+                "ملخص المطابقة دون مرشحات"
+              )}
+              className="space-y-3"
+            >
+              <h2 className="text-sm font-semibold">
+                {text(
+                  "Source candidates and all-status review summary",
+                  "مرشحو المصادر وملخص المراجعة لكل الحالات"
+                )}
+              </h2>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {[
+                  [
+                    text("Orders without confirmation", "طلبات بلا تأكيد دفع"),
+                    counts?.ordersWithoutConfirmation ?? 0,
+                  ],
+                  [
+                    text("Priced manual keys", "مفاتيح يدوية بسعر"),
+                    counts?.manualPricedKeys ?? 0,
+                  ],
+                  [
+                    text("Renewal keys", "مفاتيح تجديد"),
+                    counts?.renewalKeys ?? 0,
+                  ],
+                  [
+                    text("Upgrade keys", "مفاتيح ترقية"),
+                    counts?.upgradeKeys ?? 0,
+                  ],
+                ].map(([label, value]) => (
+                  <div key={String(label)} className="rounded-xl border p-3">
+                    <p className="text-sm text-muted-foreground">{label}</p>
+                    <p className="text-2xl font-bold">{value}</p>
+                  </div>
+                ))}
+              </div>
+              <p className="rounded-lg bg-slate-50 p-3 text-sm">
+                {text(
+                  "Requires owner review: " +
+                    (classifications?.requiresOwnerReview ?? 0) +
+                    " · Unknown historic payment: " +
+                    (classifications?.historicalPaymentUnknown ?? 0) +
+                    " · Nonfinancial candidates: " +
+                    (classifications?.excludedNonfinancial ?? 0),
+                  "يتطلب مراجعة المالك: " +
+                    (classifications?.requiresOwnerReview ?? 0) +
+                    " · دفع تاريخي غير مؤكد: " +
+                    (classifications?.historicalPaymentUnknown ?? 0) +
+                    " · مرشحون بلا أثر مالي: " +
+                    (classifications?.excludedNonfinancial ?? 0)
+                )}
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {[
+                  [
+                    text("Unresolved", "غير محسوم"),
+                    workspace.counts.unresolved,
+                  ],
+                  [
+                    text(
+                      "Historical opening balances",
+                      "أرصدة افتتاحية تاريخية"
+                    ),
+                    workspace.counts.approvedOpeningBalance,
+                  ],
+                  [
+                    text(
+                      "Approved historical adjustments",
+                      "تسويات تاريخية معتمدة"
+                    ),
+                    workspace.counts.approvedAdjustment,
+                  ],
+                  [text("Excluded", "مستبعد"), workspace.counts.excluded],
+                ].map(([label, value]) => (
+                  <div key={String(label)} className="rounded-xl border p-3">
+                    <p className="text-sm text-muted-foreground">{label}</p>
+                    <p className="text-xl font-bold">{value}</p>
+                  </div>
+                ))}
+              </div>
+              <p className="text-sm">
+                {text(
+                  "Unresolved proposed value only: ",
+                  "القيمة المقترحة للعناصر غير المحسومة فقط: "
+                )}
+                <bdi>{money(workspace.counts.unresolvedProposedMinor)}</bdi>
+              </p>
+            </section>
+            <div className="space-y-2 rounded-xl border bg-slate-50 p-4 text-sm">
+              <p className="font-semibold">
+                {text(
+                  "Original historical ledger postings: ",
+                  "القيود التاريخية الأصلية: "
+                )}
+                <bdi>
+                  {money(
+                    workspace.recognized.originalPostingsMinor ??
+                      workspace.recognized.historicalNetMinor
+                  )}
+                </bdi>
+              </p>
+              <p>
+                {text(
+                  "Includes historical opening balances and original adjustments before later corrections. This is not corrected net cash, period revenue or proof of bank reconciliation.",
+                  "تشمل الأرصدة الافتتاحية والتسويات الأصلية قبل التصحيحات اللاحقة. ليست صافي أموال مصححًا أو إيراد فترة أو إثبات مطابقة بنكية."
+                )}
+              </p>
+              <Link
+                href="/admin/finance"
+                className="text-emerald-800 underline"
+              >
+                {text(
+                  "Open the corrected cash report",
+                  "فتح تقرير الأموال المصحح"
+                )}
+              </Link>
+            </div>
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm">
+              <h2 className="font-semibold">
+                {text(
+                  "Operational indicators; not revenue",
+                  "مؤشرات تشغيلية وليست إيرادًا"
+                )}
+              </h2>
+              <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                <p>
+                  {text(
+                    "Saved payment confirmations: ",
+                    "تأكيدات دفع محفوظة: "
+                  )}
+                  {workspace.operationalIndicators.confirmedPayments}
+                </p>
+                <p>
+                  {text(
+                    "Order-linked keys issued: ",
+                    "مفاتيح مرتبطة بطلب صادرة: "
+                  )}
+                  {workspace.operationalIndicators.issuedOrderKeys}
+                </p>
+                <p>
+                  {text(
+                    "Order-linked keys activated: ",
+                    "مفاتيح مرتبطة بطلب مفعّلة: "
+                  )}
+                  {workspace.operationalIndicators.activatedOrderKeys}
+                </p>
+              </div>
+            </div>
+          </>
+        )}
+        {/* Preserve drafts through transient checks; verified identity/role changes remount the workspace. */}
+        <HistoricalReviewQueue
+          viewerId={scope.viewerId}
+          access={access}
+          active={ready}
+          onChanged={refreshStats}
+          onAccessFailure={onAccessFailure}
+        />
+        <FinancialActionConfirmation
+          review={ready ? confirmation : null}
+          busy={materialize.isPending}
+          onClose={() => setConfirmation(null)}
+        />
+      </main>
     </DashboardLayout>
   );
 }

@@ -5,6 +5,8 @@ import type { D1Database } from "@cloudflare/workers-types";
 import { findCheckoutIntent, bindCheckoutIntentToOrder, createOrderForCheckoutIntent, CheckoutIntentError, type CheckoutIntent, type CheckoutOrderPlan } from './services/checkout-intent.service';
 import { hashCheckoutRequest, type CheckoutFlow, type CheckoutIntentPayload } from '../shared/checkoutIntent';
 import { getCheckoutInvoiceAmounts } from '../shared/checkoutPricing';
+import { getHistoricalSourceReview, listHistoricalReviewItems, previewHistoricalDecision, readHistoricalSnapshot, saveHistoricalDraft, normalizeHistoricalReceiptInput, HistoricalReviewError } from './services/historical-review.service';
+import type { ReconciliationDecision, ReconciliationFilter } from '../shared/financialReconciliation';
 import {
   InsertUser, users,
   InsertAdmin, admins,
@@ -121,6 +123,7 @@ import {
 } from "../database/schema-sqlite.ts";
 import { ENV } from './_core/env';
 import { readClientPaymentSummaries } from './services/client-payment-summary.service';
+import { readCustomerReport } from './services/customer-report.service';
 import { unavailableClientPaymentSummary } from '../shared/clientPaymentSummary';
 import {
   getLivePackageConfigurationErrors,
@@ -247,6 +250,8 @@ import {
 } from './services/financial-expense.service';
 import { type FinancialReportGrouping } from './services/financial-reporting.service';
 import { loadFinancialReport } from './services/financial-report-engine';
+import { listFinancialControlEntries, previewFinancialCorrection, FinancialCorrectionReviewError, type FinancialControlEntryFilter } from './services/financial-control-review.service';
+import type { FinancialCorrectionRequest } from '../shared/financialCorrection';
 import { OUTSTANDING_ORDER_STATUSES } from '../shared/orderReview';
 import {
   assertIndependentAdjustmentReviewer,
@@ -2118,6 +2123,16 @@ export async function getUserEnrollments(userId: number) {
   return await db.select().from(enrollments)
     .where(eq(enrollments.userId, userId))
     .orderBy(desc(enrollments.enrolledAt));
+}
+
+/** Staff review needs only presence, not student progress or a course-history scan. */
+export async function hasStaffTrainingEnrollment(userId: number) {
+  const database = await getDb();
+  if (!database) throw new Error("Database not available");
+  const [row] = await database.select({ id: enrollments.id }).from(enrollments)
+    .innerJoin(courses, eq(courses.id, enrollments.courseId))
+    .where(eq(enrollments.userId, userId)).limit(1);
+  return !!row;
 }
 
 export async function getCourseEnrollments(courseId: number) {
@@ -9698,7 +9713,8 @@ export async function getAllPackageKeys() {
 }
 
 // Enriched package keys list with user + timed service state.
-export async function getAllPackageKeysEnriched() {
+export async function getAllPackageKeysEnriched(keyId?: number) {
+  if (keyId !== undefined && (!Number.isSafeInteger(keyId) || keyId <= 0)) throw new Error('Use a positive key ID.');
   const db = await getDb();
   if (!db) return [];
   return await db.select({
@@ -9748,7 +9764,7 @@ export async function getAllPackageKeysEnriched() {
   })
   .from(registrationKeys)
   .leftJoin(users, sql`LOWER(${users.email}) = LOWER(${registrationKeys.email})`)
-  .where(sql`${registrationKeys.packageId} IS NOT NULL`)
+  .where(and(sql`${registrationKeys.packageId} IS NOT NULL`, keyId === undefined ? undefined : eq(registrationKeys.id, keyId)))
   .orderBy(desc(registrationKeys.createdAt));
 }
 
@@ -14640,6 +14656,7 @@ export async function reviewFinancialAdjustment(input: {
   adjustmentId: number;
   decision: 'approved' | 'rejected';
   reason: string;
+  expectedPeriodLocked?: boolean;
 }, database?: any) {
   const db = database ?? await getDb();
   if (!db) throw new Error('Database not available');
@@ -14679,6 +14696,9 @@ export async function reviewFinancialAdjustment(input: {
   }
 
   const locked = await isFinancialMonthLocked(adjustment.reportingMonth, db);
+  if (input.expectedPeriodLocked !== undefined && input.expectedPeriodLocked !== locked) {
+    throw new FinancialCorrectionReviewError('CONFLICT', 'The period lock changed. Review the adjustment again before approval.');
+  }
   if (locked && (input.actor.access !== 'owner' || input.actor.actorType !== 'admin')) {
     throw new Error('This period is locked. Only the finance owner can authorize a locked-period adjustment.');
   }
@@ -14747,7 +14767,19 @@ export async function reviewFinancialAdjustment(input: {
   return { adjustment: approved, idempotent: false };
 }
 
-export async function getFinancialControlWorkspace(actor: FinanceActor, database?: any) {
+export async function getFinancialControlEntryPage(actor: FinanceActor, input: FinancialControlEntryFilter, database?: any) {
+  const connection = database ?? await getDb();
+  if (!connection?.$client) throw new Error('Financial database is unavailable.');
+  return listFinancialControlEntries(connection.$client, actor, input);
+}
+
+export async function getFinancialCorrectionPreview(actor: FinanceActor, request: FinancialCorrectionRequest, database?: any) {
+  const connection = database ?? await getDb();
+  if (!connection?.$client) throw new Error('Financial database is unavailable.');
+  return previewFinancialCorrection(connection.$client, actor, request);
+}
+
+export async function getFinancialControlWorkspace(actor: FinanceActor, database?: any, options?: { includeReversibleEntries?: boolean }) {
   if (actor.access !== 'owner' && actor.access !== 'manager') {
     throw new Error('Financial control access is required.');
   }
@@ -14759,7 +14791,7 @@ export async function getFinancialControlWorkspace(actor: FinanceActor, database
     .orderBy(desc(financialPeriodLocks.month)).limit(120);
   const client = (db as { $client?: D1Database }).$client;
   if (!client) throw new Error('D1 client not available for financial controls');
-  const reversibleQuery = actor.access === 'owner'
+  const reversibleQuery = actor.access === 'owner' && options?.includeReversibleEntries !== false
       ? client.prepare(`SELECT l.id, l.entry_type AS entryType, l.effective_at AS effectiveAt,
         l.base_amount_ils_minor AS baseAmountIlsMinor, l.description,
         l.source_reference AS sourceReference, l.source_type AS sourceType,
@@ -14850,6 +14882,7 @@ export async function reverseFinancialLedgerEntry(input: {
   reason: string;
   replacementAmountIlsMinor?: number | null;
   replacementDescription?: string | null;
+  expectedPeriodLocked?: boolean;
 }, database?: any) {
   if (input.actor.access !== 'owner' || input.actor.actorType !== 'admin') {
     throw new Error('Only the finance owner can reverse approved entries.');
@@ -14874,6 +14907,9 @@ export async function reverseFinancialLedgerEntry(input: {
     if (!input.replacementDescription?.trim()) throw new Error('A replacement description is required.');
   }
   const locked = await isFinancialMonthLocked(reportingMonth, db);
+  if (input.expectedPeriodLocked !== undefined && input.expectedPeriodLocked !== locked) {
+    throw new FinancialCorrectionReviewError('CONFLICT', 'The period lock changed. Preview the correction again before confirming.');
+  }
   const now = new Date().toISOString();
   const auditMetadata = JSON.stringify({
     workflowVersion: 1,
@@ -14977,6 +15013,7 @@ export async function reclassifyFinancialPaymentPurpose(input: {
   entryId: number;
   nextPurpose: Exclude<FinancialTransactionPurpose, 'legacy_migration'>;
   reason: string;
+  expectedPeriodLocked?: boolean;
 }, database?: any) {
   if (input.actor.access !== 'owner' || input.actor.actorType !== 'admin') {
     throw new Error('Only the finance owner can reclassify a confirmed payment.');
@@ -15012,6 +15049,9 @@ export async function reclassifyFinancialPaymentPurpose(input: {
   if (existing.length !== 0) throw new Error('This payment already has a different or incomplete reclassification; manual investigation is required.');
   const reportingMonth = original.effectiveAt.slice(0, 7);
   const locked = await isFinancialMonthLocked(reportingMonth, db);
+  if (input.expectedPeriodLocked !== undefined && input.expectedPeriodLocked !== locked) {
+    throw new FinancialCorrectionReviewError('CONFLICT', 'The period lock changed. Preview the correction again before confirming.');
+  }
   const now = new Date().toISOString();
   const common = {
     entryType: 'adjustment' as const,
@@ -17954,6 +17994,22 @@ export async function confirmOrderPayment(input: ConfirmOrderPaymentInput, datab
  * Read-only preview of historic candidates. It never infers payment, value, or
  * date and never writes a queue/ledger/source row.
  */
+async function historicalReviewClient(database?: any): Promise<D1Database> {
+  const databaseInstance = database ?? await getDb();
+  const client = databaseInstance?.$client as D1Database | undefined;
+  if (!client) throw new Error('D1 client not available for financial reconciliation');
+  return client;
+}
+export async function getHistoricalReviewItems(actor: FinanceActor, input: ReconciliationFilter, database?: any) {
+  return listHistoricalReviewItems(await historicalReviewClient(database), actor, input);
+}
+export async function getHistoricalReviewContext(actor: FinanceActor, itemId: number, before?: {createdAt: string; id: number}, database?: any) {
+  return getHistoricalSourceReview(await historicalReviewClient(database), actor, itemId, before);
+}
+export async function getHistoricalDecisionPreview(actor: FinanceActor, request: ReconciliationDecision, database?: any) {
+  return previewHistoricalDecision(await historicalReviewClient(database), actor, request);
+}
+
 export async function previewFinancialReconciliation(database?: any) {
   const db = database ?? await getDb();
   if (!db) throw new Error('Database not available');
@@ -18121,58 +18177,23 @@ export async function updateFinancialReconciliationDraft(input: {
   proposedTreatment: FinancialReconciliationTreatment;
   proposedAmountIlsMinor?: number | null;
   notes: string;
+  expectedDraftVersion?: string;
 }, database?: any) {
-  assertReconciliationDraftAccess(input.actor);
-  if (input.proposedAmountIlsMinor != null) validateAdjustmentAmount(input.proposedAmountIlsMinor);
-  const db = database ?? await getDb();
-  if (!db) throw new Error('Database not available');
-  const [item] = await db.select().from(financialReconciliationItems)
-    .where(eq(financialReconciliationItems.id, input.itemId)).limit(1);
-  if (!item) return null;
-  if (item.status !== 'unresolved') throw new Error('Only an unresolved reconciliation draft can be updated.');
-  const now = new Date().toISOString();
-  const notes = input.notes.trim().slice(0, 1000);
-  const metadata = JSON.stringify({
-    reconciliationVersion: 1,
-    previousTreatment: item.proposedTreatment,
-    nextTreatment: input.proposedTreatment,
-    previousAmountIlsMinor: item.proposedAmountIlsMinor,
-    nextAmountIlsMinor: input.proposedAmountIlsMinor ?? null,
-  });
-  await db.batch([
-    db.insert(financialReconciliationEvents).values({
-      reconciliationItemId: item.id,
-      action: 'draft_updated',
-      previousStatus: 'unresolved',
-      nextStatus: 'unresolved',
-      actorType: input.actor.actorType,
-      actorId: input.actor.actorId,
-      reason: 'Reconciliation draft proposal updated',
-      metadata,
-      createdAt: now,
-    }),
-    db.update(financialReconciliationItems).set({
-      proposedTreatment: input.proposedTreatment,
-      proposedAmountIlsMinor: input.proposedAmountIlsMinor ?? null,
-      notes,
-      updatedAt: now,
-    }).where(and(eq(financialReconciliationItems.id, item.id), eq(financialReconciliationItems.status, 'unresolved'))),
-  ]);
-  const [updated] = await db.select().from(financialReconciliationItems)
-    .where(eq(financialReconciliationItems.id, item.id)).limit(1);
-  return updated ?? null;
+  return saveHistoricalDraft(await historicalReviewClient(database), input);
 }
 
 export async function getFinancialReconciliationDashboard(
   status: FinancialReconciliationStatus = 'unresolved',
   database?: any,
+  options: {includeItems?: boolean} = {},
 ) {
   const db = database ?? await getDb();
   if (!db) throw new Error('Database not available');
   const client = (db as { $client?: D1Database }).$client;
   if (!client) throw new Error('D1 client not available for financial reconciliation');
+  const includeItems = options.includeItems !== false;
   const results = await client.batch([
-    client.prepare(`SELECT id, source_type AS sourceType, source_reference AS sourceReference,
+    ...(includeItems ? [client.prepare(`SELECT id, source_type AS sourceType, source_reference AS sourceReference,
       issue_type AS issueType, confidence_level AS confidenceLevel,
       proposed_treatment AS proposedTreatment, status,
       proposed_amount_ils_minor AS proposedAmountIlsMinor, notes,
@@ -18180,7 +18201,7 @@ export async function getFinancialReconciliationDashboard(
       resolved_at AS resolvedAt, resolution_metadata AS resolutionMetadata,
       created_at AS createdAt, updated_at AS updatedAt
       FROM financial_reconciliation_items INDEXED BY idx_financial_reconciliation_status_updated
-      WHERE status = ? ORDER BY updated_at DESC, id DESC LIMIT 101`).bind(status),
+      WHERE status = ? ORDER BY updated_at DESC, id DESC LIMIT 101`).bind(status)] : []),
     client.prepare(`SELECT
       SUM(CASE WHEN status = 'unresolved' THEN 1 ELSE 0 END) AS unresolved,
       COALESCE(SUM(CASE WHEN status = 'unresolved' THEN proposed_amount_ils_minor ELSE 0 END), 0) AS unresolvedProposedMinor,
@@ -18200,10 +18221,11 @@ export async function getFinancialReconciliationDashboard(
       (SELECT COUNT(*) FROM registrationKeys INDEXED BY idx_registration_keys_order_activation_reconciliation
         WHERE orderId IS NOT NULL AND activatedAt IS NOT NULL) AS activatedOrderKeys`),
   ]);
-  const rows = results[0]?.results ?? [];
-  const counts = (results[1]?.results?.[0] ?? {}) as Record<string, number>;
-  const recognized = (results[2]?.results?.[0] ?? {}) as Record<string, number>;
-  const operational = (results[3]?.results?.[0] ?? {}) as Record<string, number>;
+  const rows = includeItems ? results[0]?.results ?? [] : [];
+  const offset = includeItems ? 1 : 0;
+  const counts = (results[offset]?.results?.[0] ?? {}) as Record<string, number>;
+  const recognized = (results[offset + 1]?.results?.[0] ?? {}) as Record<string, number>;
+  const operational = (results[offset + 2]?.results?.[0] ?? {}) as Record<string, number>;
   return {
     status,
     items: rows.slice(0, 100),
@@ -18217,6 +18239,7 @@ export async function getFinancialReconciliationDashboard(
     },
     recognized: {
       entries: Number(recognized.entries ?? 0),
+      originalPostingsMinor: Number(recognized.recognizedHistoricalMinor ?? 0),
       historicalNetMinor: Number(recognized.recognizedHistoricalMinor ?? 0),
     },
     operationalIndicators: {
@@ -18227,7 +18250,40 @@ export async function getFinancialReconciliationDashboard(
   };
 }
 
-/** Owner decision: exclude, or append one ILS opening/adjustment entry. Source data is never edited. */
+/** Reuse migration113's terminal-event guard so a stale review aborts the whole batch. */
+function historicalDecisionEventStatus(item: any, source: Awaited<ReturnType<typeof readHistoricalSnapshot>>['source'] | undefined,
+  recognize: boolean, reportingMonth?: string, expectedPeriodLocked?: boolean) {
+  const itemMatches = sql`EXISTS(SELECT 1 FROM financial_reconciliation_items r WHERE r.id=${item.id}
+    AND r.status='unresolved' AND r.updated_at=${item.updatedAt} AND r.source_type=${item.sourceType}
+    AND r.source_reference=${item.sourceReference} AND r.issue_type=${item.issueType} AND r.confidence_level=${item.confidenceLevel}
+    AND r.proposed_treatment=${item.proposedTreatment} AND r.proposed_amount_ils_minor IS ${item.proposedAmountIlsMinor}
+    AND r.notes IS ${item.notes} AND r.created_at=${item.createdAt})`;
+  const sourceId = Number(item.sourceReference);
+  const validSourceId = /^\d+$/.test(item.sourceReference) && Number.isSafeInteger(sourceId) && sourceId > 0;
+  const sourceExists = !validSourceId ? sql`0` : item.sourceType === 'order'
+    ? sql`EXISTS(SELECT 1 FROM orders WHERE id=CAST(${item.sourceReference} AS INTEGER))`
+    : ['registration_key','renewal_key','upgrade_key'].includes(item.sourceType)
+      ? sql`EXISTS(SELECT 1 FROM registrationKeys WHERE id=CAST(${item.sourceReference} AS INTEGER))` : sql`0`;
+  const paymentExists = !validSourceId ? sql`0` : sql`EXISTS(SELECT 1 FROM order_payment_confirmations c WHERE c.order_id=
+    CASE WHEN ${item.sourceType}='order' THEN CAST(${item.sourceReference} AS INTEGER)
+    ELSE (SELECT orderId FROM registrationKeys WHERE id=CAST(${item.sourceReference} AS INTEGER)) END)`;
+  let sourceMatches: SQL = sql`1`;
+  if (source === null) sourceMatches = sql`NOT (${sourceExists})`;
+  else if (source?.kind === 'order') sourceMatches = sql`EXISTS(SELECT 1 FROM orders o WHERE o.id=${source.id}
+    AND o.status IS ${source.status} AND o.totalAmount=${source.nativeAmountMinor} AND o.currency=${source.currency}
+    AND o.createdAt IS ${source.createdAt} AND o.paymentProofUrl IS ${source.proofUrl}) AND (${paymentExists})=${source.paymentConfirmed}`;
+  else if (source?.kind === 'key') sourceMatches = sql`EXISTS(SELECT 1 FROM registrationKeys k WHERE k.id=${source.id}
+    AND k.orderId IS ${source.orderId} AND k.price*100=${source.nativeAmountMinor} AND k.currency=${source.currency}
+    AND k.createdAt IS ${source.createdAt} AND k.activatedAt IS ${source.activatedAt} AND k.isActive IS ${source.isActive}
+    AND k.packageId IS ${source.packageId}) AND (${paymentExists})=${source.paymentConfirmed}`;
+  const cashAllowed = recognize ? sql`(${sourceExists}) AND NOT (${paymentExists})` : sql`1`;
+  const periodMatches = reportingMonth && expectedPeriodLocked !== undefined
+    ? sql`EXISTS(SELECT 1 FROM financial_period_locks WHERE month=${reportingMonth})=${expectedPeriodLocked ? 1 : 0}` : sql`1`;
+  return sql<string>`CASE WHEN (${itemMatches}) AND (${sourceMatches}) AND (${cashAllowed}) AND (${periodMatches})
+    THEN 'unresolved' ELSE 'review_changed' END`;
+}
+
+/** Owner decision: exclude, or append one documented ILS historical receipt. */
 export async function resolveFinancialReconciliationItem(input: {
   actor: FinanceActor;
   itemId: number;
@@ -18235,6 +18291,8 @@ export async function resolveFinancialReconciliationItem(input: {
   reason: string;
   effectiveDate?: string | null;
   amountIlsMinor?: number | null;
+  expectedReviewVersion?: string;
+  expectedPeriodLocked?: boolean;
 }, database?: any) {
   assertFinanceOwner(input.actor);
   const db = database ?? await getDb();
@@ -18250,6 +18308,14 @@ export async function resolveFinancialReconciliationItem(input: {
         eq(financialLedgerEntries.sourceReference, sourceReference),
       )).limit(1);
     return { item, ledgerEntry: ledgerEntry ?? null, idempotent: true };
+  }
+  const reviewedSnapshot = input.expectedReviewVersion
+    ? await readHistoricalSnapshot(await historicalReviewClient(db), input.itemId) : undefined;
+  if (reviewedSnapshot && reviewedSnapshot.reviewVersion !== input.expectedReviewVersion) {
+    throw new HistoricalReviewError('CONFLICT', 'The historical source or proposal changed. Review it again before posting.');
+  }
+  if (reviewedSnapshot && input.decision === 'approved_adjustment' && input.expectedPeriodLocked === undefined) {
+    throw new HistoricalReviewError('BAD_REQUEST', 'Review the posting period before recognizing this receipt.');
   }
   const reason = normalizeReconciliationReason(input.reason);
   const now = new Date().toISOString();
@@ -18274,7 +18340,7 @@ export async function resolveFinancialReconciliationItem(input: {
         db.insert(financialReconciliationEvents).values({
           reconciliationItemId: input.itemId,
           action: 'excluded',
-          previousStatus: 'unresolved',
+          previousStatus: historicalDecisionEventStatus(item, reviewedSnapshot?.source, false),
           nextStatus: 'excluded',
           actorType: input.actor.actorType,
           actorId: input.actor.actorId,
@@ -18298,7 +18364,7 @@ export async function resolveFinancialReconciliationItem(input: {
       if (item.proposedTreatment !== 'historical_payment_known_date') {
         throw new Error('A historical adjustment requires an owner-verified genuine payment date and amount classification. Unknown payments stay outside official P&L.');
       }
-      const opening = normalizeOpeningBalanceInput(input);
+      const opening = reviewedSnapshot ? normalizeHistoricalReceiptInput(input) : normalizeOpeningBalanceInput(input);
       const [lock] = await db.select({ month: financialPeriodLocks.month }).from(financialPeriodLocks)
         .where(eq(financialPeriodLocks.month, opening.reportingMonth)).limit(1);
       const ledgerEntryType = 'adjustment' as const;
@@ -18336,7 +18402,7 @@ export async function resolveFinancialReconciliationItem(input: {
         db.insert(financialReconciliationEvents).values({
           reconciliationItemId: input.itemId,
           action: input.decision,
-          previousStatus: 'unresolved',
+          previousStatus: historicalDecisionEventStatus(item, reviewedSnapshot?.source, true, opening.reportingMonth, input.expectedPeriodLocked),
           nextStatus: input.decision,
           actorType: input.actor.actorType,
           actorId: input.actor.actorId,
@@ -18365,6 +18431,9 @@ export async function resolveFinancialReconciliationItem(input: {
           eq(financialLedgerEntries.sourceReference, sourceReference),
         )).limit(1);
       return { item: raced, ledgerEntry: ledgerEntry ?? null, idempotent: true };
+    }
+    if (errorChainMatches(error, /financial_reconciliation_terminal_event_requires_unresolved|financial_period_locked/)) {
+      throw new HistoricalReviewError('CONFLICT', 'The source, proposal or posting period changed, or a saved payment already covers this source. Review it again before posting.');
     }
     throw error;
   }
@@ -18448,7 +18517,26 @@ export async function getUserOrders(userId: number): Promise<Order[]> {
   )).orderBy(desc(orders.createdAt));
 }
 
-export async function getAllOrders(status?: string) {
+export async function getAdminOrderPage(input: import('./services/admin-order-page.service').OrderPageFilter) {
+  const client=(await getDb())?.$client as D1Database|undefined;
+  if(!client)throw new Error('Order database unavailable');
+  return (await import('./services/admin-order-page.service')).readAdminOrderPage(client,input);
+}
+
+/** Completed Comprehensive replacements are independent of the current queue/page. */
+export async function getOrderReplacementChoices(orderId:number,before?:number) {
+  const database=await getDb(); if(!database)throw new Error('Order database unavailable');
+  const [source]=await database.select({userId:orders.userId}).from(orders).where(eq(orders.id,orderId)).limit(1);
+  if(!source)return null;
+  const rows=await database.select({id:orders.id}).from(orders).where(and(
+    eq(orders.userId,source.userId),eq(orders.status,'completed'),ne(orders.id,orderId),before?lt(orders.id,before):undefined,
+    sql`NOT EXISTS(SELECT 1 FROM order_retirements r WHERE r.order_id=${orders.id})`,
+    sql`EXISTS(SELECT 1 FROM orderItems oi JOIN packages p ON p.id=oi.packageId WHERE oi.orderId=${orders.id} AND oi.itemType='package' AND p.slug='comprehensive')`
+  )).orderBy(desc(orders.id)).limit(21);
+  return {ids:rows.slice(0,20).map(row=>row.id),nextBefore:rows.length>20?rows[19].id:null};
+}
+
+export async function getAllOrders(status?: string, selectedIds?: number[]) {
   const db = await getDb();
   if (!db) return [];
   const q = db
@@ -18487,6 +18575,7 @@ export async function getAllOrders(status?: string) {
     .leftJoin(users, eq(orders.userId, users.id))
     .orderBy(desc(orders.createdAt));
   return q.where(and(
+    selectedIds ? inArray(orders.id, selectedIds) : undefined,
     status === 'outstanding' ? inArray(orders.status, [...OUTSTANDING_ORDER_STATUSES]) : status ? eq(orders.status, status) : undefined,
     sql`NOT EXISTS (SELECT 1 FROM order_retirements retired WHERE retired.order_id = ${orders.id})`,
   ));
@@ -19880,6 +19969,19 @@ export async function getClientPaymentSummary(userId: number, email: string | nu
   if (!client) return unavailableClientPaymentSummary();
   return (await readClientPaymentSummaries(client, [{ id: userId, email }])).summaries.get(userId)
     ?? unavailableClientPaymentSummary();
+}
+
+export async function getStudentDirectory(scope: Parameters<typeof readCustomerReport>[1], input: Parameters<typeof readCustomerReport>[2]) {
+  const client=(await getDb())?.$client as D1Database|undefined;
+  if(!client)throw new Error('Student directory database unavailable');
+  return (await import('./services/student-directory.service')).readStudentDirectory(client,{...scope,paymentsEnabled:ENV.clientPaymentSummariesEnabled},input);
+}
+
+export async function getCustomerReport(scope: Parameters<typeof readCustomerReport>[1], input: Parameters<typeof readCustomerReport>[2]) {
+  const database = await getDb();
+  const client = (database as { $client?: D1Database } | null)?.$client;
+  if (!client) throw new Error('Customer report database unavailable');
+  return readCustomerReport(client, { ...scope, paymentsEnabled: ENV.clientPaymentSummariesEnabled }, input);
 }
 
 /** Get subscribers with separate operational history and approved cash evidence. */

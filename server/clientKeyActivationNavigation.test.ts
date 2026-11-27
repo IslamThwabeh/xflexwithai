@@ -24,6 +24,8 @@ describe("client key activation navigation", () => {
     expect(dbSource).toContain("lte(recommendationSubscriptions.endDate, nowIso)");
     expect(dbSource).toContain("lte(lexaiSubscriptions.endDate, nowIso)");
     expect(packagesSource).toContain("hasExpiredTimedAccess");
-    expect(packagesSource).toContain("أدخل مفتاح التجديد");
+    expect(packagesSource).toContain('href="/subscriptions"');
+    expect(packagesSource).toContain("Create Renewal Order");
+    expect(packagesSource).toContain("إنشاء طلب تجديد");
   });
 });

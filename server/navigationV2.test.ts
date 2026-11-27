@@ -11,16 +11,8 @@ import {
   saveNavigationPreference,
 } from "../frontend/src/lib/navigationV2";
 import { ROLE_PAGE_ACCESS } from "../shared/const";
-const adminPaths = [
-  ...readFileSync(
-    new URL("../frontend/src/components/DashboardLayout.tsx", import.meta.url),
-    "utf8"
-  )
-    .split("const menuSectionsDef")[1]
-    .split("const employeeTrainingSection")[0]
-    .replace(/\/\/[^\n]*/g, "")
-    .matchAll(/path: "([^"]+)"/g),
-].map(match => match[1]);
+import { menuSectionsDef } from "../frontend/src/lib/adminNavigationCatalog";
+const adminPaths = menuSectionsDef.flatMap(section => section.items.map(item => item.path));
 const destinations = (paths: string[]) =>
   paths.map(path => ({
     path,

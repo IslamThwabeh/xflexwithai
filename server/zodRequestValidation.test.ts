@@ -15,12 +15,12 @@ function inputSchema(path: string): z.ZodType {
 }
 
 describe("API request validation compatibility", () => {
-  it("preserves bilingual registration data and strips unknown input properties", () => {
+  it("normalizes the country, preserves bilingual registration data and strips unknown input properties", () => {
     const registration = {
       email: "student@example.test", password: "test-password-123", name: "طالب تجريبي",
       phone: "+970599123456", city: "رام الله", country: "Palestine", referralCode: "TEST24",
     };
-    expect(inputSchema("auth.register").parse({ ...registration, isAdmin: true })).toEqual(registration);
+    expect(inputSchema("auth.register").parse({ ...registration, isAdmin: true })).toEqual({ ...registration, country: 'PS' });
   });
 
   it("keeps invalid public registration on tRPC's BAD_REQUEST path", async () => {

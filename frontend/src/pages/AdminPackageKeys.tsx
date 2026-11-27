@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { Link, useSearch } from 'wouter';
+import { focusedPackageKeyId } from '@shared/financialReconciliation';
+import { useAuth } from '@/_core/hooks/useAuth';
 import DashboardLayout from "@/components/DashboardLayout";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { formatLocalizedDate } from "@/lib/dateLocale";
@@ -146,6 +149,11 @@ const keySortFns: Record<string, (a: any, b: any) => number> = {
 
 export default function AdminPackageKeys() {
   const { t, language } = useLanguage();
+  const { user } = useAuth();
+  const keySearch = useSearch();
+  const focusedKeyId = focusedPackageKeyId(keySearch);
+  const sourceRequested = new URLSearchParams(keySearch).has('keyId');
+  const invalidSourceId = sourceRequested && focusedKeyId === null;
   const [selectedPackage, setSelectedPackage] = useState<number | null>(null);
   const [quantity, setQuantity] = useState("1");
   const [notes, setNotes] = useState("");
@@ -224,11 +232,11 @@ export default function AdminPackageKeys() {
   };
 
   // Data queries
-  const keysQuery = trpc.packageKeys.list.useQuery();
-  const statsQuery = trpc.packageKeys.stats.useQuery();
+  const keysQuery = trpc.packageKeys.list.useQuery({viewerId:user?.id??0,...(focusedKeyId?{keyId:focusedKeyId}:{})},{enabled:!!user&&!invalidSourceId});
+  const statsQuery = trpc.packageKeys.stats.useQuery({viewerId:user?.id??0},{enabled:!sourceRequested&&!!user});
   const packagesQuery = trpc.packages.list.useQuery();
   const adminCheckQuery = trpc.auth.isAdmin.useQuery();
-  const upgradeStatsQuery = trpc.packageKeys.upgradeStats.useQuery({ month: selectedMonth });
+  const upgradeStatsQuery = trpc.packageKeys.upgradeStats.useQuery({ month: selectedMonth },{enabled:!sourceRequested});
   const configurationHistoryQuery = trpc.packageKeys.configurationHistory.useQuery(
     { id: editDialogKey?.id ?? 0, limit: 20 },
     { enabled: !!editDialogKey },
@@ -456,7 +464,7 @@ export default function AdminPackageKeys() {
     URL.revokeObjectURL(url);
   };
 
-  const keys = keysQuery.data ?? [];
+  const keys = invalidSourceId ? [] : keysQuery.data ?? [];
   const stats = statsQuery.data;
   const packages = packagesQuery.data ?? [];
 
@@ -465,6 +473,7 @@ export default function AdminPackageKeys() {
 
   // Filter keys
   const filteredKeys = keys.filter((k: any) => {
+    if (focusedKeyId !== null) return Number(k.id) === focusedKeyId;
     const q = searchQuery.trim().toLowerCase();
     const matchesSearch = !q ||
       k.keyCode.toLowerCase().includes(q) ||
@@ -924,7 +933,7 @@ export default function AdminPackageKeys() {
         </div>
 
         {/* Stats Cards — clickable to filter */}
-        {stats && (
+        {stats && !sourceRequested && (
           <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
             {([
               { key: 'all' as const, value: stats.total, textCls: 'text-emerald-600', ringCls: 'ring-emerald-500 bg-emerald-50 dark:bg-emerald-950/30', label: language === 'ar' ? 'الإجمالي' : 'Total' },
@@ -959,6 +968,13 @@ export default function AdminPackageKeys() {
         )}
 
         {/* Filters */}
+        {sourceRequested && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm">
+          {invalidSourceId?<p role="alert">{language==='ar'?'رقم المصدر غير صالح. لم يتم تحميل قائمة مفاتيح بديلة.':'Invalid source ID. No replacement key list was loaded.'}</p>:<p>{language==='ar'?'عرض المفتاح المحدد':'Showing exact key'} <bdi>#{focusedKeyId}</bdi></p>}
+          {!invalidSourceId&&keysQuery.isFetching&&<p role="status" className="mt-2">{language==='ar'?'جارٍ تحميل المصدر المحدد…':'Loading the exact source…'}</p>}
+          {keysQuery.isError&&<p role="alert" className="mt-2 text-red-800">{language==='ar'?'تعذر التحقق من بيانات المفتاح. أعد التحميل قبل المراجعة.':'The key data could not be verified. Reload before reviewing.'}<Button className="ms-2" variant="outline" onClick={()=>void keysQuery.refetch()}>{language==='ar'?'إعادة المحاولة':'Retry'}</Button></p>}
+          {!keysQuery.isFetching&&!keysQuery.isError&&keysQuery.data?.length===0&&<p role="status" className="mt-2">{language==='ar'?'لم يُعثر على مفتاح باقة بهذا الرقم. قد يكون المصدر مفتاح دورة قديمًا.':'No package key was found with this ID. The source may be a legacy course key.'}</p>}
+          <Link className="mt-2 inline-block text-emerald-800 underline" href="/admin/package-keys">{language==='ar'?'مسح اختيار المصدر وعرض جميع المفاتيح':'Clear source selection and show all keys'}</Link>
+        </div>}
         <Card>
           <CardContent className="pt-4">
             <div className="flex flex-col sm:flex-row gap-3">
@@ -968,10 +984,11 @@ export default function AdminPackageKeys() {
                   className="pl-10"
                   placeholder={language === 'ar' ? 'بحث بالمفتاح أو البريد...' : 'Search by key or email...'}
                   value={searchQuery}
+                  disabled={sourceRequested}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
               </div>
-              <Select value={filterPackage} onValueChange={setFilterPackage}>
+              <Select value={filterPackage} onValueChange={setFilterPackage} disabled={sourceRequested}>
                 <SelectTrigger className="w-full sm:w-[200px]">
                   <SelectValue />
                 </SelectTrigger>
@@ -986,7 +1003,7 @@ export default function AdminPackageKeys() {
               </Select>
             </div>
             {/* Active status filter indicator */}
-            {statusFilter !== 'all' && (
+            {statusFilter !== 'all' && !sourceRequested && (
               <div className="mt-3 flex items-center gap-2">
                 <Badge variant="secondary" className="gap-1.5 px-3 py-1">
                   {statusFilter === 'activated' && <><CheckCircle2 className="w-3 h-3 text-green-600" /> {language === 'ar' ? 'عرض: مفعّل' : 'Showing: Activated'}</>}
@@ -1530,7 +1547,7 @@ export default function AdminPackageKeys() {
         />
 
         {/* Upgrade Leaderboard */}
-        <Card>
+        {!sourceRequested && <Card>
           <CardHeader className="pb-3">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div>
@@ -1693,7 +1710,7 @@ export default function AdminPackageKeys() {
               </p>
             )}
           </CardContent>
-        </Card>
+        </Card>}
       </div>
 
       {/* Unused key configuration dialog */}

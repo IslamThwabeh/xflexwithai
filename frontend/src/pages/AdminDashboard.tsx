@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import DashboardLayout from "@/components/DashboardLayout";
 import AdminCashSummary from "@/components/admin/AdminCashSummary";
+import KeyActivityDefinitions from "@/components/admin/KeyActivityDefinitions";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
@@ -325,6 +326,7 @@ export default function AdminDashboard() {
             ))}
           </div>
         )}
+        <KeyActivityDefinitions />
         <Card>
           <CardHeader>
             <h2 className="text-lg font-semibold">

@@ -7,7 +7,7 @@ const pageSource = readFileSync(
 );
 const appSource = readFileSync("frontend/src/App.tsx", "utf8");
 const sidebarSource = readFileSync(
-  "frontend/src/components/DashboardLayout.tsx",
+  "frontend/src/lib/adminNavigationCatalog.ts",
   "utf8"
 );
 

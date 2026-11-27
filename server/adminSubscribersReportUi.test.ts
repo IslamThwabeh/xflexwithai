@@ -19,10 +19,16 @@ describe('staff payment display and export contract', () => {
     for (const page of ['AdminStudents', 'AdminSubscribersReport']) {
       const source = readFileSync(new URL(`../frontend/src/pages/${page}.tsx`, import.meta.url), 'utf8');
       expect(source).toContain('<ClientPaymentSummary');
-      expect(source).toContain('clientPaymentExportFields(s.paymentSummary)');
+      expect(source).toContain(page === 'AdminStudents' ? '<StudentDirectoryExport' : '<CustomerReportExport');
       expect(source).not.toContain('s.totalSpentIls');
       expect(source).not.toContain('s.grossSpentIls');
     }
+    const customerExport=readFileSync(new URL('../shared/customerReportExport.ts',import.meta.url),'utf8');
+    const studentExport=readFileSync(new URL('../shared/studentDirectoryExport.ts',import.meta.url),'utf8');
+    expect(studentExport).toContain('customerExportTable');
+    expect(studentExport).toMatch(/spent:\s*["']paid["']/);
+    expect(customerExport).toContain('isAvailableClientPaymentSummary(summary)');
+    expect(customerExport).toContain('summary.netPaidMinor / 100');
     const profile = readFileSync(new URL('../frontend/src/components/admin/AdminClientProfileSheet.tsx', import.meta.url), 'utf8');
     expect(profile).toContain('<ClientPaymentSummary summary={profile.paymentSummary}');
     expect(profile).not.toContain('sale.grossIls, 0)');

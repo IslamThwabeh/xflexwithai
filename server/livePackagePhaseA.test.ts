@@ -191,12 +191,16 @@ describe("Live Package Phase A decisions", () => {
     expect(adminUi).toContain("data.stats.activeEntitlements");
   });
 
-  it("revokes Live on cancellation too and permanently blocks cohort re-grants", () => {
+  it("blocks ordinary cancellation with Live access, revokes on refund and prevents cohort re-grants", () => {
     const statusUpdate = router.slice(
       router.indexOf("adminUpdateStatus:"),
       router.indexOf("// If payment is approved", router.indexOf("adminUpdateStatus:")),
     );
-    expect(statusUpdate).toContain("input.status === 'cancelled' || input.status === 'refunded'");
+    expect(statusUpdate).toContain("input.status === 'cancelled'");
+    expect(statusUpdate).toContain("cancelReviewedUnpaidOrder(client");
+    expect(statusUpdate).toContain("input.status === 'refunded'");
+    const cancellation = readFileSync(new URL("../backend/services/order-cancellation.service.ts",import.meta.url),"utf8");
+    expect(cancellation).toContain("EXISTS(SELECT 1 FROM live_package_entitlements e WHERE e.orderId=o.id)");
     expect(statusUpdate).toContain("revokeLivePackageEntitlementForOrder(order.id)");
     expect(database).toContain("getAnyLivePackageEntitlement");
     expect(database).toContain("previously revoked and cannot be re-granted");

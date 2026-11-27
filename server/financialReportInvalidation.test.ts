@@ -21,9 +21,19 @@ describe("financial snapshot invalidation after cash workflows", () => {
         { input: { viewerId: 1, access: "viewer" } },
       ];
       const access = [["financialReports", "access"]];
+      const customers = [
+        ["reports", "customers"],
+        { input: { viewerId: 1, accessVersion: "payments" } },
+      ];
       client.setQueryData(summary, { amount: 100 });
       client.setQueryData(dashboard, { amount: 100 });
       client.setQueryData(access, { access: "owner" });
+      const students = [
+        ["reports", "studentsPage"],
+        { input: { viewerId: 1, accessVersion: "payments" } },
+      ];
+      client.setQueryData(students, { items: [] });
+      client.setQueryData(customers, { items: [] });
       let reads = 0;
       const observer = new QueryObserver(client, {
         queryKey: summary,
@@ -50,6 +60,8 @@ describe("financial snapshot invalidation after cash workflows", () => {
       expect(client.getQueryState(summary)?.isInvalidated).toBe(true);
       expect(client.getQueryState(dashboard)?.isInvalidated).toBe(true);
       expect(client.getQueryState(access)?.isInvalidated).toBe(false);
+      expect(client.getQueryState(customers)?.isInvalidated).toBe(true);
+      expect(client.getQueryState(students)?.isInvalidated).toBe(true);
       expect(reads).toBe(0);
       stop();
       unsubscribe();
@@ -73,6 +85,25 @@ describe("financial snapshot invalidation after cash workflows", () => {
         })
         .execute(undefined);
     expect(client.getQueryState(key)?.isInvalidated).toBe(false);
+    stop();
+    client.clear();
+  });
+  it("marks customer service snapshots stale without fetching or invalidating company cash on a pause", async () => {
+    const client = new QueryClient(),
+      customer = [["reports", "customers"]],
+      cash = [["financialReports", "dashboard"]];
+    client.setQueryData(customer, { items: [] });
+    client.setQueryData(cash, { amount: 1 });
+    const stop = subscribeToFinancialReportChanges(client);
+    await client
+      .getMutationCache()
+      .build(client, {
+        mutationKey: [["lexaiAdmin", "pauseSubscription"]],
+        mutationFn: async () => ({ success: true }),
+      })
+      .execute(undefined);
+    expect(client.getQueryState(customer)?.isInvalidated).toBe(true);
+    expect(client.getQueryState(cash)?.isInvalidated).toBe(false);
     stop();
     client.clear();
   });

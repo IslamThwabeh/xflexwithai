@@ -1,12 +1,13 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { getVisibleAdminMenuSections } from "../frontend/src/lib/adminNavigationAccess";
 
 const source = readFileSync(
   new URL("../frontend/src/pages/AdminPoints.tsx", import.meta.url),
   "utf8"
 );
 const layoutSource = readFileSync(
-  new URL("../frontend/src/components/DashboardLayout.tsx", import.meta.url),
+  new URL("../frontend/src/lib/adminNavigationAccess.ts", import.meta.url),
   "utf8"
 );
 
@@ -41,14 +42,12 @@ describe("admin points safety UI", () => {
   });
 
   it("keeps prelaunch catalog preparation discoverable only through authorized staff paths", () => {
-    expect(layoutSource).toContain(
-      'staffRolesForAvailability.includes("loyalty_rewards_manager")'
-    );
-    expect(layoutSource).toContain(
-      "return rewardsAvailability?.enabled === true || canPrepareRewards"
-    );
-    expect(layoutSource).toContain(
-      "items: section.items.filter(item => accessiblePaths.has(item.path))"
-    );
+    const paths = (roles: string[], enabled: boolean) => getVisibleAdminMenuSections({
+      adminCheck: { isAdmin: false, staffRoles: roles }, rewardsAvailability: { enabled },
+    }).flatMap(section => section.items.map(item => item.path));
+    expect(paths(["loyalty_rewards_manager"], false)).toContain("/admin/points");
+    expect(paths(["support"], true)).not.toContain("/admin/points");
+    expect(paths([], true)).not.toContain("/admin/points");
+    expect(layoutSource).toContain("accessiblePaths.has(item.path)");
   });
 });

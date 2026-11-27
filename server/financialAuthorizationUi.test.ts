@@ -9,6 +9,9 @@ const dashboardSource = readFileSync(new URL('../frontend/src/pages/AdminFinanci
 const activationSource = readFileSync(new URL('../frontend/src/pages/AdminRevenueReport.tsx', import.meta.url), 'utf8');
 const controlsSource = readFileSync(new URL('../frontend/src/pages/AdminFinancialControls.tsx', import.meta.url), 'utf8');
 const reconciliationSource = readFileSync(new URL('../frontend/src/pages/AdminFinancialReconciliation.tsx', import.meta.url), 'utf8');
+const correctionSource = readFileSync(new URL('../frontend/src/components/admin/FinancialCorrectionPicker.tsx', import.meta.url), 'utf8');
+const historicalQueueSource = readFileSync(new URL('../frontend/src/components/admin/HistoricalReviewQueue.tsx', import.meta.url), 'utf8');
+const historicalDecisionSource = readFileSync(new URL('../frontend/src/components/admin/HistoricalSourceDecisionDialog.tsx', import.meta.url), 'utf8');
 const printSource = readFileSync(new URL('../frontend/src/lib/printReport.ts', import.meta.url), 'utf8');
 
 describe('financial authorization UI contracts', () => {
@@ -20,8 +23,8 @@ describe('financial authorization UI contracts', () => {
   });
 
   it('separates financial confirmation controls from operational order controls', () => {
-    expect(ordersSource).toContain("staffRoles.includes('finance_manager')");
-    expect(ordersSource).toContain("staffRoles.includes('key_manager')");
+    expect(ordersSource).toMatch(/staffRoles\.includes\(["']finance_manager["']\)/);
+    expect(ordersSource).toMatch(/staffRoles\.includes\(["']key_manager["']\)/);
     expect(ordersSource).toContain('canConfirmPayment &&');
     expect(ordersSource).toContain('canManageOperationalOrders &&');
     expect(ROLE_PAGE_ACCESS.finance_manager).toEqual(['/admin/orders', '/admin/copier', '/admin/finance', '/admin/finance/expenses', '/admin/finance/controls', '/admin/finance/reconciliation', '/admin/students', '/admin/reports/subscribers']);
@@ -62,21 +65,26 @@ describe('financial authorization UI contracts', () => {
   });
 
   it('keeps corrections append-only and financial controls free of polling or deletion', () => {
+    const controlActions = controlsSource + correctionSource;
     expect(controlsSource).toContain('trpc.financialControls.createAdjustment.useMutation');
-    expect(controlsSource).toContain('trpc.financialControls.reverseEntry.useMutation');
+    expect(controlActions).toContain('trpc.financialControls.reverseEntry.useMutation');
     expect(controlsSource).toContain('trpc.financialControls.setPeriodLock.useMutation');
     expect(controlsSource).toContain('Nothing is silently deleted or rewritten');
-    expect(controlsSource).not.toContain('refetchInterval');
-    expect(controlsSource).not.toMatch(/deleteAdjustment|deleteEntry/);
+    expect(controlActions).not.toContain('refetchInterval');
+    expect(controlActions).not.toMatch(/deleteAdjustment|deleteEntry/);
   });
 
   it('keeps historic source records read-only and owner decisions explicit', () => {
+    const historicalActions = reconciliationSource + historicalQueueSource + historicalDecisionSource;
     expect(reconciliationSource).toContain('trpc.financialReconciliation.preview.useQuery');
     expect(reconciliationSource).toContain('trpc.financialReconciliation.materializeQueue.useMutation');
-    expect(reconciliationSource).toContain('trpc.financialReconciliation.updateDraft.useMutation');
-    expect(reconciliationSource).toContain('trpc.financialReconciliation.resolveItem.useMutation');
-    expect(reconciliationSource).toContain('Original orders and keys stay read-only and are never changed');
-    expect(reconciliationSource).not.toContain('refetchInterval');
-    expect(reconciliationSource).not.toMatch(/deleteOrder|deleteKey|updateOrder|updateKey/);
+    expect(historicalActions).toContain('trpc.financialReconciliation.updateDraft.useMutation');
+    expect(historicalActions).toContain('trpc.financialReconciliation.resolveItem.useMutation');
+    expect(historicalDecisionSource).toContain('financialReconciliation.decisionPreview.fetch');
+    expect(historicalDecisionSource).toContain('expectedReviewVersion');
+    expect(historicalDecisionSource).toContain('expectedPeriodLocked');
+    expect(historicalActions).not.toContain('refetchInterval');
+    expect(historicalActions).not.toMatch(/deleteOrder|deleteKey|updateOrder|updateKey/);
+    expect(historicalActions).not.toMatch(/trpc\.(orders|packageKeys)\.\w+\.useMutation/);
   });
 });

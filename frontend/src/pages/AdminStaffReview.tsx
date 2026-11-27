@@ -1,629 +1,714 @@
-import DashboardLayout from "@/components/DashboardLayout";
-import { useLanguage } from "@/contexts/LanguageContext";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { trpc } from "@/lib/trpc";
+import { useMemo, useState } from "react";
 import {
   Eye,
+  CheckCircle2,
+  LockKeyhole,
+  RefreshCw,
   ShieldCheck,
   Users,
-  CheckCircle2,
-  XCircle,
-  Search,
-  ChevronRight,
-  LayoutDashboard,
-  ShoppingCart,
-  GraduationCap,
-  Megaphone,
-  BarChart3,
-  Star,
-  Briefcase,
-  Headphones,
-  Shield,
-  Key,
-  Package,
-  Tag,
-  Building2,
-  FileCheck,
-  BookOpen,
-  ClipboardCheck,
-  FileText,
-  CalendarDays,
-  MessageSquareQuote,
-  DollarSign,
-  Clock,
-  Activity,
-  Bell,
-  Award,
-  UserCheck,
-  TrendingUp,
 } from "lucide-react";
-import { useState, useMemo } from "react";
-import { ROLE_PAGE_ACCESS, ALL_STAFF_ROLES } from "@shared/const";
+import DashboardLayout from "@/components/DashboardLayout";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { trpc } from "@/lib/trpc";
+import {
+  menuSectionsDef,
+  employeeTrainingSection,
+} from "@/lib/adminNavigationCatalog";
+import { getStaffReviewMenuSections } from "@/lib/adminNavigationAccess";
+import {
+  groupAdminDestinations,
+  matchNavigationQuery,
+} from "@/lib/navigationV2";
+import { ROLE_LABELS } from "@/lib/staffRoleMetadata";
+import {
+  STAFF_REVIEW_CAPABILITIES,
+  canReviewCapability,
+} from "@/lib/staffReviewCapabilities";
+import { ALL_STAFF_ROLES, ROLE_PAGE_ACCESS } from "@shared/const";
+import {
+  formatAcademyDateTime,
+  ACADEMY_TIME_LABEL_AR,
+  ACADEMY_TIME_LABEL_EN,
+} from "@shared/academyLocale";
 
-// ── Role labels & colors (same as AdminRoles) ─────────────────────────
-const ROLE_LABELS: Record<string, { en: string; ar: string; color: string; group: string }> = {
-  analyst:              { en: "Analyst",              ar: "محلل",            color: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",   group: "core" },
-  support:              { en: "Support",              ar: "دعم فني",         color: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300", group: "core" },
-  lexai_support:        { en: "LexAI Support",         ar: "دعم LexAI",       color: "bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-300", group: "core" },
-  key_manager:          { en: "Key Manager",          ar: "مدير المفاتيح",   color: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",   group: "core" },
-  plan_manager:         { en: "Plan Manager",         ar: "مدير الخطة التعليمية", color: "bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-300", group: "core" },
-  view_progress:        { en: "View Progress",        ar: "عرض التقدم",      color: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",   group: "perm" },
-  view_recommendations: { en: "View Recommendations", ar: "عرض التوصيات",    color: "bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-300",     group: "perm" },
-  view_subscriptions:   { en: "View Subscriptions",   ar: "عرض الاشتراكات",  color: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-300",     group: "perm" },
-  view_quizzes:         { en: "View Quizzes",         ar: "عرض الاختبارات",  color: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300", group: "perm" },
-  client_lookup:        { en: "Client Lookup",        ar: "بحث العملاء",     color: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300", group: "perm" },
-  staff_performance_employee: { en: "Performance Employee", ar: "موظف - إدارة الأداء", color: "bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300", group: "performance" },
-  staff_performance_manager: { en: "Performance Manager", ar: "مدير أداء الموظفين", color: "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300", group: "performance" },
-  student_surveys_manager: { en: "Student Surveys Manager", ar: "مدير استبيانات الطلاب", color: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300", group: "feature" },
-  loyalty_rewards_manager: { en: "Loyalty Rewards Manager", ar: "مدير نقاط الولاء", color: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300", group: "feature" },
-  student_community_moderator: { en: "Community Moderator", ar: "مشرف المجتمع", color: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300", group: "feature" },
-  student_job_eligibility_manager: { en: "Job Eligibility Manager", ar: "مدير أهلية الوظائف", color: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300", group: "feature" },
-  email_logs_viewer: { en: "Email Logs Viewer", ar: "عرض سجلات البريد", color: "bg-slate-100 text-slate-800 dark:bg-slate-900/30 dark:text-slate-300", group: "perm" },
+const roleKeys = [
+  ...new Set([...ALL_STAFF_ROLES, ...Object.keys(ROLE_LABELS)]),
+];
+const legacyLabels: Record<string, { ar: string; en: string }> = {
+  live_sessions_manager: {
+    ar: "مدير جلسات اللايف",
+    en: "Live sessions manager",
+  },
+  live_notifications_manager: {
+    ar: "مدير إشعارات اللايف",
+    en: "Live notifications manager",
+  },
 };
+const pageCatalog = menuSectionsDef.flatMap(section => section.items);
+const inputClass = "h-11 w-full rounded-lg border bg-background px-3 text-sm";
 
-// ── Full sidebar definition (mirrors DashboardLayout) ─────────────────
-type SidebarItem = { icon: any; labelEn: string; labelAr: string; path: string };
-type SidebarSection = { icon: any; labelEn: string; labelAr: string; items: SidebarItem[] };
-
-const FULL_SIDEBAR: SidebarSection[] = [
-  {
-    icon: LayoutDashboard, labelEn: "Overview", labelAr: "نظرة عامة",
-    items: [
-      { icon: LayoutDashboard, labelEn: "Dashboard", labelAr: "لوحة التحكم", path: "/admin/dashboard" },
-    ],
-  },
-  {
-    icon: ShoppingCart, labelEn: "Sales", labelAr: "المبيعات",
-    items: [
-      { icon: ShoppingCart, labelEn: "Orders", labelAr: "الطلبات", path: "/admin/orders" },
-      { icon: Key, labelEn: "Activation Keys", labelAr: "مفاتيح التفعيل", path: "/admin/package-keys" },
-      { icon: Package, labelEn: "Packages", labelAr: "الباقات", path: "/admin/packages" },
-      { icon: Tag, labelEn: "Coupons", labelAr: "الكوبونات", path: "/admin/coupons" },
-      { icon: Building2, labelEn: "Brokers", labelAr: "الوسطاء", path: "/admin/brokers" },
-      { icon: FileCheck, labelEn: "Terms Acceptance", labelAr: "موافقات الشروط", path: "/admin/terms-acceptance" },
-    ],
-  },
-  {
-    icon: TrendingUp, labelEn: "Recommendations", labelAr: "قناة التوصيات",
-    items: [
-      { icon: TrendingUp, labelEn: "Recommendations", labelAr: "التوصيات", path: "/admin/recommendations" },
-    ],
-  },
-  {
-    icon: GraduationCap, labelEn: "Learning", labelAr: "التعلّم",
-    items: [
-      { icon: BookOpen, labelEn: "Courses", labelAr: "الدورات", path: "/admin/courses" },
-      { icon: ClipboardCheck, labelEn: "Quizzes", labelAr: "الاختبارات", path: "/admin/quizzes" },
-      { icon: ClipboardCheck, labelEn: "Student Surveys", labelAr: "استبيانات الطلاب", path: "/admin/student-surveys" },
-    ],
-  },
-  {
-    icon: Megaphone, labelEn: "Content", labelAr: "المحتوى",
-    items: [
-      { icon: FileText, labelEn: "Articles", labelAr: "المقالات", path: "/admin/articles" },
-      { icon: CalendarDays, labelEn: "Events", labelAr: "الفعاليات", path: "/admin/events" },
-      { icon: MessageSquareQuote, labelEn: "Testimonials", labelAr: "الشهادات", path: "/admin/testimonials" },
-    ],
-  },
-  {
-    icon: Users, labelEn: "Students", labelAr: "الطلاب",
-    items: [
-      { icon: Users, labelEn: "Students", labelAr: "الطلاب", path: "/admin/students" },
-    ],
-  },
-  {
-    icon: ShieldCheck, labelEn: "Team", labelAr: "الفريق",
-    items: [
-      { icon: Headphones, labelEn: "Support Chat", labelAr: "الدعم الفني", path: "/admin/support" },
-      { icon: Shield, labelEn: "Roles", labelAr: "الأدوار", path: "/admin/roles" },
-      { icon: ClipboardCheck, labelEn: "Staff Performance", labelAr: "أداء الموظفين", path: "/admin/staff-performance" },
-      { icon: ClipboardCheck, labelEn: "My Daily Work", labelAr: "عملي اليومي", path: "/admin/my-performance" },
-    ],
-  },
-  {
-    icon: BarChart3, labelEn: "Reports", labelAr: "التقارير",
-    items: [
-      { icon: DollarSign, labelEn: "Revenue", labelAr: "الإيرادات", path: "/admin/reports/revenue" },
-      { icon: Clock, labelEn: "Expiry", labelAr: "انتهاء الصلاحية", path: "/admin/reports/expiry" },
-      { icon: Activity, labelEn: "Student Engagement", labelAr: "تفاعل الطلاب", path: "/admin/engagement" },
-      { icon: ShieldCheck, labelEn: "Team Monitoring", labelAr: "مراقبة الفريق", path: "/admin/monitoring" },
-    ],
-  },
-  {
-    icon: Star, labelEn: "Moderation", labelAr: "الإشراف",
-    items: [
-      { icon: Star, labelEn: "Reviews", labelAr: "التقييمات", path: "/admin/reviews" },
-      { icon: Star, labelEn: "Community", labelAr: "المجتمع", path: "/admin/community" },
-      { icon: Bell, labelEn: "Notifications", labelAr: "الإشعارات", path: "/admin/notifications" },
-      { icon: Bell, labelEn: "Email Delivery Logs", labelAr: "سجلات تسليم البريد", path: "/admin/email-logs" },
-      { icon: Award, labelEn: "Loyalty Points", labelAr: "نقاط الولاء", path: "/admin/points" },
-    ],
-  },
-  {
-    icon: Briefcase, labelEn: "Careers", labelAr: "الوظائف",
-    items: [
-      { icon: Briefcase, labelEn: "Job Applications", labelAr: "طلبات التوظيف", path: "/admin/jobs" },
-      { icon: ShieldCheck, labelEn: "Job Eligibility", labelAr: "أهلية الطلاب للوظائف", path: "/admin/job-eligibility" },
-    ],
-  },
-];
-
-// ── Backend endpoint access definition ────────────────────────────────
-type EndpointDef = { endpoint: string; descEn: string; descAr: string; requiredRoles: string[] | "admin-only" };
-
-const SUPPORT_STAFF_ROLES: string[] = ["support", "key_manager", "client_lookup", "view_progress", "view_recommendations", "view_subscriptions", "view_quizzes"];
-
-const ENDPOINT_ACCESS: EndpointDef[] = [
-  { endpoint: "supportChat.listAll",     descEn: "List support conversations",   descAr: "عرض محادثات الدعم",          requiredRoles: [...SUPPORT_STAFF_ROLES] },
-  { endpoint: "supportChat.getMessages", descEn: "Read support messages",        descAr: "قراءة رسائل الدعم",          requiredRoles: [...SUPPORT_STAFF_ROLES] },
-  { endpoint: "supportChat.reply",       descEn: "Reply to support messages",    descAr: "الرد على رسائل الدعم",       requiredRoles: [...SUPPORT_STAFF_ROLES] },
-  { endpoint: "supportChat.suggestReply", descEn: "AI suggest reply",            descAr: "اقتراح رد بالذكاء الاصطناعي", requiredRoles: [...SUPPORT_STAFF_ROLES] },
-  { endpoint: "supportChat.clearEscalation", descEn: "Clear escalation flag",    descAr: "إلغاء علامة التصعيد",        requiredRoles: [...SUPPORT_STAFF_ROLES] },
-  { endpoint: "recommendations.postMessage", descEn: "Post recommendations",     descAr: "نشر التوصيات",               requiredRoles: ["analyst"] },
-  { endpoint: "enrollments.skipCourse",  descEn: "Skip course for student",      descAr: "تخطي الدورة للطالب",         requiredRoles: ["key_manager", "support"] },
-  { endpoint: "enrollments.rollbackSkip", descEn: "Rollback course skip",        descAr: "التراجع عن تخطي الدورة",     requiredRoles: ["key_manager", "support"] },
-  { endpoint: "supportDashboard.searchClients", descEn: "Search clients",        descAr: "البحث عن العملاء",           requiredRoles: ["client_lookup", "support"] },
-  { endpoint: "supportDashboard.clientProgress", descEn: "View student progress", descAr: "عرض تقدم الطالب",           requiredRoles: ["view_progress"] },
-  { endpoint: "supportDashboard.clientSubscriptions", descEn: "View subscriptions", descAr: "عرض الاشتراكات",         requiredRoles: ["view_subscriptions"] },
-  { endpoint: "supportDashboard.clientQuizzes", descEn: "View quiz results",     descAr: "عرض نتائج الاختبارات",       requiredRoles: ["view_quizzes"] },
-  { endpoint: "studentSurveys.*",        descEn: "Manage student surveys",        descAr: "إدارة استبيانات الطلاب",     requiredRoles: ["student_surveys_manager"] },
-  { endpoint: "points.*",                descEn: "Manage loyalty points/rewards", descAr: "إدارة نقاط الولاء والمكافآت", requiredRoles: ["loyalty_rewards_manager"] },
-  { endpoint: "community.moderation.*",  descEn: "Moderate student community",    descAr: "الإشراف على مجتمع الطلاب",    requiredRoles: ["student_community_moderator"] },
-  { endpoint: "studentJobEligibility.*", descEn: "Manage job eligibility",        descAr: "إدارة أهلية الطلاب للوظائف", requiredRoles: ["student_job_eligibility_manager"] },
-  { endpoint: "adminEmail.deliveryLogs", descEn: "View email delivery logs", descAr: "عرض سجلات تسليم البريد", requiredRoles: ["email_logs_viewer"] },
-  { endpoint: "adminEmail.deliveryLogSummary", descEn: "View email delivery summary", descAr: "عرض ملخص تسليم البريد", requiredRoles: ["email_logs_viewer"] },
-  { endpoint: "dashboard.stats",          descEn: "Dashboard statistics",        descAr: "إحصائيات لوحة التحكم",       requiredRoles: "admin-only" },
-  { endpoint: "courses.*",                descEn: "Manage courses",              descAr: "إدارة الدورات",              requiredRoles: "admin-only" },
-  { endpoint: "episodes.*",               descEn: "Manage episodes",             descAr: "إدارة الحلقات",              requiredRoles: "admin-only" },
-  { endpoint: "roles.*",                  descEn: "Manage roles",                descAr: "إدارة الأدوار",              requiredRoles: "admin-only" },
-  { endpoint: "users.*",                  descEn: "Manage users",                descAr: "إدارة المستخدمين",           requiredRoles: "admin-only" },
-];
-
-// ── Helpers ───────────────────────────────────────────────────────────
-function getAccessiblePaths(roles: string[]): Set<string> {
-  const paths = new Set<string>();
-  for (const role of roles) {
-    for (const p of ROLE_PAGE_ACCESS[role] ?? []) {
-      paths.add(p);
-    }
-  }
-  return paths;
-}
-
-function hasEndpointAccess(staffRoles: string[], ep: EndpointDef): boolean {
-  if (ep.requiredRoles === "admin-only") return false;
-  return ep.requiredRoles.some(r => staffRoles.includes(r));
-}
-
-// ══════════════════════════════════════════════════════════════════════
-// AdminStaffReview Page
-// ══════════════════════════════════════════════════════════════════════
 export default function AdminStaffReview() {
-  const { language } = useLanguage();
-  const isRtl = language === "ar";
+  const { language, t } = useLanguage();
+  const ar = language === "ar";
   const [selectedStaffId, setSelectedStaffId] = useState<number | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-
-  const { data: staffMembers, isLoading: staffLoading } = trpc.roles.listStaff.useQuery();
-  const { data: performanceAvailability } = trpc.staffPerformance.availability.useQuery(undefined, { retry: false });
-  const isStaffPerformanceVisible = performanceAvailability?.enabled === true;
-
-  const { data: preview, isLoading: previewLoading } = trpc.roles.getStaffAccessPreview.useQuery(
+  const [staffSearch, setStaffSearch] = useState("");
+  const [pageSearch, setPageSearch] = useState("");
+  const [permissionSearch, setPermissionSearch] = useState("");
+  const staffQuery = trpc.roles.listStaff.useQuery(undefined, {
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+  // Shared with DashboardLayout: no extra polling or per-role availability requests.
+  const performanceQuery = trpc.staffPerformance.availability.useQuery(
+    undefined,
+    { retry: false }
+  );
+  const previewQuery = trpc.roles.getStaffAccessPreview.useQuery(
     { userId: selectedStaffId! },
-    { enabled: !!selectedStaffId },
-  );
-
-  const filteredStaff = useMemo(() => {
-    if (!staffMembers) return [];
-    if (!searchQuery.trim()) return staffMembers;
-    const q = searchQuery.toLowerCase();
-    return staffMembers.filter((s: any) =>
-      s.name?.toLowerCase().includes(q) ||
-      s.email?.toLowerCase().includes(q)
-    );
-  }, [staffMembers, searchQuery]);
-
-  const accessiblePaths = useMemo(() => {
-    if (!preview?.roles) return new Set<string>();
-    const paths = getAccessiblePaths(preview.roles);
-    if (!isStaffPerformanceVisible) {
-      paths.delete("/admin/staff-performance");
+    {
+      enabled: selectedStaffId !== null,
+      refetchOnWindowFocus: false,
+      retry: false,
     }
-    return paths;
-  }, [preview?.roles, isStaffPerformanceVisible]);
-
-  const visibleSidebar = useMemo(() => FULL_SIDEBAR
-    .map(section => ({
-      ...section,
-      items: section.items.filter(item =>
-        !["/admin/staff-performance", "/admin/my-performance"].includes(item.path) || isStaffPerformanceVisible
-      ),
-    }))
-    .filter(section => section.items.length > 0), [isStaffPerformanceVisible]);
-
-  const visibleStaffRoles = useMemo(() => ALL_STAFF_ROLES.filter(role =>
-    isStaffPerformanceVisible || !role.startsWith("staff_performance_")
-  ), [isStaffPerformanceVisible]);
-
-  const visiblePreviewRoles = useMemo(() => (preview?.roles ?? []).filter((role: string) =>
-    isStaffPerformanceVisible || !role.startsWith("staff_performance_")
-  ), [preview?.roles, isStaffPerformanceVisible]);
-
-  const visibleSidebarItems = useMemo(
-    () => visibleSidebar.flatMap(section => section.items),
-    [visibleSidebar],
   );
+  // Never show the previous employee's cached details while another employee loads.
+  const preview =
+    previewQuery.data?.userId === selectedStaffId
+      ? previewQuery.data
+      : undefined;
+  const label = (item: {
+    labelKey: string;
+    label?: { ar: string; en: string };
+  }) => item.label?.[language] ?? t(item.labelKey);
+  const roleLabel = (role: string) => {
+    const key = ROLE_LABELS[role]?.labelKey;
+    return (
+      (key && t(key) !== key ? t(key) : legacyLabels[role]?.[language]) ?? role
+    );
+  };
+  const filteredStaff = (staffQuery.data ?? []).filter(staff =>
+    `${staff.name ?? ""} ${staff.email}`
+      .toLocaleLowerCase()
+      .includes(staffSearch.trim().toLocaleLowerCase())
+  );
+  const selectStaff = (id: number | null) => {
+    setSelectedStaffId(id);
+    setPageSearch("");
+    setPermissionSearch("");
+  };
+  const selectedMember = staffQuery.data?.find(
+    staff => staff.id === selectedStaffId
+  );
+  const reviewSections = useMemo(
+    () =>
+      preview
+        ? getStaffReviewMenuSections({
+            isStaff: !!preview.isStaff,
+            roles: preview.roles,
+            loginBlockedAt: preview.loginBlockedAt,
+            hasEmployeeTraining: preview.hasEmployeeTraining,
+            performanceEnabled: performanceQuery.data?.enabled,
+          })
+        : [],
+    [preview, performanceQuery.data?.enabled]
+  );
+  const accessiblePaths = new Set(
+    reviewSections.flatMap(section => section.items.map(item => item.path))
+  );
+  const catalog = preview?.hasEmployeeTraining
+    ? [...pageCatalog, ...employeeTrainingSection.items]
+    : pageCatalog;
+  const destinations = catalog.map(item => ({
+    ...item,
+    label: label(item),
+    keywords: `${item.label?.en ?? ""} ${item.label?.ar ?? ""} ${item.path}`,
+  }));
+  const groups = groupAdminDestinations(destinations, language);
+  const active = !!preview?.isStaff && !preview.loginBlockedAt;
+  const rolePaths = new Set(
+    (preview?.roles ?? []).flatMap(role => ROLE_PAGE_ACCESS[role] ?? [])
+  );
+  const unavailableReason = (path: string) =>
+    !active
+      ? ar
+        ? "الحساب غير نشط أو الدخول ممنوع"
+        : "Staff access is inactive or login is blocked"
+      : rolePaths.has(path)
+        ? ar
+          ? "غير ظاهر وفق حالة الميزة أو أولوية الدور"
+          : "Hidden by feature availability or role precedence"
+        : ar
+          ? "لا يمنحه دور مسند"
+          : "No assigned role grants this page";
+  // SQLite's zone-less datetime strings represent UTC, not the browser's timezone.
+  const loginTimestamp = preview?.lastSignIn?.replace(
+    /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2}(?:\.\d+)?)$/,
+    "$1T$2Z"
+  );
+  const lastLogin =
+    loginTimestamp && Number.isFinite(Date.parse(loginTimestamp))
+      ? formatAcademyDateTime(loginTimestamp, language)
+      : ar
+        ? "غير متاح"
+        : "Unavailable";
+  const renderPages = (allowed: boolean) =>
+    groups.map(group => {
+      const items = group.items.filter(
+        item =>
+          accessiblePaths.has(item.path) === allowed &&
+          matchNavigationQuery(item, pageSearch)
+      );
+      if (!items.length) return null;
+      return (
+        <section key={group.id} className="space-y-2" aria-label={group.label}>
+          <h3 className="text-sm font-semibold text-muted-foreground">
+            {group.label}
+          </h3>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {items.map(item => (
+              <div
+                key={item.path}
+                className={`flex min-w-0 items-start gap-3 rounded-xl border p-3 ${allowed ? "border-emerald-200 bg-emerald-50/60 dark:border-emerald-800 dark:bg-emerald-950/20" : "bg-muted/30"}`}
+              >
+                <item.icon
+                  className="mt-0.5 size-4 shrink-0"
+                  aria-hidden="true"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="break-words text-sm font-medium">
+                    {item.label}
+                  </p>
+                  {!allowed && (
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                      {unavailableReason(item.path)}
+                    </p>
+                  )}
+                </div>
+                {allowed ? (
+                  <CheckCircle2
+                    className="size-4 shrink-0 text-emerald-600"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <LockKeyhole
+                    className="size-4 shrink-0 text-muted-foreground"
+                    aria-hidden="true"
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      );
+    });
 
   return (
     <DashboardLayout>
-      <div className="space-y-6 max-w-7xl mx-auto">
-        {/* ── Header ─────────────────────────────────────────── */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
-              <Eye className="w-6 h-6 text-emerald-500" />
-              {isRtl ? "مراجعة صلاحيات الموظفين" : "Staff Access Review"}
+      <div
+        className="mx-auto w-full max-w-7xl space-y-6"
+        dir={ar ? "rtl" : "ltr"}
+      >
+        <header className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-2">
+            <h1 className="flex items-center gap-2 text-2xl font-bold">
+              <Eye className="size-6 text-emerald-600" />
+              {ar ? "مراجعة صلاحيات الموظفين" : "Staff access review"}
             </h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              {isRtl
-                ? "راجع ما يراه كل موظف في لوحة التحكم وتحقق من صحة الصلاحيات"
-                : "Review what each employee sees in the admin panel and verify permissions are correct"}
+            <p className="text-sm leading-6 text-muted-foreground">
+              {ar
+                ? "راجع الأدوار والصفحات المتاحة وفق قائمة مساحة العمل الحالية."
+                : "Review assigned roles and available pages using the current workspace navigation."}
             </p>
           </div>
+          <Button
+            variant="outline"
+            onClick={() => {
+              void staffQuery.refetch();
+              void performanceQuery.refetch();
+              if (selectedStaffId) void previewQuery.refetch();
+            }}
+            disabled={staffQuery.isFetching || previewQuery.isFetching}
+          >
+            <RefreshCw className="size-4" />
+            {ar ? "تحديث" : "Refresh"}
+          </Button>
+        </header>
+        <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50/60 p-4 text-sm leading-6 dark:border-emerald-800 dark:bg-emerald-950/20">
+          <ShieldCheck className="mt-1 size-5 shrink-0 text-emerald-600" />
+          <p>
+            {ar
+              ? "مراجعة للقراءة فقط. لا يتم الدخول بحساب الموظف أو تعديل صلاحياته. تظل فحوص الأمان الخاصة بكل إجراء مطبّقة."
+              : "Read-only review. This does not sign in as the employee or change their permissions. Each action still applies its own security checks."}
+          </p>
         </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* ── Staff List (Left Column) ──────────────────────── */}
-          <div className="lg:col-span-4">
-            <Card className="border-gray-200/80 dark:border-white/10 bg-white dark:bg-slate-900/50">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Users className="w-4 h-4 text-emerald-500" />
-                  {isRtl ? "الموظفون" : "Staff Members"}
-                  {staffMembers && (
-                    <Badge variant="secondary" className="text-xs ms-auto">{staffMembers.length}</Badge>
+        <div className="grid min-w-0 items-start gap-6 xl:grid-cols-[280px_minmax(0,1fr)]">
+          <Card className="min-w-0">
+            <CardHeader className="space-y-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Users className="size-4" />
+                {ar ? "الموظفون" : "Employees"}
+                <Badge variant="secondary" className="ms-auto">
+                  {staffQuery.data?.length ?? 0}
+                </Badge>
+              </CardTitle>
+              <label htmlFor="staff-review-search" className="sr-only">
+                {ar ? "بحث عن موظف" : "Search employees"}
+              </label>
+              <input
+                id="staff-review-search"
+                type="search"
+                value={staffSearch}
+                onChange={event => setStaffSearch(event.target.value)}
+                placeholder={
+                  ar ? "بحث بالاسم أو البريد" : "Search by name or email"
+                }
+                className={inputClass}
+              />
+              <label htmlFor="staff-review-select" className="sr-only">
+                {ar ? "اختر الموظف" : "Select employee"}
+              </label>
+              <select
+                id="staff-review-select"
+                value={selectedStaffId ?? ""}
+                onChange={event =>
+                  selectStaff(
+                    event.target.value ? Number(event.target.value) : null
+                  )
+                }
+                className={`${inputClass} px-2 xl:hidden`}
+              >
+                <option value="">
+                  {ar ? "اختر موظفاً" : "Select an employee"}
+                </option>
+                {selectedMember &&
+                  !filteredStaff.some(
+                    staff => staff.id === selectedMember.id
+                  ) && (
+                    <option value={selectedMember.id}>
+                      {selectedMember.name || selectedMember.email}
+                    </option>
                   )}
-                </CardTitle>
-                <div className="relative mt-2">
-                  <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder={isRtl ? "بحث عن موظف..." : "Search staff..."}
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full ps-9 pe-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
-                  />
-                </div>
-              </CardHeader>
-              <CardContent className="p-2 max-h-[500px] overflow-y-auto">
-                {staffLoading ? (
-                  <div className="p-4 text-center text-sm text-gray-400">
-                    {isRtl ? "جاري التحميل..." : "Loading..."}
-                  </div>
-                ) : !filteredStaff?.length ? (
-                  <div className="p-4 text-center text-sm text-gray-400">
-                    {isRtl ? "لا يوجد موظفون" : "No staff members found"}
-                  </div>
-                ) : (
-                  filteredStaff.map((staff: any) => {
-                    const isSelected = selectedStaffId === staff.id;
-                    return (
-                      <button
-                        key={staff.id}
-                        onClick={() => setSelectedStaffId(staff.id)}
-                        className={`w-full text-start p-3 rounded-xl mb-1 transition-all ${
-                          isSelected
-                            ? "bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700/30"
-                            : "hover:bg-gray-50 dark:hover:bg-white/5 border border-transparent"
-                        }`}
+                {filteredStaff.map(staff => (
+                  <option key={staff.id} value={staff.id}>
+                    {staff.name || staff.email}
+                  </option>
+                ))}
+              </select>
+            </CardHeader>
+            <CardContent className="space-y-2 px-3 pb-3">
+              {staffQuery.isError ? (
+                <p role="alert" className="px-2 text-sm text-red-600">
+                  {ar
+                    ? "تعذر تحميل الموظفين. أعد المحاولة بالتحديث."
+                    : "Employees could not load. Use Refresh to retry."}
+                </p>
+              ) : staffQuery.isLoading ? (
+                <p role="status" className="p-2 text-sm">
+                  {ar ? "جارٍ التحميل…" : "Loading…"}
+                </p>
+              ) : !filteredStaff.length ? (
+                <p className="p-2 text-sm text-muted-foreground">
+                  {ar ? "لا توجد نتائج" : "No matching employees"}
+                </p>
+              ) : (
+                <div className="hidden space-y-2 xl:block">
+                  {filteredStaff.map(staff => (
+                    <button
+                      type="button"
+                      key={staff.id}
+                      aria-pressed={selectedStaffId === staff.id}
+                      onClick={() => selectStaff(staff.id)}
+                      className={`w-full rounded-xl border p-3 text-start transition-colors focus-visible:outline-2 focus-visible:outline-emerald-600 ${selectedStaffId === staff.id ? "border-emerald-400 bg-emerald-50 dark:bg-emerald-950/30" : "border-transparent hover:bg-muted"}`}
+                    >
+                      <p className="break-words text-sm font-semibold">
+                        {staff.name || staff.email}
+                      </p>
+                      <p
+                        dir="ltr"
+                        className="mt-1 truncate text-start text-xs text-muted-foreground"
                       >
-                        <div className="flex items-center gap-3">
-                          <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-sm font-bold ${
-                            isSelected
-                              ? "bg-emerald-500 text-white"
-                              : "bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-gray-300"
-                          }`}>
-                            {staff.name?.charAt(0)?.toUpperCase() || "?"}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className={`text-sm font-medium truncate ${isSelected ? "text-emerald-700 dark:text-emerald-300" : "text-slate-800 dark:text-white"}`}>
-                              {staff.name}
-                            </p>
-                            <p className="text-xs text-gray-400 truncate">{staff.email}</p>
-                          </div>
-                          <ChevronRight className={`w-4 h-4 shrink-0 transition-transform ${isSelected ? "text-emerald-500 rotate-90" : "text-gray-300"}`} />
-                        </div>
-                        {staff.roles?.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-2 ms-12">
-                            {staff.roles
-                              .filter((role: string) => isStaffPerformanceVisible || !role.startsWith("staff_performance_"))
-                              .map((role: string) => (
-                              <span key={role} className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${ROLE_LABELS[role]?.color || "bg-gray-100 text-gray-600"}`}>
-                                {isRtl ? ROLE_LABELS[role]?.ar : ROLE_LABELS[role]?.en || role}
-                              </span>
-                            ))}
-                          </div>
+                        {staff.email}
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {staff.roles.slice(0, 3).map(role => (
+                          <span
+                            key={role}
+                            className="rounded bg-muted px-1.5 py-1 text-xs"
+                          >
+                            {roleLabel(role)}
+                          </span>
+                        ))}
+                        {staff.roles.length > 3 && (
+                          <span className="px-1 py-1 text-xs text-muted-foreground">
+                            +{staff.roles.length - 3}
+                          </span>
                         )}
-                      </button>
-                    );
-                  })
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* ── Preview Panel (Right Column) ──────────────────── */}
-          <div className="lg:col-span-8 space-y-6">
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          <div
+            className="min-w-0 space-y-5"
+            aria-live="polite"
+            aria-busy={previewQuery.isFetching}
+          >
             {!selectedStaffId ? (
-              <Card className="border-gray-200/80 dark:border-white/10 bg-white dark:bg-slate-900/50">
-                <CardContent className="flex flex-col items-center justify-center py-20 text-center">
-                  <div className="w-16 h-16 rounded-2xl bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center mb-4">
-                    <UserCheck className="w-8 h-8 text-emerald-500" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-slate-800 dark:text-white">
-                    {isRtl ? "اختر موظفاً لمراجعة صلاحياته" : "Select a staff member to review"}
-                  </h3>
-                  <p className="text-sm text-gray-400 mt-1 max-w-sm">
-                    {isRtl
-                      ? "اختر موظفاً من القائمة لمشاهدة ما يظهر له في لوحة التحكم والصلاحيات المتاحة"
-                      : "Pick a staff member from the list to see their dashboard view and available permissions"}
+              <Card>
+                <CardContent className="py-16 text-center">
+                  <Eye className="mx-auto mb-4 size-8 text-emerald-600" />
+                  <h2 className="text-lg font-semibold">
+                    {ar
+                      ? "اختر موظفاً لبدء المراجعة"
+                      : "Select an employee to start reviewing"}
+                  </h2>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    {ar
+                      ? "ستظهر أدواره وصفحاته وصلاحياته هنا."
+                      : "Their roles, pages, and permissions will appear here."}
                   </p>
                 </CardContent>
               </Card>
-            ) : previewLoading ? (
-              <Card className="border-gray-200/80 dark:border-white/10 bg-white dark:bg-slate-900/50">
-                <CardContent className="flex items-center justify-center py-20">
-                  <div className="w-8 h-8 border-4 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+            ) : previewQuery.isError || performanceQuery.isError ? (
+              <Card>
+                <CardContent className="py-10">
+                  <p role="alert" className="text-sm text-red-600">
+                    {ar
+                      ? "تعذر تحميل صلاحيات الموظف أو حالة الميزات. استخدم التحديث لإعادة المحاولة."
+                      : "Employee access or feature availability could not load. Use Refresh to retry."}
+                  </p>
                 </CardContent>
               </Card>
-            ) : preview ? (
+            ) : !preview || !performanceQuery.data ? (
+              <Card>
+                <CardContent
+                  role="status"
+                  className="py-12 text-center text-sm"
+                >
+                  {ar
+                    ? "جارٍ تحميل صلاحيات الموظف…"
+                    : "Loading employee access…"}
+                </CardContent>
+              </Card>
+            ) : (
               <>
-                {/* ── Staff Info Card ──────────────────────────── */}
-                <Card className="border-gray-200/80 dark:border-white/10 bg-white dark:bg-slate-900/50">
-                  <CardContent className="p-5">
-                    <div className="flex items-start gap-4">
-                      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white font-bold text-lg">
-                        {preview.name?.charAt(0)?.toUpperCase() || "?"}
+                <Card>
+                  <CardContent className="space-y-4 p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h2 className="break-words text-xl font-bold">
+                          {preview.name || preview.email}
+                        </h2>
+                        <p
+                          className="mt-1 break-all text-sm text-muted-foreground"
+                          dir="ltr"
+                        >
+                          {preview.email}
+                        </p>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <h2 className="text-lg font-bold text-slate-900 dark:text-white">{preview.name}</h2>
-                        <p className="text-sm text-gray-500">{preview.email}</p>
-                        {preview.phone && <p className="text-xs text-gray-400 mt-0.5">{preview.phone}</p>}
-                      </div>
-                      <div className="text-end">
-                        <Badge className={preview.isStaff ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" : "bg-red-100 text-red-700"}>
-                          {preview.isStaff ? (isRtl ? "موظف نشط" : "Active Staff") : (isRtl ? "غير نشط" : "Inactive")}
-                        </Badge>
-                        {preview.lastSignIn && (
-                          <p className="text-xs text-gray-400 mt-1">
-                            {isRtl ? "آخر دخول: " : "Last login: "}
-                            {new Date(preview.lastSignIn).toLocaleDateString(isRtl ? 'ar-EG' : 'en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                      <Badge variant={active ? "secondary" : "destructive"}>
+                        {active
+                          ? ar
+                            ? "موظف نشط"
+                            : "Active employee"
+                          : ar
+                            ? "الوصول غير نشط"
+                            : "Access inactive"}
+                      </Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {ar ? "آخر دخول: " : "Last login: "}
+                      {lastLogin}{" "}
+                      <span className="text-xs">
+                        ({ar ? ACADEMY_TIME_LABEL_AR : ACADEMY_TIME_LABEL_EN})
+                      </span>
+                    </p>
+                    <div>
+                      <h3 className="mb-2 text-sm font-semibold">
+                        {ar ? "الأدوار المسندة" : "Assigned roles"}
+                      </h3>
+                      <div className="flex flex-wrap gap-2">
+                        {preview.roles.length ? (
+                          preview.roles.map(role => (
+                            <Badge
+                              key={role}
+                              className={`${ROLE_LABELS[role]?.color ?? "bg-muted text-foreground"} whitespace-normal text-start text-xs`}
+                            >
+                              {roleLabel(role)}
+                            </Badge>
+                          ))
+                        ) : (
+                          <p className="text-sm text-muted-foreground">
+                            {ar ? "لا توجد أدوار مسندة" : "No roles assigned"}
                           </p>
                         )}
                       </div>
                     </div>
-
-                    {/* Roles */}
-                    <div className="mt-4">
-                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                        {isRtl ? "الأدوار المُسندة" : "Assigned Roles"}
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        {visiblePreviewRoles.length === 0 ? (
-                          <span className="text-sm text-gray-400 italic">{isRtl ? "لا توجد أدوار" : "No roles assigned"}</span>
-                        ) : (
-                          visiblePreviewRoles.map((role: string) => (
-                            <Badge key={role} className={`${ROLE_LABELS[role]?.color || "bg-gray-100 text-gray-600"} text-xs`}>
-                              {isRtl ? ROLE_LABELS[role]?.ar : ROLE_LABELS[role]?.en || role}
-                            </Badge>
-                          ))
-                        )}
+                    <div className="grid grid-cols-2 gap-3 border-t pt-4">
+                      <div>
+                        <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">
+                          {accessiblePaths.size}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {ar ? "صفحات متاحة" : "Available pages"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-2xl font-bold">
+                          {catalog.length - accessiblePaths.size}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {ar ? "صفحات غير متاحة" : "Unavailable pages"}
+                        </p>
                       </div>
                     </div>
                   </CardContent>
                 </Card>
-
-                {/* ── Sidebar Preview ─────────────────────────── */}
-                <Card className="border-gray-200/80 dark:border-white/10 bg-white dark:bg-slate-900/50">
-                  <CardHeader>
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <LayoutDashboard className="w-4 h-4 text-emerald-500" />
-                      {isRtl ? "معاينة القائمة الجانبية" : "Sidebar Preview"}
-                      <span className="text-xs text-gray-400 font-normal ms-2">
-                        {isRtl ? "ما يراه هذا الموظف" : "What this employee sees"}
-                      </span>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="bg-slate-900 rounded-xl p-4 space-y-1 max-w-sm">
-                      {visibleSidebar.map((section, si) => {
-                        const visibleItems = section.items.filter(item => accessiblePaths.has(item.path));
-                        const hasAnyVisible = visibleItems.length > 0;
-                        const SectionIcon = section.icon;
-                        return (
-                          <div key={si}>
-                            {/* Section header */}
-                            <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium ${
-                              hasAnyVisible ? "text-gray-300" : "text-gray-600 line-through"
-                            }`}>
-                              <div className={`w-6 h-6 rounded flex items-center justify-center ${hasAnyVisible ? "bg-white/5" : "bg-white/[0.02]"}`}>
-                                <SectionIcon className={`w-3.5 h-3.5 ${hasAnyVisible ? "text-gray-400" : "text-gray-700"}`} />
-                              </div>
-                              <span>{isRtl ? section.labelAr : section.labelEn}</span>
-                              {hasAnyVisible ? (
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 ms-auto" />
-                              ) : (
-                                <XCircle className="w-3.5 h-3.5 text-red-500/50 ms-auto" />
-                              )}
-                            </div>
-
-                            {/* Items */}
-                            {section.items.map((item, ii) => {
-                              const allowed = accessiblePaths.has(item.path);
-                              return (
-                                <div
-                                  key={ii}
-                                  className={`flex items-center gap-2 ps-10 pe-3 py-1.5 text-[12px] rounded ${
-                                    allowed
-                                      ? "text-gray-300 bg-emerald-500/5 border-s-2 border-emerald-400"
-                                      : "text-gray-600 opacity-50"
-                                  }`}
-                                >
-                                  <span className={`w-1.5 h-1.5 rounded-full ${allowed ? "bg-emerald-400" : "bg-gray-700"}`} />
-                                  <span className={allowed ? "" : "line-through"}>{isRtl ? item.labelAr : item.labelEn}</span>
-                                  {allowed && <CheckCircle2 className="w-3 h-3 text-emerald-400 ms-auto" />}
-                                  {!allowed && <XCircle className="w-3 h-3 text-red-500/40 ms-auto" />}
-                                </div>
-                              );
-                            })}
+                <Tabs
+                  key={preview.userId}
+                  defaultValue="pages"
+                  dir={ar ? "rtl" : "ltr"}
+                >
+                  <TabsList className="h-auto min-h-11 w-full flex-wrap justify-start">
+                    <TabsTrigger className="min-h-10" value="pages">
+                      {ar ? "صفحات مساحة العمل" : "Workspace pages"}
+                    </TabsTrigger>
+                    <TabsTrigger className="min-h-10" value="permissions">
+                      {ar ? "صلاحيات الإجراءات" : "Action permissions"}
+                    </TabsTrigger>
+                    <TabsTrigger className="min-h-10" value="matrix">
+                      {ar ? "مقارنة الأدوار" : "Role comparison"}
+                    </TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="pages">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-base">
+                          {ar
+                            ? "معاينة قائمة مساحة العمل"
+                            : "Workspace navigation preview"}
+                        </CardTitle>
+                        <p className="text-sm leading-6 text-muted-foreground">
+                          {ar
+                            ? "نفس مجموعات القائمة وقواعد الظهور الحالية. لا تشمل المعاينة المفضلة الشخصية أو أعداد الرسائل غير المقروءة."
+                            : "Uses the current navigation groups and visibility rules. Personal favorites and unread counts are not reproduced."}
+                        </p>
+                        <label
+                          htmlFor="staff-review-page-search"
+                          className="sr-only"
+                        >
+                          {ar ? "بحث في الصفحات" : "Search pages"}
+                        </label>
+                        <input
+                          id="staff-review-page-search"
+                          type="search"
+                          value={pageSearch}
+                          onChange={event => setPageSearch(event.target.value)}
+                          placeholder={ar ? "بحث في الصفحات" : "Search pages"}
+                          className={inputClass}
+                        />
+                      </CardHeader>
+                      <CardContent className="space-y-6">
+                        <div
+                          className="space-y-5"
+                          data-review-pages="available"
+                        >
+                          {renderPages(true)}
+                          {!destinations.some(
+                            item =>
+                              accessiblePaths.has(item.path) &&
+                              matchNavigationQuery(item, pageSearch)
+                          ) && (
+                            <p className="text-sm text-muted-foreground">
+                              {ar
+                                ? "لا توجد صفحات متاحة تطابق البحث."
+                                : "No available pages match this search."}
+                            </p>
+                          )}
+                        </div>
+                        <details className="rounded-xl border p-4">
+                          <summary className="cursor-pointer text-sm font-semibold">
+                            {ar ? "الصفحات غير المتاحة" : "Unavailable pages"} (
+                            {catalog.length - accessiblePaths.size})
+                          </summary>
+                          <div
+                            className="mt-5 space-y-5"
+                            data-review-pages="unavailable"
+                          >
+                            {renderPages(false)}
                           </div>
-                        );
-                      })}
-                    </div>
-                    {/* Summary */}
-                    <div className="mt-3 flex gap-4 text-xs text-gray-500">
-                      <span className="flex items-center gap-1">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                        {accessiblePaths.size} {isRtl ? "صفحات متاحة" : "pages accessible"}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <XCircle className="w-3.5 h-3.5 text-red-400" />
-                        {visibleSidebarItems.length - accessiblePaths.size} {isRtl ? "صفحات محجوبة" : "pages blocked"}
-                      </span>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* ── Endpoint Access Table ────────────────────── */}
-                <Card className="border-gray-200/80 dark:border-white/10 bg-white dark:bg-slate-900/50">
-                  <CardHeader>
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <ShieldCheck className="w-4 h-4 text-emerald-500" />
-                      {isRtl ? "صلاحيات الموظف" : "Staff Permissions"}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b border-gray-200 dark:border-white/10">
-                            <th className="text-start py-2 text-xs font-medium text-gray-500 uppercase">
-                              {isRtl ? "الوصف" : "Permission"}
-                            </th>
-                            <th className="text-center py-2 text-xs font-medium text-gray-500 uppercase">
-                              {isRtl ? "الحالة" : "Status"}
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {ENDPOINT_ACCESS.map((ep, i) => {
-                            const allowed = ep.requiredRoles !== "admin-only" && hasEndpointAccess(preview.roles, ep);
-                            const isAdminOnly = ep.requiredRoles === "admin-only";
-                            return (
-                              <tr key={i} className="border-b border-gray-100 dark:border-white/5 last:border-none">
-                                <td className="py-2.5 text-gray-700 dark:text-gray-300 text-sm">{isRtl ? ep.descAr : ep.descEn}</td>
-                                <td className="py-2.5 text-center">
-                                  {isAdminOnly ? (
-                                    <Badge variant="outline" className="text-xs text-gray-400 border-gray-300 dark:border-white/10">
-                                      {isRtl ? "مدير فقط" : "Admin only"}
-                                    </Badge>
-                                  ) : allowed ? (
-                                    <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 text-xs">
-                                      <CheckCircle2 className="w-3 h-3 me-1" />
-                                      {isRtl ? "متاح" : "Allowed"}
-                                    </Badge>
-                                  ) : (
-                                    <Badge className="bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400 text-xs">
-                                      <XCircle className="w-3 h-3 me-1" />
-                                      {isRtl ? "محجوب" : "Blocked"}
-                                    </Badge>
-                                  )}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* ── Role-to-Page Matrix ──────────────────────── */}
-                <Card className="border-gray-200/80 dark:border-white/10 bg-white dark:bg-slate-900/50">
-                  <CardHeader>
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <Shield className="w-4 h-4 text-emerald-500" />
-                      {isRtl ? "مصفوفة الأدوار والصفحات" : "Role-to-Page Access Matrix"}
-                      <span className="text-xs text-gray-400 font-normal ms-2">
-                        {isRtl ? "جميع الأدوار" : "All roles"}
-                      </span>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="border-b border-gray-200 dark:border-white/10">
-                            <th className="text-start py-2 font-medium text-gray-500 min-w-[120px]">
-                              {isRtl ? "الدور" : "Role"}
-                            </th>
-                            {visibleSidebarItems.map((item, i) => (
-                              <th key={i} className="text-center py-2 font-medium text-gray-500 px-1 min-w-[28px]" title={isRtl ? item.labelAr : item.labelEn}>
-                                <item.icon className="w-3.5 h-3.5 mx-auto text-gray-400" />
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {visibleStaffRoles.map((role) => {
-                            const rolePaths = new Set(ROLE_PAGE_ACCESS[role] ?? []);
-                            const isAssigned = preview.roles.includes(role);
-                            return (
-                              <tr key={role} className={`border-b border-gray-100 dark:border-white/5 last:border-none ${isAssigned ? "bg-emerald-50/50 dark:bg-emerald-900/10" : ""}`}>
-                                <td className="py-2 pe-2">
-                                  <div className="flex items-center gap-1.5">
-                                    {isAssigned && <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />}
-                                    <span className={`${ROLE_LABELS[role]?.color || ""} px-1.5 py-0.5 rounded-full text-[10px] font-medium whitespace-nowrap`}>
-                                      {isRtl ? ROLE_LABELS[role]?.ar : ROLE_LABELS[role]?.en || role}
-                                    </span>
-                                  </div>
-                                </td>
-                                {visibleSidebarItems.map((item, i) => {
-                                  const hasAccess = rolePaths.has(item.path);
-                                  return (
-                                    <td key={i} className="text-center py-2">
-                                      {hasAccess ? (
-                                        <div className="w-5 h-5 rounded bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center mx-auto">
-                                          <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                                        </div>
-                                      ) : (
-                                        <div className="w-5 h-5 rounded flex items-center justify-center mx-auto">
-                                          <span className="w-1 h-1 rounded-full bg-gray-300 dark:bg-gray-700" />
-                                        </div>
-                                      )}
-                                    </td>
-                                  );
-                                })}
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                    {/* Column legend */}
-                    <div className="mt-3 flex flex-wrap gap-2 text-[10px] text-gray-400">
-                      {visibleSidebarItems.map((item, i) => (
-                        <span key={i} className="flex items-center gap-1">
-                          <item.icon className="w-3 h-3" />
-                          {isRtl ? item.labelAr : item.labelEn}
-                        </span>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
+                        </details>
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+                  <TabsContent value="permissions">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-base">
+                          {ar ? "صلاحيات الإجراءات" : "Action permissions"}
+                        </CardTitle>
+                        <p className="text-sm leading-6 text-muted-foreground">
+                          {ar
+                            ? "السماح بالدور لا يتجاوز فحوص الملكية والحالة ومتطلبات الإجراء. قد تختلف صلاحية الإجراء عن ظهور الصفحة في القائمة."
+                            : "Role eligibility remains subject to ownership, state, and action-specific requirements. Action access can differ from menu visibility."}
+                        </p>
+                        <label
+                          htmlFor="staff-review-permission-search"
+                          className="sr-only"
+                        >
+                          {ar ? "بحث في الصلاحيات" : "Search permissions"}
+                        </label>
+                        <input
+                          id="staff-review-permission-search"
+                          type="search"
+                          value={permissionSearch}
+                          onChange={event =>
+                            setPermissionSearch(event.target.value)
+                          }
+                          placeholder={
+                            ar ? "بحث في الصلاحيات" : "Search permissions"
+                          }
+                          className={inputClass}
+                        />
+                      </CardHeader>
+                      <CardContent>
+                        <ul className="divide-y">
+                          {STAFF_REVIEW_CAPABILITIES.filter(capability =>
+                            `${capability.en} ${capability.ar}`
+                              .toLocaleLowerCase()
+                              .includes(
+                                permissionSearch.trim().toLocaleLowerCase()
+                              )
+                          ).map(capability => (
+                            <li
+                              key={capability.endpoint}
+                              className="flex items-start justify-between gap-3 py-3 text-sm"
+                            >
+                              <span className="min-w-0 leading-6">
+                                {capability[language]}
+                              </span>
+                              <Badge
+                                variant={
+                                  canReviewCapability(
+                                    preview.roles,
+                                    capability,
+                                    active
+                                  )
+                                    ? "secondary"
+                                    : "outline"
+                                }
+                                className="shrink-0"
+                              >
+                                {canReviewCapability(
+                                  preview.roles,
+                                  capability,
+                                  active
+                                )
+                                  ? ar
+                                    ? "يسمح به الدور"
+                                    : "Role permits"
+                                  : capability.immutable
+                                    ? ar
+                                      ? "محمي للجميع"
+                                      : "Protected for all"
+                                    : ar
+                                      ? "غير متاح"
+                                      : "Unavailable"}
+                              </Badge>
+                            </li>
+                          ))}
+                        </ul>
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+                  <TabsContent value="matrix">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-base">
+                          {ar
+                            ? "مقارنة الأدوار والصفحات"
+                            : "Compare roles and pages"}
+                        </CardTitle>
+                        <p className="text-sm leading-6 text-muted-foreground">
+                          {ar
+                            ? "اختر دوراً لعرض صفحاته وفق قواعد مساحة العمل الحالية. تعتمد الدورة التدريبية على تسجيل الموظف، ولا يمنحها الدور وحده."
+                            : "Expand a role to inspect its pages under the current workspace rules. Employee training depends on enrollment, not a role alone."}
+                        </p>
+                      </CardHeader>
+                      <CardContent className="space-y-2">
+                        {roleKeys.map(role => {
+                          const pages = getStaffReviewMenuSections({
+                            isStaff: true,
+                            roles: [role],
+                            performanceEnabled: performanceQuery.data?.enabled,
+                          }).flatMap(section => section.items);
+                          const assigned = preview.roles.includes(role);
+                          return (
+                            <details
+                              key={role}
+                              className={`rounded-xl border p-3 ${assigned ? "border-emerald-200 dark:border-emerald-800" : ""}`}
+                            >
+                              <summary className="cursor-pointer text-sm leading-6">
+                                <span className="font-medium">
+                                  {roleLabel(role)}
+                                </span>
+                                <span className="ms-2 text-xs text-muted-foreground">
+                                  {pages.length} {ar ? "صفحات" : "pages"}
+                                  {assigned
+                                    ? ar
+                                      ? " · مسند حالياً"
+                                      : " · currently assigned"
+                                    : ""}
+                                </span>
+                              </summary>
+                              <div className="mt-3 space-y-2">
+                                {pages.length ? (
+                                  groupAdminDestinations(
+                                    pages.map(item => ({
+                                      ...item,
+                                      label: label(item),
+                                    })),
+                                    language
+                                  ).map(group => (
+                                    <div key={group.id}>
+                                      <p className="text-xs font-semibold text-muted-foreground">
+                                        {group.label}
+                                      </p>
+                                      <ul className="mt-1 flex flex-wrap gap-2">
+                                        {group.items.map(item => (
+                                          <li
+                                            key={item.path}
+                                            className="rounded-lg bg-muted px-2 py-1 text-sm"
+                                          >
+                                            {item.label}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <p className="text-sm text-muted-foreground">
+                                    {ar
+                                      ? "لا تظهر صفحات لهذا الدور وحده في الحالة الحالية."
+                                      : "This role alone exposes no pages in the current state."}
+                                  </p>
+                                )}
+                              </div>
+                            </details>
+                          );
+                        })}
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+                </Tabs>
               </>
-            ) : null}
+            )}
           </div>
         </div>
       </div>

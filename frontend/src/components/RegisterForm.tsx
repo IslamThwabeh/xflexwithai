@@ -4,6 +4,8 @@ import { Loader2 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { isLikelyValidEmail, normalizeEmailAddress } from "@shared/emailValidation";
 import { trackSignUp } from "@/lib/analytics";
+import CustomerCountrySelect from './CustomerCountrySelect';
+import { isValidCustomerCity } from '@shared/customerLocation';
 
 const inputClass = "w-full px-4 py-3 rounded-xl bg-black/[0.03] border border-black/[0.08] text-[var(--color-xf-dark)] placeholder:text-black/25 focus:outline-none focus:ring-2 focus:ring-[var(--color-xf-primary)]/40 focus:border-[var(--color-xf-primary)]/40 transition-all";
 
@@ -49,6 +51,10 @@ export function RegisterForm({ onSuccess, referralCode }: { onSuccess?: () => vo
       setError(t('auth.register.invalidEmail'));
       return;
     }
+    if (!isValidCustomerCity(city)) {
+      setError(language === 'ar' ? 'أدخل اسم مدينة صحيحاً، واختر البلد في الحقل المنفصل.' : 'Enter a valid city, and choose the country in its separate field.');
+      return;
+    }
     if (password !== confirmPassword) {
       setError(t('auth.register.passwordMismatch'));
       return;
@@ -87,11 +93,11 @@ export function RegisterForm({ onSuccess, referralCode }: { onSuccess?: () => vo
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label htmlFor="city" className="block text-sm font-medium text-[var(--color-xf-dark)]/60 mb-1.5">{t('auth.register.city')}</label>
-            <input id="city" name="city" type="text" value={city} onChange={(e) => setCity(e.target.value)} placeholder={t('auth.register.cityPlaceholder')} required className={inputClass} />
+            <input id="city" name="city" type="text" autoComplete="address-level2" maxLength={100} value={city} onChange={(e) => setCity(e.target.value)} placeholder={t('auth.register.cityPlaceholder')} required className={inputClass} />
           </div>
           <div>
             <label htmlFor="country" className="block text-sm font-medium text-[var(--color-xf-dark)]/60 mb-1.5">{t('auth.register.country')}</label>
-            <input id="country" name="country" type="text" value={country} onChange={(e) => setCountry(e.target.value)} placeholder={t('auth.register.countryPlaceholder')} required className={inputClass} />
+            <CustomerCountrySelect value={country} onChange={setCountry} language={language} className={inputClass} />
           </div>
         </div>
 

@@ -30,7 +30,7 @@ describe("checkout account gate", () => {
 
   it("keeps order creation behind the authenticated branch", () => {
     const accountGate = checkout.indexOf("if (!isAuthenticated)");
-    const orderForm = checkout.indexOf("const displayPricing");
+    const orderForm = checkout.indexOf("const invoicePreview");
 
     expect(accountGate).toBeGreaterThan(-1);
     expect(orderForm).toBeGreaterThan(accountGate);

@@ -4,8 +4,13 @@ const privateReads = new Set([
   "financialReports.summary",
   "financialReports.dashboard",
   "financialControls.workspace",
+  "financialControls.entries",
+  "financialControls.previewCorrection",
   "financialReconciliation.preview",
   "financialReconciliation.workspace",
+  "financialReconciliation.items",
+  "financialReconciliation.sourceReview",
+  "financialReconciliation.decisionPreview",
   "financeExpenses.workspaceList",
   "financeExpenses.list",
 ]);

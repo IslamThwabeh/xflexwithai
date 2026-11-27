@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+// Invoked through node by package scripts; keep imports compatible with the test loader.
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 

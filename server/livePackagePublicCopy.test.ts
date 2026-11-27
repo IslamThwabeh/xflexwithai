@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import {COMPANY_PUBLIC_INFO} from '../shared/companyPublicInfo';
 
 const contact = readFileSync(new URL('../frontend/src/pages/Contact.tsx', import.meta.url), 'utf8');
 const footer = readFileSync(new URL('../frontend/src/components/public/CinematicPublicLayout.tsx', import.meta.url), 'utf8');
@@ -9,11 +10,12 @@ const workspace = readFileSync(new URL('../frontend/src/pages/LivePackageWorkspa
 
 describe('approved public-copy boundaries', () => {
   it('uses the exact Arabic office address and appointment-only language', () => {
-    for (const source of [contact, footer]) {
-      expect(source).toContain('مجمع قطوم التجاري، الطابق الرابع، البالوع');
-      expect(source).toContain('الزيارات متاحة بموعد مسبق فقط.');
-      expect(source).toContain('Office visits in Ramallah are available by appointment only.');
-    }
+    expect(contact).toContain('مجمع قطوم التجاري، الطابق الرابع، البالوع');
+    expect(contact).toContain('الزيارات متاحة بموعد مسبق فقط.');
+    expect(contact).toContain('Office visits in Ramallah are available by appointment only.');
+    expect(footer).toContain('COMPANY_PUBLIC_INFO[language].office');
+    expect(COMPANY_PUBLIC_INFO.ar.office).toBe('مجمع قطوم التجاري، الطابق الرابع، البالوع — الزيارات متاحة بموعد مسبق فقط.');
+    expect(COMPANY_PUBLIC_INFO.en.office).toBe('Qattoum Commercial Complex, fourth floor, Al-Balou — visits by appointment only.');
   });
 
   it('removes unsupported public volume and popularity claims', () => {

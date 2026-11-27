@@ -1,4 +1,7 @@
 import { CLIENT_PAYMENT_SUMMARY_ROLES, CLIENT_REPORT_ROLES } from '../shared/clientPaymentSummary';
+import { customerCountryCode, isValidCustomerCity } from '../shared/customerLocation';
+import { CUSTOMER_REPORT_SORTS } from '../shared/customerReport';
+import { CustomerReportError } from './services/customer-report.service';
 import { isSupportedPerformanceMonth } from '../shared/recommendationPerformance';
 import { recommendationPerformanceCache } from './services/recommendation-performance.service';
 import { liveExpertRouter } from './live-expert.router';
@@ -43,6 +46,8 @@ import { getInterfaceAnnouncementStatus, recordInterfaceAnnouncementAction } fro
 import { logger } from "./_core/logger";
 import { getDatabaseErrorDiagnostic, getDatabaseFailureCategory } from './_core/databaseErrors';
 import { ORDER_KEY_ISSUANCE_PENDING_MESSAGE } from '../shared/orderApprovalErrors';
+import { HistoricalReviewError } from './services/historical-review.service';
+import { RECONCILIATION_CONFIDENCE, RECONCILIATION_SOURCES } from '../shared/financialReconciliation';
 import * as db from "./db";
 import { filterRecipientsByMutedThreads } from "./services/recommendation-thread.service";
 import { protectRecommendationAuthors } from "./services/recommendation-privacy.service";
@@ -52,6 +57,7 @@ import { cancelReviewedUnpaidOrder, readOrderCancellationReview, readOrderStatus
 import { CheckoutIntentError } from './services/checkout-intent.service';
 import { hashCheckoutRequest, defaultCheckoutIntentKey, isCheckoutIntentKey, type CheckoutFlow, type CheckoutIntentPayload } from '../shared/checkoutIntent';
 import { getCheckoutInvoiceAmounts } from '../shared/checkoutPricing';
+import { FinancialCorrectionReviewError } from './services/financial-control-review.service';
 import { describeOrderKeyFulfillment } from './services/order-key-fulfillment.service';
 import {
   PACKAGE_KEY_ISSUANCE_PURPOSES,
@@ -1192,6 +1198,14 @@ async function checkoutIntentForUser(
     });
   return { userId, flow, key, requestHash };
 }
+async function financialReviewOperation<T>(operation: () => Promise<T>): Promise<T> {
+  try { return await operation(); }
+  catch (error) {
+    if (error instanceof FinancialCorrectionReviewError || error instanceof HistoricalReviewError) throw new TRPCError({code:error.code,message:error.message});
+    throw error;
+  }
+}
+
 async function checkoutOperation<T>(operation: () => Promise<T>): Promise<T> {
   try {
     return await operation();
@@ -2541,6 +2555,31 @@ function attachOrderDisplayPricing<
   return { ...order, ...pricing, ...context, packageItems: publicItems };
 }
 
+async function decorateAdminOrderRows(orders: Awaited<ReturnType<typeof db.getAllOrders>>, canReadRequestEvidence:boolean) {
+  if(!orders.length)return [];
+        const packageItems = await db.getOrderPackageConfigurationSummaries(orders.map((order) => order.id));
+        const itemsByOrder = new Map<number, typeof packageItems>();
+        const fulfillmentRows = await db.getOrderKeyFulfillmentRows(orders.map(order => order.id));
+        const fulfillmentByOrder = new Map<number, typeof fulfillmentRows>();
+        for (const row of fulfillmentRows) {
+          const rows = fulfillmentByOrder.get(row.orderId) ?? [];
+          rows.push(row);
+          fulfillmentByOrder.set(row.orderId, rows);
+        }
+        const renewalCredits = await getRenewalCreditBalances(orders.map(order => order.userId));
+        for (const item of packageItems) {
+          const existing = itemsByOrder.get(item.orderId) ?? [];
+          existing.push(item);
+          itemsByOrder.set(item.orderId, existing);
+        }
+        return orders.map((order) => attachOrderDisplayPricing(
+          { ...(canReadRequestEvidence ? order : { ...order, termsAcceptedIpAddress: null, termsAcceptedUserAgent: null }), renewalCreditIlsMinor: renewalCredits.get(order.userId) ?? 0,
+            fulfillment: describeOrderKeyFulfillment({ status: order.status, transactionPurpose: order.transactionPurpose,
+              packageIds: [...new Set((itemsByOrder.get(order.id) ?? []).map(item => item.packageId))], rows: fulfillmentByOrder.get(order.id) ?? [] }) },
+          itemsByOrder.get(order.id) ?? [],
+        ));
+}
+
 export const appRouter = router({
   liveExpert: liveExpertRouter,
   system: systemRouter,
@@ -2652,8 +2691,8 @@ export const appRouter = router({
         password: z.string().min(8),
         name: z.string().min(2),
         phone: z.string().min(5).optional(),
-        city: z.string().min(1).optional(),
-        country: z.string().min(1).optional(),
+        city: z.string().trim().max(100).refine(isValidCustomerCity, 'Enter a valid city / أدخل اسم مدينة صحيحاً').optional(),
+        country: z.string().trim().max(100).refine(value => !!customerCountryCode(value), 'Choose a country / اختر بلداً').transform(value => customerCountryCode(value)!).optional(),
         referralCode: z.string().min(4).max(10).optional(),
       }))
       .mutation(async ({ input, ctx }) => {
@@ -3475,6 +3514,8 @@ export const appRouter = router({
       .input(z.object({
         name: z.string().min(2).optional(),
         phone: z.string().optional(),
+        city: z.string().trim().max(100).refine(isValidCustomerCity, 'Enter a valid city / أدخل اسم مدينة صحيحاً').optional(),
+        country: z.string().trim().max(100).refine(value => !!customerCountryCode(value), 'Choose a country / اختر بلداً').transform(value => customerCountryCode(value)!).optional(),
       }))
       .mutation(async ({ input, ctx }) => {
         if (!ctx.user) {
@@ -3486,6 +3527,8 @@ export const appRouter = router({
         await db.updateUser(ctx.user.id, {
           name: input.name,
           phone: input.phone,
+          ...(input.city !== undefined ? { city: input.city } : {}),
+          ...(input.country !== undefined ? { country: input.country } : {}),
         });
 
         logger.info('[USER] Profile updated successfully', { userId: ctx.user.id });
@@ -6683,13 +6726,31 @@ export const appRouter = router({
   // Adjustments, append-only reversals, and accounting-period locks
   // =========================================================================
   financialControls: router({
-    workspace: financeControlProcedure.input(financeViewerScope.optional()).query(async ({ ctx, input }) => {
+    workspace: financeControlProcedure.input(financeViewerScope.extend({ includeLegacyEntries: z.boolean().optional() }).optional()).query(async ({ ctx, input }) => {
       assertFinanceViewerScope(ctx, input);
       return {
-        ...(await db.getFinancialControlWorkspace(ctx.financeActor)),
+        ...(await (input?.includeLegacyEntries === false ? db.getFinancialControlWorkspace(ctx.financeActor, undefined, { includeReversibleEntries: false }) : db.getFinancialControlWorkspace(ctx.financeActor))),
         viewerId: ctx.user.id, access: ctx.financeActor.access, generatedAt: new Date().toISOString(),
         canReview: true, canReverse: ctx.financeActor.access === 'owner', canManageLocks: ctx.financeActor.access === 'owner',
       };
+    }),
+
+    entries: financeControlProcedure.input(financeViewerScope.extend({
+      limit: z.number().int().min(1).max(25).default(20), ledgerId: z.number().int().positive().optional(), orderId: z.number().int().positive().optional(),
+      before: z.object({ effectiveAt: z.string().min(1).max(50), id: z.number().int().positive() }).optional(),
+    })).query(async ({ctx,input}) => {
+      assertFinanceViewerScope(ctx,input);
+      if(ctx.financeActor.access !== 'owner' || ctx.financeActor.actorType !== 'admin') throw new TRPCError({code:'FORBIDDEN',message:'Only the finance owner can browse correction sources.'});
+      return { ...await financialReviewOperation(()=>db.getFinancialControlEntryPage(ctx.financeActor,input)), viewerId:ctx.user.id,access:ctx.financeActor.access,generatedAt:new Date().toISOString() };
+    }),
+
+    previewCorrection: financeControlProcedure.input(financeViewerScope.extend({request:z.discriminatedUnion('action',[
+      z.object({action:z.literal('reverse'),entryId:z.number().int().positive(),effectiveDate:z.string().min(1),reason:z.string().trim().min(3).max(1000),replacementAmountIlsMinor:z.number().int().min(-100_000_000_00).max(100_000_000_00).refine(v=>v!==0).nullable().optional(),replacementDescription:z.string().max(1000).nullable().optional()}),
+      z.object({action:z.literal('reclassify'),entryId:z.number().int().positive(),nextPurpose:z.enum(FINANCIAL_PAYMENT_PURPOSES),reason:z.string().trim().min(5).max(1000)}),
+    ])})).query(async ({ctx,input})=>{
+      assertFinanceViewerScope(ctx,input);
+      if(ctx.financeActor.access !== 'owner' || ctx.financeActor.actorType !== 'admin') throw new TRPCError({code:'FORBIDDEN',message:'Only the finance owner can preview corrections.'});
+      return {...await financialReviewOperation(()=>db.getFinancialCorrectionPreview(ctx.financeActor,input.request)),viewerId:ctx.user.id,access:ctx.financeActor.access};
     }),
 
     createAdjustment: financeControlProcedure
@@ -6728,13 +6789,15 @@ export const appRouter = router({
         adjustmentId: z.number().int().positive(),
         decision: z.enum(['approved', 'rejected']),
         reason: z.string().trim().min(3).max(1000),
+        expectedPeriodLocked: z.boolean().optional(),
       }))
-      .mutation(({ ctx, input }) => db.reviewFinancialAdjustment({
+      .mutation(({ ctx, input }) => financialReviewOperation(() => db.reviewFinancialAdjustment({
         actor: ctx.financeActor,
         adjustmentId: input.adjustmentId,
         decision: input.decision,
         reason: input.reason,
-      })),
+        ...(input.expectedPeriodLocked !== undefined ? { expectedPeriodLocked: input.expectedPeriodLocked } : {}),
+      }))),
 
     setPeriodLock: financeControlProcedure
       .input(z.object({
@@ -6756,12 +6819,13 @@ export const appRouter = router({
         reason: z.string().trim().min(3).max(1000),
         replacementAmountIlsMinor: z.number().int().min(-100_000_000_00).max(100_000_000_00).nullable().optional(),
         replacementDescription: z.string().max(1000).nullable().optional(),
+        expectedPeriodLocked: z.boolean().optional(),
       }))
       .mutation(({ ctx, input }) => {
         if (ctx.financeActor.access !== 'owner') {
           throw new TRPCError({ code: 'FORBIDDEN', message: 'Only the finance owner can reverse ledger entries.' });
         }
-        return db.reverseFinancialLedgerEntry({ actor: ctx.financeActor, ...input });
+        return financialReviewOperation(() => db.reverseFinancialLedgerEntry({ actor: ctx.financeActor, ...input }));
       }),
 
     reclassifyPayment: financeControlProcedure
@@ -6769,12 +6833,13 @@ export const appRouter = router({
         entryId: z.number().int().positive(),
         nextPurpose: z.enum(FINANCIAL_PAYMENT_PURPOSES),
         reason: z.string().trim().min(5).max(1000),
+        expectedPeriodLocked: z.boolean().optional(),
       }))
       .mutation(({ ctx, input }) => {
         if (ctx.financeActor.access !== 'owner') {
           throw new TRPCError({ code: 'FORBIDDEN', message: 'Only the finance owner can reclassify payments.' });
         }
-        return db.reclassifyFinancialPaymentPurpose({ actor: ctx.financeActor, ...input });
+        return financialReviewOperation(() => db.reclassifyFinancialPaymentPurpose({ actor: ctx.financeActor, ...input }));
       }),
   }),
 
@@ -6782,6 +6847,36 @@ export const appRouter = router({
   // Historic financial reconciliation (source records remain read-only)
   // =========================================================================
   financialReconciliation: router({
+    items: financeControlProcedure.input(financeViewerScope.extend({
+      status: z.enum(['unresolved','approved_opening_balance','approved_adjustment','excluded']).default('unresolved'),
+      sourceType: z.enum(RECONCILIATION_SOURCES).optional(), treatment: z.enum(FINANCIAL_RECONCILIATION_TREATMENTS).optional(),
+      confidence: z.enum(RECONCILIATION_CONFIDENCE).optional(), limit: z.number().int().min(1).max(25).default(20),
+      exact: z.object({type:z.enum(['item','order','key']),id:z.number().int().positive().max(Number.MAX_SAFE_INTEGER)}).strict().optional(),
+      before: z.object({updatedAt:z.string().min(1).max(50),id:z.number().int().positive().max(Number.MAX_SAFE_INTEGER)}).strict().optional(),
+    }).strict()).query(async ({ctx,input})=>{
+      assertFinanceViewerScope(ctx,input);
+      return {...await financialReviewOperation(()=>db.getHistoricalReviewItems(ctx.financeActor,input)),
+        viewerId:ctx.user.id,access:ctx.financeActor.access,generatedAt:new Date().toISOString()};
+    }),
+
+    sourceReview: financeControlProcedure.input(financeViewerScope.extend({itemId:z.number().int().positive(),
+      before:z.object({createdAt:z.string().min(1).max(50),id:z.number().int().positive()}).strict().optional(),
+    }).strict()).query(async ({ctx,input})=>{
+      assertFinanceViewerScope(ctx,input);
+      if(ctx.financeActor.access!=='owner'||ctx.financeActor.actorType!=='admin') throw new TRPCError({code:'FORBIDDEN',message:'Only the finance owner can review historical sources.'});
+      return {...await financialReviewOperation(()=>db.getHistoricalReviewContext(ctx.financeActor,input.itemId,input.before)),
+        viewerId:ctx.user.id,access:ctx.financeActor.access,generatedAt:new Date().toISOString()};
+    }),
+
+    decisionPreview: financeControlProcedure.input(financeViewerScope.extend({request:z.object({
+      itemId:z.number().int().positive(),decision:z.enum(['excluded','approved_adjustment']),reason:z.string().trim().min(5).max(1000),
+      effectiveDate:z.string().nullable().optional(),amountIlsMinor:z.number().int().min(1).max(100_000_000_00).nullable().optional(),
+    }).strict()}).strict()).query(async ({ctx,input})=>{
+      assertFinanceViewerScope(ctx,input);
+      if(ctx.financeActor.access!=='owner'||ctx.financeActor.actorType!=='admin') throw new TRPCError({code:'FORBIDDEN',message:'Only the finance owner can preview historical decisions.'});
+      return {...await financialReviewOperation(()=>db.getHistoricalDecisionPreview(ctx.financeActor,input.request)),viewerId:ctx.user.id,access:ctx.financeActor.access};
+    }),
+
     preview: financeControlProcedure.input(financeViewerScope.optional()).query(async ({ ctx, input }) => {
       assertFinanceViewerScope(ctx, input);
       return {
@@ -6796,11 +6891,12 @@ export const appRouter = router({
         status: z.enum(['unresolved', 'approved_opening_balance', 'approved_adjustment', 'excluded']).default('unresolved'),
         viewerId: z.number().int().optional(),
         access: financeViewerScope.shape.access.optional(),
+        includeItems: z.boolean().optional(),
       }).strict())
       .query(async ({ ctx, input }) => {
         assertFinanceViewerScope(ctx, input);
         return {
-          ...(await db.getFinancialReconciliationDashboard(input.status)),
+          ...(await (input.includeItems === false ? db.getFinancialReconciliationDashboard(input.status,undefined,{includeItems:false}) : db.getFinancialReconciliationDashboard(input.status))),
           viewerId: ctx.user.id, access: ctx.financeActor.access, generatedAt: new Date().toISOString(),
           canMaterialize: true, canManageDrafts: true, canResolve: ctx.financeActor.access === 'owner',
         };
@@ -6814,8 +6910,9 @@ export const appRouter = router({
         proposedTreatment: z.enum(FINANCIAL_RECONCILIATION_TREATMENTS),
         proposedAmountIlsMinor: z.number().int().min(-100_000_000_00).max(100_000_000_00).nullable().optional(),
         notes: z.string().max(1000),
+        expectedDraftVersion: z.string().regex(/^[a-f0-9]{64}$/).optional(),
       }))
-      .mutation(({ ctx, input }) => db.updateFinancialReconciliationDraft({ actor: ctx.financeActor, ...input })),
+      .mutation(({ ctx, input }) => financialReviewOperation(()=>db.updateFinancialReconciliationDraft({ actor: ctx.financeActor, ...input }))),
 
     resolveItem: financeControlProcedure
       .input(z.object({
@@ -6824,12 +6921,14 @@ export const appRouter = router({
         reason: z.string().trim().min(5).max(1000),
         effectiveDate: z.string().nullable().optional(),
         amountIlsMinor: z.number().int().min(-100_000_000_00).max(100_000_000_00).nullable().optional(),
+        expectedReviewVersion: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+        expectedPeriodLocked: z.boolean().optional(),
       }))
       .mutation(({ ctx, input }) => {
         if (ctx.financeActor.access !== 'owner') {
           throw new TRPCError({ code: 'FORBIDDEN', message: 'Only the finance owner can resolve historical financial items.' });
         }
-        return db.resolveFinancialReconciliationItem({ actor: ctx.financeActor, ...input });
+        return financialReviewOperation(()=>db.resolveFinancialReconciliationItem({ actor: ctx.financeActor, ...input }));
       }),
   }),
 
@@ -7134,9 +7233,9 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    // Get staff member access preview for admin impersonation/review
+    // Read-only review of one staff account; this never creates an employee session.
     getStaffAccessPreview: adminProcedure
-      .input(z.object({ userId: z.number() }))
+      .input(z.object({ userId: z.number().int().positive() }))
       .query(async ({ input }) => {
         const user = await db.getUserById(input.userId);
         if (!user) throw new TRPCError({ code: 'NOT_FOUND', message: 'User not found' });
@@ -7148,7 +7247,9 @@ export const appRouter = router({
           phone: (user as any).phone,
           isStaff: (user as any).isStaff,
           roles: roles.map((r: any) => r.role),
-          lastSignIn: (user as any).lastSignIn,
+          lastSignIn: user.lastSignedIn,
+          loginBlockedAt: user.loginBlockedAt,
+          hasEmployeeTraining: user.isStaff ? await db.hasStaffTrainingEnrollment(user.id) : false,
         };
       }),
   }),
@@ -8220,6 +8321,25 @@ export const appRouter = router({
         });
       }),
 
+    adminPage: adminOrRoleProcedure(['key_manager','finance_manager','support'])
+      .input(z.object({viewerId:z.number().int(),accessVersion:z.enum(['evidence','support']),status:z.enum(['outstanding','pending','awaiting_confirmation','paid','completed','cancelled','refunded']).optional(),search:z.string().trim().max(200).default(''),page:z.number().int().min(1).max(1_000_000).default(1),pageSize:z.union([z.literal(10),z.literal(25),z.literal(50)]).default(10)}).strict())
+      .query(async ({ctx,input})=>{
+        const canReadRequestEvidence=!!ctx.admin||await db.hasAnyRole(ctx.user.id,['key_manager','finance_manager']);
+        const accessVersion=canReadRequestEvidence?'evidence':'support';
+        if(input.viewerId!==ctx.user.id||input.accessVersion!==accessVersion)throw new TRPCError({code:'FORBIDDEN'});
+        const page=await db.getAdminOrderPage(input);
+        return {...page,items:await decorateAdminOrderRows(page.items,canReadRequestEvidence),viewerId:ctx.user.id,accessVersion};
+      }),
+    adminReplacementChoices: financeControlProcedure
+      .input(z.object({viewerId:z.number().int(),orderId:z.number().int().positive(),before:z.number().int().positive().optional()}).strict())
+      .query(async ({ctx,input})=>{
+        if(input.viewerId!==ctx.user.id)throw new TRPCError({code:'FORBIDDEN'});
+        const page=await db.getOrderReplacementChoices(input.orderId,input.before);
+        if(!page)throw new TRPCError({code:'NOT_FOUND'});
+        const rows=page.ids.length?await db.getAllOrders(undefined,page.ids):[];
+        return {items:await decorateAdminOrderRows(rows,true),nextBefore:page.nextBefore,viewerId:ctx.user.id,orderId:input.orderId};
+      }),
+
     // Support may read orders; operational changes and finance approval use separate guards.
     adminList: adminOrRoleProcedure(['key_manager', 'finance_manager', 'support'])
       .input(z.object({
@@ -8228,27 +8348,7 @@ export const appRouter = router({
       .query(async ({ input, ctx }) => {
         const orders = await db.getAllOrders(input?.status);
         const canReadRequestEvidence = !!ctx.admin || await db.hasAnyRole(ctx.user.id, ['key_manager', 'finance_manager']);
-        const packageItems = await db.getOrderPackageConfigurationSummaries(orders.map((order) => order.id));
-        const itemsByOrder = new Map<number, typeof packageItems>();
-        const fulfillmentRows = await db.getOrderKeyFulfillmentRows(orders.map(order => order.id));
-        const fulfillmentByOrder = new Map<number, typeof fulfillmentRows>();
-        for (const row of fulfillmentRows) {
-          const rows = fulfillmentByOrder.get(row.orderId) ?? [];
-          rows.push(row);
-          fulfillmentByOrder.set(row.orderId, rows);
-        }
-        const renewalCredits = await getRenewalCreditBalances(orders.map(order => order.userId));
-        for (const item of packageItems) {
-          const existing = itemsByOrder.get(item.orderId) ?? [];
-          existing.push(item);
-          itemsByOrder.set(item.orderId, existing);
-        }
-        return orders.map((order) => attachOrderDisplayPricing(
-          { ...(canReadRequestEvidence ? order : { ...order, termsAcceptedIpAddress: null, termsAcceptedUserAgent: null }), renewalCreditIlsMinor: renewalCredits.get(order.userId) ?? 0,
-            fulfillment: describeOrderKeyFulfillment({ status: order.status, transactionPurpose: order.transactionPurpose,
-              packageIds: [...new Set((itemsByOrder.get(order.id) ?? []).map(item => item.packageId))], rows: fulfillmentByOrder.get(order.id) ?? [] }) },
-          itemsByOrder.get(order.id) ?? [],
-        ));
+        return decorateAdminOrderRows(orders,canReadRequestEvidence);
       }),
 
     adminRelatedCompleted: adminOrRoleProcedure(['key_manager', 'finance_manager', 'support'])
@@ -9823,8 +9923,9 @@ export const appRouter = router({
   // Package Keys (consolidated key system — admin + key_manager role)
   // ============================================================================
   packageKeys: router({
-    list: adminOrRoleProcedure(['key_manager']).query(async () => {
-      const keys = await db.getAllPackageKeysEnriched();
+    list: adminOrRoleProcedure(['key_manager']).input(z.object({keyId:z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),viewerId:z.number().int().optional()}).strict().optional()).query(async ({ctx,input}) => {
+      if(input?.viewerId!==undefined&&input.viewerId!==ctx.user.id)throw new TRPCError({code:'FORBIDDEN',message:'The key-list viewer changed. Recheck access.'});
+      const keys = input?.keyId ? await db.getAllPackageKeysEnriched(input.keyId) : await db.getAllPackageKeysEnriched();
       // Enrich with package info
       const allPackages = await db.getAllPackages();
       const pkgMap = new Map(allPackages.map(p => [p.id, p]));
@@ -9852,7 +9953,8 @@ export const appRouter = router({
       }));
     }),
 
-    stats: adminOrRoleProcedure(['key_manager']).query(async () => {
+    stats: adminOrRoleProcedure(['key_manager']).input(z.object({viewerId:z.number().int()}).strict().optional()).query(async ({ctx,input}) => {
+      if(input&&input.viewerId!==ctx.user.id)throw new TRPCError({code:'FORBIDDEN',message:'The key-statistics viewer changed. Recheck access.'});
       return db.getPackageKeyStatistics();
     }),
 
@@ -10288,6 +10390,42 @@ export const appRouter = router({
   // Admin Reports
   // ============================================================================
   reports: router({
+    customerAccess: adminOrRoleProcedure(CLIENT_REPORT_ROLES)
+      .input(z.object({ viewerId: z.number().int() }).strict())
+      .query(async ({ ctx, input }) => {
+        if (input.viewerId !== ctx.user.id) throw new TRPCError({ code: 'FORBIDDEN' });
+        const canViewClientPayments = !!ctx.admin || await db.hasAnyRole(ctx.user.id, CLIENT_PAYMENT_SUMMARY_ROLES);
+        return { viewerId: ctx.user.id, canViewClientPayments, accessVersion: canViewClientPayments ? 'payments' : 'operations' };
+      }),
+    customers: adminOrRoleProcedure(CLIENT_REPORT_ROLES)
+      .input(z.object({
+        viewerId: z.number().int(), accessVersion: z.enum(['payments', 'operations']),
+        search: z.string().trim().max(200).default(''), country: z.string().max(110).default(''),
+        sort: z.enum(CUSTOMER_REPORT_SORTS).default('registered'), direction: z.enum(['asc', 'desc']).default('desc'),
+        page: z.number().int().min(1).max(1_000_000).default(1), pageSize: z.union([z.literal(10), z.literal(20), z.literal(50)]).default(20),
+        includePayments: z.boolean().default(false), exportAll: z.boolean().default(false),
+      }).strict())
+      .query(async ({ ctx, input }) => {
+        if (input.viewerId !== ctx.user.id) throw new TRPCError({ code: 'FORBIDDEN' });
+        const canViewClientPayments = !!ctx.admin || await db.hasAnyRole(ctx.user.id, CLIENT_PAYMENT_SUMMARY_ROLES);
+        const accessVersion = canViewClientPayments ? 'payments' : 'operations';
+        if (input.accessVersion !== accessVersion || (input.includePayments && !canViewClientPayments)) throw new TRPCError({ code: 'FORBIDDEN' });
+        try {
+          return await db.getCustomerReport({ viewerId: ctx.user.id, accessVersion, canViewClientPayments, paymentsEnabled: true }, input);
+        } catch (error) {
+          if (error instanceof CustomerReportError) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: error.message });
+          throw error;
+        }
+      }),
+    studentsPage: adminOrRoleProcedure(CLIENT_REPORT_ROLES)
+      .input(z.object({viewerId:z.number().int(),accessVersion:z.enum(['payments','operations']),search:z.string().trim().max(200).default(''),country:z.string().max(110).default(''),packageFilter:z.enum(['all','active','none']).default('all'),sort:z.enum(['name','email','location','package','spent','renewals','registered','lastSignIn']).default('registered'),direction:z.enum(['asc','desc']).default('desc'),page:z.number().int().min(1).max(1_000_000).default(1),pageSize:z.union([z.literal(10),z.literal(25),z.literal(50)]).default(10),includePayments:z.boolean().default(false),exportAll:z.boolean().default(false)}).strict())
+      .query(async({ctx,input})=>{
+        const canViewClientPayments=!!ctx.admin||await db.hasAnyRole(ctx.user.id,CLIENT_PAYMENT_SUMMARY_ROLES),accessVersion=canViewClientPayments?'payments':'operations';
+        if(input.viewerId!==ctx.user.id||input.accessVersion!==accessVersion||input.includePayments&&!canViewClientPayments)throw new TRPCError({code:'FORBIDDEN'});
+        const specialSort=['package','lastSignIn','location'].includes(input.sort)?input.sort as 'package'|'lastSignIn'|'location':undefined;
+        try{return await db.getStudentDirectory({viewerId:ctx.user.id,accessVersion,canViewClientPayments,paymentsEnabled:true},{...input,sort:specialSort?'registered':input.sort==='spent'?'paid':input.sort as 'name'|'email'|'renewals'|'registered',directory:{packageFilter:input.packageFilter,sort:specialSort,includePaymentTotal:!input.exportAll}});}
+        catch(error){if(error instanceof CustomerReportError)throw new TRPCError({code:'PRECONDITION_FAILED',message:error.message});throw error;}
+      }),
     subscribers: adminOrRoleProcedure(CLIENT_REPORT_ROLES).query(async ({ ctx }) => {
       const canViewClientPayments = !!ctx.admin || await db.hasAnyRole(ctx.user.id, CLIENT_PAYMENT_SUMMARY_ROLES);
       const rows = await db.getSubscribersReport({ includePayments: canViewClientPayments });

@@ -25,7 +25,7 @@ describe('financial workspace cache boundaries', () => {
   it.each(['manager', 'clerk', 'viewer', null])('removes prior privileged financial reads after access becomes %s without fetching', access => {
     const client = new QueryClient();
     const fetcher = vi.fn();
-    const paths = ['financialReports.summary', 'financialReports.dashboard', 'financialControls.workspace', 'financialReconciliation.preview', 'financialReconciliation.workspace', 'financeExpenses.workspaceList'];
+    const paths = ['financialReports.summary', 'financialReports.dashboard', 'financialControls.workspace', 'financialControls.entries', 'financialControls.previewCorrection', 'financialReconciliation.preview', 'financialReconciliation.workspace', 'financialReconciliation.items', 'financialReconciliation.sourceReview', 'financialReconciliation.decisionPreview', 'financeExpenses.workspaceList'];
     for (const path of paths) client.setQueryDefaults(key(path, 20, 'owner'), { queryFn: fetcher });
     for (const path of paths) client.setQueryData(key(path, 20, 'owner'), { private: true });
     const retained = key('financeExpenses.workspaceList', 20, access ?? undefined);

@@ -1,4 +1,6 @@
 import UpgradeCallout from '@/components/UpgradeCallout';
+import CustomerCountrySelect from '@/components/CustomerCountrySelect';
+import { customerCountryCode } from '@shared/customerLocation';
 import { useState } from "react";
 import { useAuth } from "@/_core/hooks/useAuth";
 import ClientLayout from "@/components/ClientLayout";
@@ -103,6 +105,9 @@ function UserProfile({ isStaff, dashboardPath }: { isStaff: boolean; dashboardPa
   const [editName, setEditName] = useState(user?.name || "");
   const [editEmail, setEditEmail] = useState(user?.email || "");
   const [editPhone, setEditPhone] = useState(user?.phone || "");
+  const [editCity, setEditCity] = useState(user?.city || '');
+  const [editCountry, setEditCountry] = useState(customerCountryCode(user?.country) ?? (user?.country ? 'legacy' : ''));
+  const [locationChanged, setLocationChanged] = useState({ city: false, country: false });
 
   // Password change state
   const [showPasswordForm, setShowPasswordForm] = useState(false);
@@ -258,6 +263,8 @@ function UserProfile({ isStaff, dashboardPath }: { isStaff: boolean; dashboardPa
     updateProfileMutation.mutate({
       name: editName || undefined,
       phone: editPhone || undefined,
+      ...(locationChanged.city ? { city: editCity } : {}),
+      ...(locationChanged.country ? { country: editCountry } : {}),
     });
   };
 
@@ -360,6 +367,15 @@ function UserProfile({ isStaff, dashboardPath }: { isStaff: boolean; dashboardPa
                   </div>
 
                   {/* Phone */}
+                  <div>
+                    <Label htmlFor="profile-city">{language === 'ar' ? 'المدينة' : 'City'}</Label>
+                    <Input id="profile-city" autoComplete="address-level2" maxLength={100} value={editCity} onChange={event => { setEditCity(event.target.value); setLocationChanged(previous => ({ ...previous, city: true })); }} className="mt-2" />
+                  </div>
+                  <div>
+                    <Label htmlFor="profile-country">{language === 'ar' ? 'بلد الإقامة' : 'Country of residence'}</Label>
+                    <CustomerCountrySelect id="profile-country" language={language} value={editCountry} required={locationChanged.country} legacyValue={!customerCountryCode(user?.country) ? user?.country ?? undefined : undefined} onChange={value => { setEditCountry(value); setLocationChanged(previous => ({ ...previous, country: true })); }} className="mt-2 w-full rounded-md border bg-background p-2" />
+                    <p className="mt-1 text-xs text-muted-foreground">{language === 'ar' ? 'لن تتغير البيانات السابقة إلا عند تعديل الحقل وحفظه.' : 'Historical location fields change only when you edit and save them.'}</p>
+                  </div>
                   <div className="md:col-span-2">
                     <Label htmlFor="phone">{t("profile.phone")}</Label>
                     <Input

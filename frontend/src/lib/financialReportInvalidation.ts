@@ -10,6 +10,24 @@ const cashWorkflows = new Set([
   "financeExpenses.review",
   "clientProfiles.blockAccess",
 ]);
+const customerWorkflows = new Set([
+  "users.updateProfile",
+  "tradeCopier.adminUpdateSubscription",
+  "packageKeys.freeze",
+  "packageKeys.unfreeze",
+  "packageKeys.deactivateKey",
+  "packageKeys.reactivateKey",
+  "packageKeys.assignKey",
+  "packageKeys.updateUnusedKey",
+  "packageKeys.generateKey",
+  "packageKeys.generateBulkKeys",
+  "lexaiAdmin.pauseSubscription",
+  "lexaiAdmin.resumeSubscription",
+  "recommendationAdmin.subscriptions.pause",
+  "recommendationAdmin.subscriptions.resume",
+  "recommendationAdmin.subscriptions.grantComplimentary",
+  "clientProfiles.unblockAccess",
+]);
 
 /** Mark saved reports stale without fetching reports on unrelated pages. */
 export function subscribeToFinancialReportChanges(client: QueryClient) {
@@ -20,7 +38,11 @@ export function subscribeToFinancialReportChanges(client: QueryClient) {
     )
       return;
     const path = event.mutation.options.mutationKey?.[0];
-    if (!Array.isArray(path) || !cashWorkflows.has(path.join("."))) return;
+    if (!Array.isArray(path)) return;
+    const name = path.join("."),
+      cashChanged = cashWorkflows.has(name),
+      customerChanged = cashChanged || customerWorkflows.has(name);
+    if (!customerChanged) return;
     // An issuance failure may follow a committed payment: errors must also
     // invalidate the saved snapshot. Existing write/idempotency rules stand.
     void client.invalidateQueries({
@@ -28,8 +50,12 @@ export function subscribeToFinancialReportChanges(client: QueryClient) {
         const key = query.queryKey[0];
         return (
           Array.isArray(key) &&
-          key[0] === "financialReports" &&
-          ["summary", "dashboard"].includes(key[1])
+          ((cashChanged &&
+            key[0] === "financialReports" &&
+            ["summary", "dashboard"].includes(key[1])) ||
+            (customerChanged &&
+              key[0] === "reports" &&
+              ["customers", "studentsPage"].includes(key[1])))
         );
       },
       refetchType: "none",

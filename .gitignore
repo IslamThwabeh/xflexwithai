@@ -126,3 +126,9 @@ scripts/generated/free-library/
 
 # Local brand source assets (kept out of git; copies live under */public/)
 Branding/
+
+# Local project memory and temporary private handover plans
+.codex/
+/docs/admin-finance-follow-up-plan-2026-11-25.md
+/docs/admin-finance-whatsapp-drafts-2026-11-27.md
+/docs/paid-plan-efficiency-investigation-2026-11-18.md

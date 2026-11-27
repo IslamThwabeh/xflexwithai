@@ -61,6 +61,7 @@ export default function OrderCancellationDialog({
   const cancel = trpc.orders.adminUpdateStatus.useMutation({
     onSuccess: () => {
       void utils.orders.adminList.invalidate();
+      void utils.orders.adminPage.invalidate();
       void utils.orders.adminStatusHistory.invalidate({ orderId: order.id });
       toast.success(
         ar
@@ -74,6 +75,7 @@ export default function OrderCancellationDialog({
       setConfirmed(false);
       void query.refetch();
       void utils.orders.adminList.invalidate();
+      void utils.orders.adminPage.invalidate();
       void utils.orders.adminStatusHistory.invalidate({ orderId: order.id });
     },
   });

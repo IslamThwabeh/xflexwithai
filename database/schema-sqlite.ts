@@ -33,7 +33,10 @@ export const users = sqliteTable("users", {
   loginBlockedReason: text("login_blocked_reason"),
   loginBlockedByType: text("login_blocked_by_type"), // admin | support
   loginBlockedById: integer("login_blocked_by_id"),
-});
+}, table => ({
+  customerRegisteredIndex: index('idx_users_customer_registered').on(table.isStaff, sql`julianday(${table.createdAt})`, table.id),
+  customerCountryIndex: index('idx_users_customer_country').on(table.isStaff, table.country),
+}));
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
@@ -275,6 +278,7 @@ export const registrationKeys = sqliteTable("registrationKeys", {
     .on(table.activatedAt, table.id)
     .where(sql`${table.orderId} IS NOT NULL`),
   orderGuardIndex: index('idx_registration_keys_order_guard').on(table.orderId).where(sql`${table.orderId} IS NOT NULL`),
+  customerActivationIndex: index('idx_registration_keys_customer_activation').on(sql`lower(trim(${table.email}))`, table.isRenewal).where(sql`${table.packageId} IS NOT NULL AND ${table.activatedAt} IS NOT NULL`),
 }));
 
 export type RegistrationKey = typeof registrationKeys.$inferSelect;
@@ -374,7 +378,7 @@ export const lexaiSubscriptions = sqliteTable("lexaiSubscriptions", {
   frozenUntil: text("frozenUntil"),
   createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
   updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
-});
+}, table => ({ customerIndex: index('idx_lexai_subscriptions_customer').on(table.userId, table.id) }));
 
 export type LexaiSubscription = typeof lexaiSubscriptions.$inferSelect;
 export type InsertLexaiSubscription = typeof lexaiSubscriptions.$inferInsert;
@@ -1315,6 +1319,7 @@ export const orders = sqliteTable("orders", {
     .on(table.status, table.id)
     .where(sql`${table.status} IN ('paid', 'completed')`),
   reviewPurchaserStatusIndex: index("idx_orders_user_status_id").on(table.userId, table.status, table.id),
+  reviewStatusIndex: index("idx_orders_status_id").on(table.status, table.id),
 }));
 
 export type Order = typeof orders.$inferSelect;
@@ -1512,6 +1517,7 @@ export const financialLedgerEntries = sqliteTable("financial_ledger_entries", {
   sourceLinkIndex: index("idx_financial_ledger_source_link")
     .on(table.sourceType, table.sourceReference, table.id),
   orderGuardIndex: index('idx_financial_ledger_order_guard').on(table.orderId).where(sql`${table.orderId} IS NOT NULL`),
+  correctionPageIndex: index('idx_financial_controls_entry_page').on(table.effectiveAt, table.id).where(sql`${table.status} = 'approved' AND ${table.entryType} <> 'reversal'`),
 }));
 
 export type FinancialLedgerEntry = typeof financialLedgerEntries.$inferSelect;
@@ -1856,7 +1862,7 @@ export const packageSubscriptions = sqliteTable("packageSubscriptions", {
   upgradedAt: text("upgradedAt"),
   createdAt: text("createdAt").default(sql`(datetime('now'))`).notNull(),
   updatedAt: text("updatedAt").default(sql`(datetime('now'))`).notNull(),
-}, table => ({ orderGuardIndex: index('idx_package_subscriptions_order_guard').on(table.orderId).where(sql`${table.orderId} IS NOT NULL`) }));
+}, table => ({ orderGuardIndex: index('idx_package_subscriptions_order_guard').on(table.orderId).where(sql`${table.orderId} IS NOT NULL`), customerIndex: index('idx_package_subscriptions_customer').on(table.userId, table.id) }));
 
 export type PackageSubscription = typeof packageSubscriptions.$inferSelect;
 export type InsertPackageSubscription = typeof packageSubscriptions.$inferInsert;

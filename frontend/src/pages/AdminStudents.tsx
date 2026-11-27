@@ -1,19 +1,25 @@
 import ClientPaymentSummary from "@/components/admin/ClientPaymentSummary";
-import { CLIENT_PAYMENT_EXPORT_HEADERS, clientPaymentExportFields, isAvailableClientPaymentSummary } from "../../../shared/clientPaymentSummary";
-import { useState, useMemo } from "react";
+import { useAuth } from "@/_core/hooks/useAuth";
+import StudentDirectoryExport from "@/components/admin/StudentDirectoryExport";
+import type { StudentDirectoryColumn } from "@shared/studentDirectoryExport";
+import { customerCountryDisplay } from "@shared/customerLocation";
+import { customerReportDate } from "@shared/customerReport";
+import {
+  formatAcademyDateTime,
+  ACADEMY_TIME_LABEL_AR,
+  ACADEMY_TIME_LABEL_EN,
+} from "@shared/academyLocale";
+import { useState, useEffect, useRef } from "react";
 import AdminClientProfileSheet from "@/components/admin/AdminClientProfileSheet";
-import StudentActivityBreakdown, { ActivityHelp } from "@/components/admin/StudentActivityBreakdown";
+import StudentActivityBreakdown, {
+  ActivityHelp,
+} from "@/components/admin/StudentActivityBreakdown";
 import DashboardLayout from "@/components/DashboardLayout";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -48,9 +54,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { printReport } from "@/lib/printReport";
+
 import {
-  useDataTable,
   DataTablePagination,
   SortableHeader,
   zebraRow,
@@ -74,120 +79,213 @@ import {
 import { toast } from "sonner";
 import { formatAdminCurrencyFromIls } from "@/lib/adminCurrency";
 
-const studentSortFns: Record<string, (a: any, b: any) => number> = {
-  name: (a, b) => (a.name || "").localeCompare(b.name || ""),
-  email: (a, b) => (a.email || "").localeCompare(b.email || ""),
-  location: (a, b) =>
-    [a.city, a.country].filter(Boolean).join(", ").localeCompare(
-      [b.city, b.country].filter(Boolean).join(", ")
-    ),
-  package: (a, b) =>
-    (a.activePackages || []).length - (b.activePackages || []).length,
-  spent: (a, b) => (a.paymentSummary?.netPaidMinor ?? 0) - (b.paymentSummary?.netPaidMinor ?? 0),
-  renewals: (a, b) => (a.renewalCount || 0) - (b.renewalCount || 0),
-  registered: (a, b) =>
-    new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime(),
-  lastSignIn: (a, b) =>
-    new Date(a.lastSignedIn || 0).getTime() -
-    new Date(b.lastSignedIn || 0).getTime(),
-};
-
 export default function AdminStudents() {
+  const { user } = useAuth();
+  return <StudentWorkspace key={user?.id ?? 0} viewerId={user?.id ?? 0} />;
+}
+function StudentWorkspace({ viewerId }: { viewerId: number }) {
   const { language } = useLanguage();
   const isRtl = language === "ar";
-  const { data: adminCheck } = trpc.auth.isAdmin.useQuery();
+  const adminQuery = trpc.auth.isAdmin.useQuery(undefined, { retry: false });
+  const adminCheck = adminQuery.error ? undefined : adminQuery.data;
   const isAdmin = !!adminCheck?.isAdmin;
   const staffRoles = adminCheck?.staffRoles ?? [];
   const canManageCourseSkip = isAdmin || staffRoles.includes("key_manager");
   const canManageBrokerSkip = isAdmin;
 
-  const { data: students, isLoading } = trpc.reports.subscribers.useQuery();
-  const canViewFinancials = students?.some((s: any) => s.canViewClientPayments === true) ?? false;
+  const accessQuery = trpc.reports.customerAccess.useQuery(
+    { viewerId },
+    {
+      enabled: !!viewerId,
+      retry: false,
+      staleTime: 0,
+      refetchOnWindowFocus: true,
+    }
+  );
+  const access =
+    !accessQuery.error && accessQuery.data?.viewerId === viewerId
+      ? accessQuery.data
+      : undefined;
+  const verified =
+    !!access &&
+    !accessQuery.isFetching &&
+    !!adminCheck &&
+    !adminQuery.isFetching;
+  const canViewFinancials = !!access?.canViewClientPayments;
   const utils = trpc.useUtils();
   const [search, setSearch] = useState("");
-  const [countryFilter, setCountryFilter] = useState("all");
-  const [packageFilter, setPackageFilter] = useState("all");
+  const [countryFilter, setCountryFilterValue] = useState("all");
+  const [packageFilter, setPackageFilterValue] = useState("all");
+  const [appliedSearch, setAppliedSearch] = useState(""),
+    [requestedPage, setPage] = useState(0),
+    [pageSize, setPageSize] = useState(10);
+  const [sortKey, setSortKey] = useState<string | null>(null),
+    [sortDir, setSortDir] = useState<"asc" | "desc" | null>(null);
+  const setCountryFilter = (value: string) => {
+    setCountryFilterValue(value);
+    setPage(0);
+  };
+  const setPackageFilter = (value: string) => {
+    setPackageFilterValue(value);
+    setPage(0);
+  };
+  const changePageSize = (value: number) => {
+    setPageSize(value);
+    setPage(0);
+  };
+  const handleSort = (key: string) => {
+    if (key === sortKey && sortDir === "desc") {
+      setSortKey(null);
+      setSortDir(null);
+    } else {
+      setSortKey(key);
+      setSortDir(key === sortKey && sortDir === "asc" ? "desc" : "asc");
+    }
+    setPage(0);
+  };
   const [showActivityBreakdown, setShowActivityBreakdown] = useState(false);
-  const [skipConfirm, setSkipConfirm] = useState<{ id: number; name: string } | null>(null);
-  const [rollbackConfirm, setRollbackConfirm] = useState<{ id: number; name: string } | null>(null);
-  const [skipBrokerConfirm, setSkipBrokerConfirm] = useState<{ id: number; name: string } | null>(null);
-  const [rollbackBrokerConfirm, setRollbackBrokerConfirm] = useState<{ id: number; name: string } | null>(null);
+  const [skipConfirm, setSkipConfirm] = useState<{
+    id: number;
+    name: string;
+  } | null>(null);
+  const [rollbackConfirm, setRollbackConfirm] = useState<{
+    id: number;
+    name: string;
+  } | null>(null);
+  const [skipBrokerConfirm, setSkipBrokerConfirm] = useState<{
+    id: number;
+    name: string;
+  } | null>(null);
+  const [rollbackBrokerConfirm, setRollbackBrokerConfirm] = useState<{
+    id: number;
+    name: string;
+  } | null>(null);
   const [confirmNameInput, setConfirmNameInput] = useState("");
   const [profileUserId, setProfileUserId] = useState<number | null>(null);
 
   const skipCourseMutation = trpc.enrollments.skipCourse.useMutation({
     onSuccess: () => {
-      toast.success(isRtl ? "تم تخطي الدورة بنجاح" : "Course skipped successfully");
+      toast.success(
+        isRtl ? "تم تخطي الدورة بنجاح" : "Course skipped successfully"
+      );
       setSkipConfirm(null);
       setConfirmNameInput("");
-      utils.reports.subscribers.invalidate();
+      void Promise.all([
+        utils.reports.subscribers.invalidate(),
+        utils.reports.studentsPage.invalidate(),
+        utils.reports.customers.invalidate(),
+      ]);
     },
-    onError: (err) => {
+    onError: err => {
       toast.error(err.message);
     },
   });
 
   const rollbackSkipMutation = trpc.enrollments.rollbackSkip.useMutation({
     onSuccess: () => {
-      toast.success(isRtl ? "تم التراجع عن التخطي بنجاح" : "Skip rolled back successfully");
+      toast.success(
+        isRtl ? "تم التراجع عن التخطي بنجاح" : "Skip rolled back successfully"
+      );
       setRollbackConfirm(null);
       setConfirmNameInput("");
-      utils.reports.subscribers.invalidate();
+      void Promise.all([
+        utils.reports.subscribers.invalidate(),
+        utils.reports.studentsPage.invalidate(),
+        utils.reports.customers.invalidate(),
+      ]);
     },
-    onError: (err) => {
+    onError: err => {
       toast.error(err.message);
     },
   });
 
   const skipBrokerMutation = trpc.enrollments.skipBrokerOnboarding.useMutation({
     onSuccess: () => {
-      toast.success(isRtl ? "تم تخطي فتح الحساب بنجاح" : "Broker onboarding skipped successfully");
+      toast.success(
+        isRtl
+          ? "تم تخطي فتح الحساب بنجاح"
+          : "Broker onboarding skipped successfully"
+      );
       setSkipBrokerConfirm(null);
       setConfirmNameInput("");
-      utils.reports.subscribers.invalidate();
+      void Promise.all([
+        utils.reports.subscribers.invalidate(),
+        utils.reports.studentsPage.invalidate(),
+        utils.reports.customers.invalidate(),
+      ]);
     },
-    onError: (err) => {
+    onError: err => {
       toast.error(err.message);
     },
   });
 
-  const rollbackBrokerSkipMutation = trpc.enrollments.rollbackBrokerSkip.useMutation({
-    onSuccess: () => {
-      toast.success(isRtl ? "تم التراجع عن تخطي الوسيط بنجاح" : "Broker skip rolled back successfully");
-      setRollbackBrokerConfirm(null);
-      setConfirmNameInput("");
-      utils.reports.subscribers.invalidate();
-    },
-    onError: (err) => {
-      toast.error(err.message);
-    },
-  });
+  const rollbackBrokerSkipMutation =
+    trpc.enrollments.rollbackBrokerSkip.useMutation({
+      onSuccess: () => {
+        toast.success(
+          isRtl
+            ? "تم التراجع عن تخطي الوسيط بنجاح"
+            : "Broker skip rolled back successfully"
+        );
+        setRollbackBrokerConfirm(null);
+        setConfirmNameInput("");
+        void Promise.all([
+          utils.reports.subscribers.invalidate(),
+          utils.reports.studentsPage.invalidate(),
+          utils.reports.customers.invalidate(),
+        ]);
+      },
+      onError: err => {
+        toast.error(err.message);
+      },
+    });
 
   // Column visibility
   const allColumns = [
-    { key: 'name', en: 'Name', ar: 'الاسم' },
-    { key: 'email', en: 'Email', ar: 'الإيميل' },
-    { key: 'phone', en: 'Phone', ar: 'الهاتف' },
-    { key: 'location', en: 'Location', ar: 'الموقع' },
-    { key: 'package', en: 'Package', ar: 'الباقة' },
-    { key: 'spent', en: 'Net confirmed paid', ar: 'صافي المدفوع الموثق' },
-    { key: 'renewals', en: 'Renewals', ar: 'التجديدات' },
-    { key: 'registered', en: 'Registered', ar: 'التسجيل' },
-    { key: 'lastSignIn', en: 'Last Sign In', ar: 'آخر دخول' },
+    { key: "name", en: "Name", ar: "الاسم" },
+    { key: "email", en: "Email", ar: "الإيميل" },
+    { key: "phone", en: "Phone", ar: "الهاتف" },
+    { key: "location", en: "Location", ar: "الموقع" },
+    { key: "package", en: "Package", ar: "الباقة" },
+    { key: "spent", en: "Net confirmed paid", ar: "صافي المدفوع الموثق" },
+    { key: "renewals", en: "Renewals", ar: "التجديدات" },
+    { key: "registered", en: "Registered", ar: "التسجيل" },
+    { key: "lastSignIn", en: "Last Sign In", ar: "آخر دخول" },
   ] as const;
   const [visibleCols, setVisibleCols] = useState<Set<string>>(() => {
     try {
-      const saved = localStorage.getItem('adminStudents_visibleCols');
-      if (saved) return new Set(JSON.parse(saved));
+      const saved = localStorage.getItem("adminStudents_visibleCols");
+      if (saved) {
+        const values: unknown = JSON.parse(saved);
+        if (Array.isArray(values)) {
+          const valid = allColumns
+            .filter(column => values.includes(column.key))
+            .map(column => column.key);
+          if (valid.length) return new Set(valid);
+        }
+      }
     } catch {}
-    return new Set(['name', 'email', 'package', 'spent', 'registered', 'lastSignIn']);
+    return new Set([
+      "name",
+      "email",
+      "package",
+      "spent",
+      "registered",
+      "lastSignIn",
+    ]);
   });
   const toggleCol = (col: string) => {
     setVisibleCols(prev => {
       const next = new Set(prev);
-      if (next.has(col)) next.delete(col); else next.add(col);
-      localStorage.setItem('adminStudents_visibleCols', JSON.stringify(Array.from(next)));
-      return next;
+      if (next.has(col)) next.delete(col);
+      else next.add(col);
+      try {
+        localStorage.setItem(
+          "adminStudents_visibleCols",
+          JSON.stringify(Array.from(next))
+        );
+      } catch {}
+      return next.size ? next : prev;
     });
   };
   const visibleColCount = visibleCols.size;
@@ -195,118 +293,168 @@ export default function AdminStudents() {
   // Package badge colors
   const pkgBadgeClass = (name: string) => {
     const lower = name.toLowerCase();
-    if (lower.includes('comprehensive') || lower.includes('شامل'))
-      return 'bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-100';
-    return 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-100';
+    if (lower.includes("comprehensive") || lower.includes("شامل"))
+      return "bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-100";
+    return "bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-100";
   };
 
-  // Derived data
-  const countries = useMemo(() => {
-    if (!students) return [];
-    const c = new Set(students.map((s: any) => s.country).filter(Boolean));
-    return Array.from(c).sort() as string[];
-  }, [students]);
-
-  const filtered = useMemo(() => {
-    if (!students) return [];
-    return students.filter((s: any) => {
-      const matchSearch =
-        !search ||
-        (s.name || "").toLowerCase().includes(search.toLowerCase()) ||
-        (s.email || "").toLowerCase().includes(search.toLowerCase()) ||
-        (s.phone || "").includes(search);
-      const matchCountry =
-        countryFilter === "all" || s.country === countryFilter;
-      const matchPackage =
-        packageFilter === "all" ||
-        (packageFilter === "active" && (s.activePackages || []).length > 0) ||
-        (packageFilter === "none" && (s.activePackages || []).length === 0);
-      return matchSearch && matchCountry && matchPackage;
-    });
-  }, [students, search, countryFilter, packageFilter]);
-
-  // Pagination + sorting
-  const {
-    paged,
-    page,
-    pageSize,
-    totalPages,
-    totalItems,
-    sortKey,
-    sortDir,
-    setPage,
-    handleSort,
-    changePageSize,
-  } = useDataTable(filtered, studentSortFns);
-
-  // Stats
-  const totalStudents = students?.length || 0;
-  const activeStudents = students?.filter(
-    (s: any) => (s.activePackages || []).length > 0
-  ).length || 0;
-  const inactiveStudents = totalStudents - activeStudents;
-  const allPaymentsAvailable = filtered.every((s: any) => isAvailableClientPaymentSummary(s.paymentSummary));
-  const totalConfirmedPaidMinor = canViewFinancials && allPaymentsAvailable
-    ? filtered.reduce((sum: number, s: any) => sum + s.paymentSummary.netPaidMinor, 0) : null;
-
+  const scope = {
+    viewerId,
+    accessVersion:
+      access?.accessVersion === "payments"
+        ? ("payments" as const)
+        : ("operations" as const),
+  };
+  const includePayments = canViewFinancials && visibleCols.has("spent");
+  const effectiveSort =
+    sortKey === "spent" && !includePayments
+      ? "registered"
+      : (sortKey ?? "registered");
+  const input = {
+    ...scope,
+    search: appliedSearch,
+    country: countryFilter === "all" ? "" : countryFilter,
+    packageFilter: packageFilter as "all" | "active" | "none",
+    sort: effectiveSort as
+      | "name"
+      | "email"
+      | "location"
+      | "package"
+      | "spent"
+      | "renewals"
+      | "registered"
+      | "lastSignIn",
+    direction: sortDir ?? ("desc" as "asc" | "desc"),
+    page: requestedPage + 1,
+    pageSize: pageSize as 10 | 25 | 50,
+    includePayments,
+  };
+  const query = trpc.reports.studentsPage.useQuery(input, {
+    enabled: verified,
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    staleTime: 30_000,
+  });
+  const result =
+    verified &&
+    !query.error &&
+    query.data?.viewerId === viewerId &&
+    query.data.accessVersion === scope.accessVersion
+      ? query.data
+      : undefined;
+  const isLoading = !verified || query.isLoading;
+  const paged = result?.items ?? [],
+    countries = result?.countries ?? [],
+    totalItems = result?.total ?? 0,
+    page = (result?.page ?? requestedPage + 1) - 1,
+    totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const totalStudents = result?.accountCount ?? 0,
+    activeStudents = result?.markedActiveAccounts ?? 0,
+    inactiveStudents = totalStudents - activeStudents,
+    totalConfirmedPaidMinor = result?.filteredPaymentTotalMinor ?? null;
+  const activeScope = useRef("");
+  activeScope.current = verified ? viewerId + ":" + scope.accessVersion : "";
+  useEffect(
+    () => () => {
+      activeScope.current = "";
+    },
+    []
+  );
+  const authoritySignature =
+    scope.accessVersion +
+    ":" +
+    isAdmin +
+    ":" +
+    [...staffRoles].sort().join(",");
+  const priorScope = useRef(authoritySignature);
+  useEffect(() => {
+    if (!verified) return;
+    if (priorScope.current !== authoritySignature) {
+      setSkipConfirm(null);
+      setRollbackConfirm(null);
+      setSkipBrokerConfirm(null);
+      setRollbackBrokerConfirm(null);
+      setProfileUserId(null);
+      setConfirmNameInput("");
+    }
+    priorScope.current = authoritySignature;
+  }, [authoritySignature, verified]);
+  useEffect(() => {
+    if (!includePayments && sortKey === "spent") {
+      setSortKey(null);
+      setSortDir(null);
+      setPage(0);
+    }
+  }, [includePayments, sortKey]);
+  useEffect(() => {
+    if (
+      query.error?.data?.code === "FORBIDDEN" ||
+      query.error?.data?.code === "UNAUTHORIZED"
+    )
+      void accessQuery.refetch();
+  }, [query.error]);
+  const location = (row: { city: string | null; country: string | null }) => {
+    const country = customerCountryDisplay(row.country, language);
+    return [
+      row.city,
+      country.label +
+        (country.needsReview
+          ? isRtl
+            ? " (قيمة سابقة تحتاج مراجعة)"
+            : " (historical value to review)"
+          : ""),
+    ]
+      .filter(Boolean)
+      .join(", ");
+  };
   const copyEmail = (email: string) => {
     navigator.clipboard.writeText(email);
     toast.success(isRtl ? "تم النسخ" : "Copied!");
   };
 
-  const exportCSV = () => {
-    if (!filtered.length) return;
-    const headers = [
-      "Name",
-      "Email",
-      "Phone",
-      "City",
-      "Country",
-      "Registered",
-      "Last Sign In",
-      "Active Packages",
-      ...(canViewFinancials ? CLIENT_PAYMENT_EXPORT_HEADERS : []),
-      "Renewals",
-    ];
-    const rows = filtered.map((s: any) => [
-      s.name || "",
-      s.email,
-      s.phone || "",
-      s.city || "",
-      s.country || "",
-      s.createdAt ? new Date(s.createdAt).toLocaleDateString("en-US") : "",
-      s.lastSignedIn
-        ? new Date(s.lastSignedIn).toLocaleDateString("en-US")
-        : "",
-      (s.activePackages || []).join("; "),
-      ...(canViewFinancials ? clientPaymentExportFields(s.paymentSummary) : []),
-      s.renewalCount || 0,
-    ]);
-    const csv = [
-      headers.join(","),
-      ...rows.map((r: any) => r.map((v: any) => `"${v}"`).join(",")),
-    ].join("\n");
-    const blob = new Blob(["\ufeff" + csv], {
-      type: "text/csv;charset=utf-8;",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `students_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const fmtDate = (value: string | null | undefined) => {
+    const date = customerReportDate(value);
+    return date ? formatAcademyDateTime(date, language) : "—";
   };
-
-  const fmtDate = (d: string | null | undefined) => {
-    if (!d) return "—";
-    const date = new Date(d);
-    if (Number.isNaN(date.getTime())) return "—";
-    return date.toLocaleDateString(isRtl ? "ar-EG" : "en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  };
+  if (!result)
+    return (
+      <DashboardLayout>
+        <div className="space-y-3 p-4">
+          <h1 className="text-2xl font-bold">
+            {isRtl ? "الطلاب" : "Students"}
+          </h1>
+          {!verified && !accessQuery.error && !adminQuery.error ? (
+            <p role="status">
+              {isRtl ? "جارٍ التحقق من الصلاحية..." : "Checking access..."}
+            </p>
+          ) : !access || accessQuery.error || adminQuery.error ? (
+            <p role="alert">
+              {isRtl
+                ? "تعذر التحقق من الصلاحية؛ بيانات العملاء مخفية."
+                : "Access is unverified; customer data is hidden."}
+            </p>
+          ) : query.error || (!query.isFetching && query.data) ? (
+            <p role="alert">
+              {isRtl
+                ? "تعذر تحميل القائمة أو لا تطابق الحساب الحالي؛ البيانات السابقة مخفية."
+                : "Directory could not be loaded or did not match this account; previous data is hidden."}
+            </p>
+          ) : (
+            <p role="status">{isRtl ? "جارٍ التحميل..." : "Loading..."}</p>
+          )}
+          <Button
+            onClick={() =>
+              void (!verified
+                ? Promise.all([accessQuery.refetch(), adminQuery.refetch()])
+                : query.refetch())
+            }
+          >
+            {isRtl ? "إعادة المحاولة" : "Try again"}
+          </Button>
+        </div>
+      </DashboardLayout>
+    );
 
   return (
     <DashboardLayout>
@@ -320,63 +468,115 @@ export default function AdminStudents() {
             </h1>
             <p className="text-sm text-gray-500 mt-1">
               {isRtl
-                ? `${filtered.length} طالب من أصل ${totalStudents}`
-                : `${filtered.length} of ${totalStudents} students`}
+                ? `${totalItems} طالب من أصل ${totalStudents}`
+                : `${totalItems} of ${totalStudents} students`}
             </p>
           </div>
-          <div className="flex gap-2">
-            <Button
-              onClick={exportCSV}
-              variant="outline"
-              size="sm"
-              disabled={!filtered.length}
-              className="no-print"
-            >
-              <Download className="w-4 h-4 me-1.5" />
-              {isRtl ? "CSV" : "CSV"}
-            </Button>
-            <Button
-              onClick={() =>
-                printReport(isRtl ? "تقرير الطلاب" : "Students Report")
-              }
-              variant="outline"
-              size="sm"
-              className="no-print"
-            >
-              <FileText className="w-4 h-4 me-1.5" />
-              {isRtl ? "طباعة" : "Print"}
-            </Button>
-          </div>
+          <Button
+            variant="outline"
+            disabled={query.isFetching}
+            onClick={() => void query.refetch()}
+          >
+            {isRtl ? "تحديث" : "Refresh"}
+          </Button>
         </div>
 
+        <StudentDirectoryExport
+          input={input}
+          visible={allColumns
+            .filter(
+              column =>
+                visibleCols.has(column.key) &&
+                (column.key !== "spent" || canViewFinancials)
+            )
+            .map(column => column.key)}
+          allColumns={allColumns
+            .filter(column => column.key !== "spent" || canViewFinancials)
+            .map(column => column.key)}
+          language={isRtl ? "ar" : "en"}
+          activeScope={activeScope}
+          fetching={query.isFetching}
+        />
+        <details className="rounded border p-3 md:hidden">
+          <summary className="min-h-10 cursor-pointer">
+            {isRtl ? "الأعمدة الظاهرة" : "Visible columns"}
+          </summary>
+          <div className="flex flex-wrap gap-3">
+            {allColumns
+              .filter(column => column.key !== "spent" || canViewFinancials)
+              .map(column => (
+                <label
+                  key={column.key}
+                  className="flex min-h-11 items-center gap-2 text-sm"
+                >
+                  <input
+                    type="checkbox"
+                    checked={visibleCols.has(column.key)}
+                    onChange={() => toggleCol(column.key)}
+                  />
+                  {isRtl ? column.ar : column.en}
+                </label>
+              ))}
+          </div>
+        </details>
         {/* Stats — clickable to filter */}
-        <div className={`grid ${canViewFinancials ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-3'} gap-2`}>
+        <div
+          className={`grid ${canViewFinancials ? "grid-cols-2 md:grid-cols-4" : "grid-cols-3"} gap-2`}
+        >
           <button
             onClick={() => setPackageFilter("all")}
             className={`rounded-lg border px-3 py-2 text-center transition hover:shadow-sm ${packageFilter === "all" ? "ring-2 ring-emerald-400 bg-emerald-50" : "bg-white"}`}
           >
-            <p className="text-lg font-bold text-emerald-600">{totalStudents}</p>
-            <p className="text-[11px] text-gray-500 leading-tight">{isRtl ? "الإجمالي" : "Total"}</p>
+            <p className="text-lg font-bold text-emerald-600">
+              {totalStudents}
+            </p>
+            <p className="text-[11px] text-gray-500 leading-tight">
+              {isRtl ? "الإجمالي" : "Total"}
+            </p>
           </button>
-          <div className={`relative rounded-lg border transition hover:shadow-sm ${packageFilter === "active" ? "ring-2 ring-emerald-400 bg-emerald-50" : "bg-white"}`}>
+          <div
+            className={`relative rounded-lg border transition hover:shadow-sm ${packageFilter === "active" ? "ring-2 ring-emerald-400 bg-emerald-50" : "bg-white"}`}
+          >
             <button
               type="button"
-              onClick={() => { setPackageFilter("active"); setShowActivityBreakdown((shown) => !shown); }}
+              onClick={() => {
+                setPackageFilter("active");
+                setShowActivityBreakdown(shown => !shown);
+              }}
               aria-expanded={showActivityBreakdown}
               aria-controls="student-activity-breakdown"
-              title={isRtl ? "عملاء لديهم باقة مسجلة كنشطة؛ لا يعني ذلك أن التوصيات سارية. اضغط لعرض التفاصيل." : "Clients with a package marked active; recommendation access may have expired. Select to see the breakdown."}
+              title={
+                isRtl
+                  ? "عملاء لديهم باقة مسجلة كنشطة؛ لا يعني ذلك أن التوصيات سارية. اضغط لعرض التفاصيل."
+                  : "Clients with a package marked active; recommendation access may have expired. Select to see the breakdown."
+              }
               className="h-full w-full rounded-lg px-3 py-2 pe-11 text-center focus-visible:outline-2 focus-visible:outline-ring"
             >
-              <p className="text-lg font-bold text-green-600">{isLoading ? "—" : activeStudents}</p>
-              <p className="text-[11px] text-gray-500 leading-tight">{isRtl ? "عملاء لديهم باقة نشطة" : "Clients with active packages"}</p>
+              <p className="text-lg font-bold text-green-600">
+                {isLoading ? "—" : activeStudents}
+              </p>
+              <p className="text-[11px] text-gray-500 leading-tight">
+                {isRtl
+                  ? "عملاء لديهم باقة نشطة"
+                  : "Clients with active packages"}
+              </p>
               <span className="mt-1 flex items-center justify-center gap-1 text-[11px] text-emerald-700">
                 {isRtl ? "تفاصيل التوصيات" : "Recommendation breakdown"}
-                <ChevronDown className={`h-3 w-3 transition-transform ${showActivityBreakdown ? "rotate-180" : ""}`} aria-hidden="true" />
+                <ChevronDown
+                  className={`h-3 w-3 transition-transform ${showActivityBreakdown ? "rotate-180" : ""}`}
+                  aria-hidden="true"
+                />
               </span>
             </button>
             <div className="absolute end-0 top-0">
-              <ActivityHelp label={isRtl ? "شرح عدد العملاء النشطين" : "About active clients"}>
-                {isRtl ? "عملاء لديهم باقة مسجلة كنشطة. لا يعني هذا أنهم متصلون أو أن اشتراك التوصيات ما زال سارياً. اضغط البطاقة لعرض شجرة جمهور التوصيات وتصفية العملاء ذوي الباقات." : "Clients with a package marked active. This does not mean they are online or their recommendation access is unexpired. Select this card to see the recommendation audience tree and filter clients with packages."}
+              <ActivityHelp
+                label={
+                  isRtl ? "شرح عدد العملاء النشطين" : "About active clients"
+                }
+              >
+                {isRtl
+                  ? "عملاء لديهم باقة مسجلة كنشطة. لا يعني هذا أنهم متصلون أو أن اشتراك التوصيات ما زال سارياً. اضغط البطاقة لعرض شجرة جمهور التوصيات وتصفية العملاء ذوي الباقات."
+                  : "Clients with a package marked active. This does not mean they are online or their recommendation access is unexpired. Select this card to see the recommendation audience tree and filter clients with packages."}
               </ActivityHelp>
             </div>
           </div>
@@ -384,21 +584,52 @@ export default function AdminStudents() {
             onClick={() => setPackageFilter("none")}
             className={`rounded-lg border px-3 py-2 text-center transition hover:shadow-sm ${packageFilter === "none" ? "ring-2 ring-emerald-400 bg-emerald-50" : "bg-white"}`}
           >
-            <p className="text-lg font-bold text-gray-500">{inactiveStudents}</p>
-            <p className="text-[11px] text-gray-500 leading-tight">{isRtl ? "بدون باقة" : "No Package"}</p>
+            <p className="text-lg font-bold text-gray-500">
+              {inactiveStudents}
+            </p>
+            <p className="text-[11px] text-gray-500 leading-tight">
+              {isRtl ? "بدون باقة" : "No Package"}
+            </p>
           </button>
-          {canViewFinancials && <div className="rounded-lg border px-3 py-2 text-center bg-white">
-            <p className="text-lg font-bold text-emerald-600">{totalConfirmedPaidMinor == null ? (isRtl ? "غير متاح" : "Unavailable") : formatAdminCurrencyFromIls(totalConfirmedPaidMinor / 100, language)}</p>
-            <p className="text-[11px] text-gray-500 leading-tight">{isRtl ? "صافي موثق للعملاء المعروضين · السجل التاريخي قد يكون ناقصاً" : "Net confirmed for listed clients · historical coverage may be incomplete"}</p>
-          </div>}
+          {includePayments && (
+            <div className="rounded-lg border px-3 py-2 text-center bg-white">
+              <p className="text-lg font-bold text-emerald-600">
+                {totalConfirmedPaidMinor == null
+                  ? isRtl
+                    ? "غير متاح"
+                    : "Unavailable"
+                  : formatAdminCurrencyFromIls(
+                      totalConfirmedPaidMinor / 100,
+                      language
+                    )}
+              </p>
+              <p className="text-[11px] text-gray-500 leading-tight">
+                {isRtl
+                  ? "صافي موثق لجميع الحسابات المطابقة · أدلة طوال الحساب قد تكون ناقصة"
+                  : "Net confirmed for all matching accounts · lifetime evidence may be incomplete"}
+              </p>
+            </div>
+          )}
         </div>
 
-        {showActivityBreakdown && <StudentActivityBreakdown activeClients={activeStudents} isRtl={isRtl} />}
+        {showActivityBreakdown && (
+          <StudentActivityBreakdown
+            activeClients={activeStudents}
+            isRtl={isRtl}
+          />
+        )}
 
         {/* Filters */}
         <Card>
           <CardContent className="pt-4">
-            <div className="flex flex-col sm:flex-row gap-3">
+            <form
+              onSubmit={event => {
+                event.preventDefault();
+                setAppliedSearch(search.trim());
+                setPage(0);
+              }}
+              className="flex flex-col sm:flex-row gap-3"
+            >
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <Input
@@ -409,9 +640,12 @@ export default function AdminStudents() {
                       : "Search by name, email, phone..."
                   }
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={e => setSearch(e.target.value)}
                 />
               </div>
+              <Button type="submit" disabled={query.isFetching}>
+                {isRtl ? "تطبيق البحث" : "Apply search"}
+              </Button>
               <Select value={countryFilter} onValueChange={setCountryFilter}>
                 <SelectTrigger className="w-full sm:w-[160px]">
                   <SelectValue />
@@ -420,9 +654,9 @@ export default function AdminStudents() {
                   <SelectItem value="all">
                     {isRtl ? "جميع البلدان" : "All Countries"}
                   </SelectItem>
-                  {countries.map((c) => (
-                    <SelectItem key={c} value={c}>
-                      {c}
+                  {countries.map(c => (
+                    <SelectItem key={c.value} value={c.value}>
+                      {isRtl ? c.labelAr : c.labelEn}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -432,9 +666,7 @@ export default function AdminStudents() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">
-                    {isRtl ? "الكل" : "All"}
-                  </SelectItem>
+                  <SelectItem value="all">{isRtl ? "الكل" : "All"}</SelectItem>
                   <SelectItem value="active">
                     {isRtl ? "لديه باقة" : "Has Package"}
                   </SelectItem>
@@ -443,10 +675,20 @@ export default function AdminStudents() {
                   </SelectItem>
                 </SelectContent>
               </Select>
-            </div>
+            </form>
           </CardContent>
         </Card>
 
+        <p className="text-xs text-muted-foreground">
+          {isRtl ? "بدأت القراءة: " : "Read started: "}
+          {formatAcademyDateTime(
+            result.generatedAt,
+            isRtl ? "ar" : "en"
+          )} · {isRtl ? ACADEMY_TIME_LABEL_AR : ACADEMY_TIME_LABEL_EN}.{" "}
+          {isRtl
+            ? "ترتيب الموقع حسب المدينة ثم اسم البلد بالإنجليزية."
+            : "Location ordering uses city, then English country name."}
+        </p>
         <Card className="border-amber-200 bg-amber-50/70">
           <CardContent className="pt-4">
             <div className="flex items-start gap-3">
@@ -491,6 +733,13 @@ export default function AdminStudents() {
                         <div className="min-w-0">
                           <p className="font-semibold text-sm truncate">
                             {s.name || "—"}
+                            {s.loginRestricted && (
+                              <span className="block text-xs text-amber-800">
+                                {isRtl
+                                  ? "تسجيل الدخول مقيّد"
+                                  : "Login restricted"}
+                              </span>
+                            )}
                           </p>
                           <div className="flex items-center gap-1 mt-0.5">
                             <p
@@ -526,22 +775,22 @@ export default function AdminStudents() {
                       {/* Packages */}
                       {(s.activePackages || []).length > 0 && (
                         <div className="flex flex-wrap gap-1">
-                          {(isRtl ? s.activePackagesAr || s.activePackages : s.activePackages).map(
-                            (p: string, i: number) => (
-                              <Badge
-                                key={i}
-                                variant="outline"
-                                className={`text-xs gap-1 ${pkgBadgeClass(p)}`}
-                              >
-                                <Package className="w-3 h-3" />
-                                {p}
-                              </Badge>
-                            )
-                          )}
+                          {(isRtl
+                            ? s.activePackagesAr || s.activePackages
+                            : s.activePackages
+                          ).map((p: string, i: number) => (
+                            <Badge
+                              key={i}
+                              variant="outline"
+                              className={`text-xs gap-1 ${pkgBadgeClass(p)}`}
+                            >
+                              <Package className="w-3 h-3" />
+                              {p}
+                            </Badge>
+                          ))}
                           {s.renewalCount > 0 && (
                             <Badge className="text-xs bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
-                              {s.renewalCount}{" "}
-                              {isRtl ? "تجديد" : "renewal"}
+                              {s.renewalCount} {isRtl ? "تجديد" : "renewal"}
                             </Badge>
                           )}
                         </div>
@@ -549,7 +798,7 @@ export default function AdminStudents() {
 
                       {/* Details grid */}
                       <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-                        {s.phone && (
+                        {visibleCols.has("phone") && s.phone && (
                           <div>
                             <span className="text-gray-400 block">
                               {isRtl ? "الهاتف" : "Phone"}
@@ -559,20 +808,28 @@ export default function AdminStudents() {
                             </span>
                           </div>
                         )}
-                        {(s.city || s.country) && (
+                        {visibleCols.has("location") &&
+                          (s.city || s.country) && (
+                            <div>
+                              <span className="text-gray-400 block">
+                                {isRtl ? "الموقع" : "Location"}
+                              </span>
+                              <span className="font-medium">{location(s)}</span>
+                            </div>
+                          )}
+                        {includePayments && (
                           <div>
                             <span className="text-gray-400 block">
-                              {isRtl ? "الموقع" : "Location"}
+                              {isRtl
+                                ? "المدفوعات الموثقة"
+                                : "Recorded payments"}
                             </span>
-                            <span className="font-medium">
-                              {[s.city, s.country].filter(Boolean).join(", ")}
-                            </span>
+                            <ClientPaymentSummary
+                              summary={s.paymentSummary}
+                              language={language}
+                            />
                           </div>
                         )}
-                        {canViewFinancials && <div>
-                          <span className="text-gray-400 block">{isRtl ? "المدفوعات الموثقة" : "Recorded payments"}</span>
-                          <ClientPaymentSummary summary={s.paymentSummary} language={language} />
-                        </div>}
                         <div>
                           <span className="text-gray-400 block">
                             {isRtl ? "التسجيل" : "Registered"}
@@ -593,59 +850,87 @@ export default function AdminStudents() {
 
                       {/* Actions */}
                       <div className="pt-2 border-t flex gap-2 items-center flex-wrap">
-                        {canManageCourseSkip && (s.isAdminSkipped ? (
-                          <>
-                            <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50 text-xs">
-                              {isRtl ? "الدورة" : "Course"}
-                            </Badge>
+                        {canManageCourseSkip &&
+                          (s.isAdminSkipped ? (
+                            <>
+                              <Badge
+                                variant="outline"
+                                className="text-amber-600 border-amber-300 bg-amber-50 text-xs"
+                              >
+                                {isRtl ? "الدورة" : "Course"}
+                              </Badge>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-xs gap-1"
+                                onClick={() =>
+                                  setRollbackConfirm({
+                                    id: s.id,
+                                    name: s.name || s.email,
+                                  })
+                                }
+                              >
+                                <Undo2 className="w-3 h-3" />
+                                {isRtl ? "تراجع" : "Undo"}
+                              </Button>
+                            </>
+                          ) : (
                             <Button
                               variant="outline"
                               size="sm"
                               className="text-xs gap-1"
-                              onClick={() => setRollbackConfirm({ id: s.id, name: s.name || s.email })}
+                              onClick={() =>
+                                setSkipConfirm({
+                                  id: s.id,
+                                  name: s.name || s.email,
+                                })
+                              }
                             >
-                              <Undo2 className="w-3 h-3" />
-                              {isRtl ? "تراجع" : "Undo"}
+                              <FastForward className="w-3 h-3" />
+                              {isRtl ? "تخطي الدورة" : "Skip Course"}
                             </Button>
-                          </>
-                        ) : (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="text-xs gap-1"
-                            onClick={() => setSkipConfirm({ id: s.id, name: s.name || s.email })}
-                          >
-                            <FastForward className="w-3 h-3" />
-                            {isRtl ? "تخطي الدورة" : "Skip Course"}
-                          </Button>
-                        ))}
-                        {canManageBrokerSkip && (s.brokerOnboardingComplete ? (
-                          <>
-                            <Badge variant="outline" className="text-teal-600 border-teal-300 bg-teal-50 text-xs">
-                              <Building2 className="w-3 h-3 me-1" />
-                              {isRtl ? "الوسيط" : "Broker"}
-                            </Badge>
+                          ))}
+                        {canManageBrokerSkip &&
+                          (s.brokerOnboardingComplete ? (
+                            <>
+                              <Badge
+                                variant="outline"
+                                className="text-teal-600 border-teal-300 bg-teal-50 text-xs"
+                              >
+                                <Building2 className="w-3 h-3 me-1" />
+                                {isRtl ? "الوسيط" : "Broker"}
+                              </Badge>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-xs gap-1"
+                                onClick={() =>
+                                  setRollbackBrokerConfirm({
+                                    id: s.id,
+                                    name: s.name || s.email,
+                                  })
+                                }
+                              >
+                                <Undo2 className="w-3 h-3" />
+                                {isRtl ? "تراجع" : "Undo"}
+                              </Button>
+                            </>
+                          ) : (
                             <Button
                               variant="outline"
                               size="sm"
                               className="text-xs gap-1"
-                              onClick={() => setRollbackBrokerConfirm({ id: s.id, name: s.name || s.email })}
+                              onClick={() =>
+                                setSkipBrokerConfirm({
+                                  id: s.id,
+                                  name: s.name || s.email,
+                                })
+                              }
                             >
-                              <Undo2 className="w-3 h-3" />
-                              {isRtl ? "تراجع" : "Undo"}
+                              <FastForward className="w-3 h-3" />
+                              {isRtl ? "تخطي الوسيط" : "Skip Broker"}
                             </Button>
-                          </>
-                        ) : (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="text-xs gap-1"
-                            onClick={() => setSkipBrokerConfirm({ id: s.id, name: s.name || s.email })}
-                          >
-                            <FastForward className="w-3 h-3" />
-                            {isRtl ? "تخطي الوسيط" : "Skip Broker"}
-                          </Button>
-                        ))}
+                          ))}
                         <Button
                           variant="outline"
                           size="sm"
@@ -669,29 +954,40 @@ export default function AdminStudents() {
                   <CardTitle className="text-base">
                     {isRtl ? "قائمة الطلاب" : "Student List"}{" "}
                     <span className="text-gray-400 font-normal">
-                      ({filtered.length})
+                      ({totalItems})
                     </span>
                   </CardTitle>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm" className="gap-1.5 text-xs">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5 text-xs"
+                      >
                         <SlidersHorizontal className="w-3.5 h-3.5" />
-                        {isRtl ? 'الأعمدة' : 'Columns'}
+                        {isRtl ? "الأعمدة" : "Columns"}
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align={isRtl ? 'start' : 'end'} className="w-48">
-                      <DropdownMenuLabel>{isRtl ? 'إظهار / إخفاء الأعمدة' : 'Toggle Columns'}</DropdownMenuLabel>
+                    <DropdownMenuContent
+                      align={isRtl ? "start" : "end"}
+                      className="w-48"
+                    >
+                      <DropdownMenuLabel>
+                        {isRtl ? "إظهار / إخفاء الأعمدة" : "Toggle Columns"}
+                      </DropdownMenuLabel>
                       <DropdownMenuSeparator />
-                      {allColumns.filter(col => col.key !== 'spent' || canViewFinancials).map(col => (
-                        <DropdownMenuCheckboxItem
-                          key={col.key}
-                          checked={visibleCols.has(col.key)}
-                          onCheckedChange={() => toggleCol(col.key)}
-                          onSelect={(e) => e.preventDefault()}
-                        >
-                          {isRtl ? col.ar : col.en}
-                        </DropdownMenuCheckboxItem>
-                      ))}
+                      {allColumns
+                        .filter(col => col.key !== "spent" || canViewFinancials)
+                        .map(col => (
+                          <DropdownMenuCheckboxItem
+                            key={col.key}
+                            checked={visibleCols.has(col.key)}
+                            onCheckedChange={() => toggleCol(col.key)}
+                            onSelect={e => e.preventDefault()}
+                          >
+                            {isRtl ? col.ar : col.en}
+                          </DropdownMenuCheckboxItem>
+                        ))}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
@@ -701,34 +997,104 @@ export default function AdminStudents() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        {visibleCols.has('name') && <TableHead>
-                          <SortableHeader label={isRtl ? "الاسم" : "Name"} sortKey="name" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
-                        </TableHead>}
-                        {visibleCols.has('email') && <TableHead>
-                          <SortableHeader label={isRtl ? "الإيميل" : "Email"} sortKey="email" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
-                        </TableHead>}
-                        {visibleCols.has('phone') && <TableHead>
-                          {isRtl ? "الهاتف" : "Phone"}
-                        </TableHead>}
-                        {visibleCols.has('location') && <TableHead>
-                          <SortableHeader label={isRtl ? "الموقع" : "Location"} sortKey="location" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
-                        </TableHead>}
-                        {visibleCols.has('package') && <TableHead>
-                          <SortableHeader label={isRtl ? "الباقة" : "Package"} sortKey="package" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
-                        </TableHead>}
-                        {canViewFinancials && visibleCols.has('spent') && <TableHead>
-                          <SortableHeader label={isRtl ? "صافي المدفوع الموثق" : "Net confirmed paid"} sortKey="spent" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
-                        </TableHead>}
-                        {visibleCols.has('renewals') && <TableHead>
-                          <SortableHeader label={isRtl ? "التجديدات" : "Renewals"} sortKey="renewals" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
-                        </TableHead>}
-                        {visibleCols.has('registered') && <TableHead>
-                          <SortableHeader label={isRtl ? "التسجيل" : "Registered"} sortKey="registered" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
-                        </TableHead>}
-                        {visibleCols.has('lastSignIn') && <TableHead>
-                          <SortableHeader label={isRtl ? "آخر دخول" : "Last Sign In"} sortKey="lastSignIn" currentSortKey={sortKey} currentSortDir={sortDir} onSort={handleSort} />
-                        </TableHead>}
-                        <TableHead className="w-[160px]">{isRtl ? "إجراءات" : "Actions"}</TableHead>
+                        {visibleCols.has("name") && (
+                          <TableHead>
+                            <SortableHeader
+                              label={isRtl ? "الاسم" : "Name"}
+                              sortKey="name"
+                              currentSortKey={sortKey}
+                              currentSortDir={sortDir}
+                              onSort={handleSort}
+                            />
+                          </TableHead>
+                        )}
+                        {visibleCols.has("email") && (
+                          <TableHead>
+                            <SortableHeader
+                              label={isRtl ? "الإيميل" : "Email"}
+                              sortKey="email"
+                              currentSortKey={sortKey}
+                              currentSortDir={sortDir}
+                              onSort={handleSort}
+                            />
+                          </TableHead>
+                        )}
+                        {visibleCols.has("phone") && (
+                          <TableHead>{isRtl ? "الهاتف" : "Phone"}</TableHead>
+                        )}
+                        {visibleCols.has("location") && (
+                          <TableHead>
+                            <SortableHeader
+                              label={isRtl ? "الموقع" : "Location"}
+                              sortKey="location"
+                              currentSortKey={sortKey}
+                              currentSortDir={sortDir}
+                              onSort={handleSort}
+                            />
+                          </TableHead>
+                        )}
+                        {visibleCols.has("package") && (
+                          <TableHead>
+                            <SortableHeader
+                              label={isRtl ? "الباقة" : "Package"}
+                              sortKey="package"
+                              currentSortKey={sortKey}
+                              currentSortDir={sortDir}
+                              onSort={handleSort}
+                            />
+                          </TableHead>
+                        )}
+                        {canViewFinancials && visibleCols.has("spent") && (
+                          <TableHead>
+                            <SortableHeader
+                              label={
+                                isRtl
+                                  ? "صافي المدفوع الموثق"
+                                  : "Net confirmed paid"
+                              }
+                              sortKey="spent"
+                              currentSortKey={sortKey}
+                              currentSortDir={sortDir}
+                              onSort={handleSort}
+                            />
+                          </TableHead>
+                        )}
+                        {visibleCols.has("renewals") && (
+                          <TableHead>
+                            <SortableHeader
+                              label={isRtl ? "التجديدات" : "Renewals"}
+                              sortKey="renewals"
+                              currentSortKey={sortKey}
+                              currentSortDir={sortDir}
+                              onSort={handleSort}
+                            />
+                          </TableHead>
+                        )}
+                        {visibleCols.has("registered") && (
+                          <TableHead>
+                            <SortableHeader
+                              label={isRtl ? "التسجيل" : "Registered"}
+                              sortKey="registered"
+                              currentSortKey={sortKey}
+                              currentSortDir={sortDir}
+                              onSort={handleSort}
+                            />
+                          </TableHead>
+                        )}
+                        {visibleCols.has("lastSignIn") && (
+                          <TableHead>
+                            <SortableHeader
+                              label={isRtl ? "آخر دخول" : "Last Sign In"}
+                              sortKey="lastSignIn"
+                              currentSortKey={sortKey}
+                              currentSortDir={sortDir}
+                              onSort={handleSort}
+                            />
+                          </TableHead>
+                        )}
+                        <TableHead className="w-[160px]">
+                          {isRtl ? "إجراءات" : "Actions"}
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -744,135 +1110,193 @@ export default function AdminStudents() {
                       ) : (
                         paged.map((s: any, i: number) => (
                           <TableRow key={s.id} className={zebraRow(i)}>
-                            {visibleCols.has('name') && <TableCell className="font-medium">
-                              {s.name || "—"}
-                            </TableCell>}
-                            {visibleCols.has('email') && <TableCell>
-                              <div className="flex items-center gap-1">
-                                <span className="text-sm" dir="ltr">
-                                  {s.email}
-                                </span>
-                                <button
-                                  onClick={() => copyEmail(s.email)}
-                                  className="text-gray-400 hover:text-emerald-600 transition-colors"
-                                >
-                                  <Copy className="w-3 h-3" />
-                                </button>
-                              </div>
-                            </TableCell>}
-                            {visibleCols.has('phone') && <TableCell className="text-sm" dir="ltr">
-                              {s.phone || "—"}
-                            </TableCell>}
-                            {visibleCols.has('location') && <TableCell className="text-sm text-gray-500">
-                              {[s.city, s.country]
-                                .filter(Boolean)
-                                .join(", ") || "—"}
-                            </TableCell>}
-                            {visibleCols.has('package') && <TableCell>
-                              {(s.activePackages || []).length > 0 ? (
-                                <div className="flex flex-wrap gap-1">
-                                  {(isRtl
-                                    ? s.activePackagesAr || s.activePackages
-                                    : s.activePackages
-                                  ).map((p: string, i: number) => (
-                                    <Badge
-                                      key={i}
-                                      variant="outline"
-                                      className={`text-xs gap-1 ${pkgBadgeClass(p)}`}
-                                    >
-                                      <Package className="w-3 h-3" />
-                                      {p}
-                                    </Badge>
-                                  ))}
+                            {visibleCols.has("name") && (
+                              <TableCell className="font-medium">
+                                {s.name || "—"}
+                                {s.loginRestricted && (
+                                  <span className="block text-xs text-amber-800">
+                                    {isRtl
+                                      ? "تسجيل الدخول مقيّد"
+                                      : "Login restricted"}
+                                  </span>
+                                )}
+                              </TableCell>
+                            )}
+                            {visibleCols.has("email") && (
+                              <TableCell>
+                                <div className="flex items-center gap-1">
+                                  <span className="text-sm" dir="ltr">
+                                    {s.email}
+                                  </span>
+                                  <button
+                                    onClick={() => copyEmail(s.email)}
+                                    className="text-gray-400 hover:text-emerald-600 transition-colors"
+                                  >
+                                    <Copy className="w-3 h-3" />
+                                  </button>
                                 </div>
-                              ) : (
-                                <span className="text-xs text-gray-400">
-                                  —
-                                </span>
-                              )}
-                            </TableCell>}
-                            {canViewFinancials && visibleCols.has('spent') && <TableCell>
-                              <ClientPaymentSummary summary={s.paymentSummary} language={language} />
-                            </TableCell>}
-                            {visibleCols.has('renewals') && <TableCell className="text-center">
-                              {s.renewalCount > 0 ? (
-                                <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 text-xs">
-                                  {s.renewalCount}
-                                </Badge>
-                              ) : (
-                                "—"
-                              )}
-                            </TableCell>}
-                            {visibleCols.has('registered') && <TableCell className="text-xs text-gray-500">
-                              {fmtDate(s.createdAt)}
-                            </TableCell>}
-                            {visibleCols.has('lastSignIn') && <TableCell className="text-xs text-gray-500">
-                              {fmtDate(s.lastSignedIn)}
-                            </TableCell>}
+                              </TableCell>
+                            )}
+                            {visibleCols.has("phone") && (
+                              <TableCell className="text-sm" dir="ltr">
+                                {s.phone || "—"}
+                              </TableCell>
+                            )}
+                            {visibleCols.has("location") && (
+                              <TableCell className="text-sm text-gray-500">
+                                {location(s)}
+                              </TableCell>
+                            )}
+                            {visibleCols.has("package") && (
+                              <TableCell>
+                                {(s.activePackages || []).length > 0 ? (
+                                  <div className="flex flex-wrap gap-1">
+                                    {(isRtl
+                                      ? s.activePackagesAr || s.activePackages
+                                      : s.activePackages
+                                    ).map((p: string, i: number) => (
+                                      <Badge
+                                        key={i}
+                                        variant="outline"
+                                        className={`text-xs gap-1 ${pkgBadgeClass(p)}`}
+                                      >
+                                        <Package className="w-3 h-3" />
+                                        {p}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span className="text-xs text-gray-400">
+                                    —
+                                  </span>
+                                )}
+                              </TableCell>
+                            )}
+                            {canViewFinancials && visibleCols.has("spent") && (
+                              <TableCell>
+                                <ClientPaymentSummary
+                                  summary={s.paymentSummary}
+                                  language={language}
+                                />
+                              </TableCell>
+                            )}
+                            {visibleCols.has("renewals") && (
+                              <TableCell className="text-center">
+                                {s.renewalCount > 0 ? (
+                                  <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 text-xs">
+                                    {s.renewalCount}
+                                  </Badge>
+                                ) : (
+                                  "—"
+                                )}
+                              </TableCell>
+                            )}
+                            {visibleCols.has("registered") && (
+                              <TableCell className="text-xs text-gray-500">
+                                {fmtDate(s.createdAt)}
+                              </TableCell>
+                            )}
+                            {visibleCols.has("lastSignIn") && (
+                              <TableCell className="text-xs text-gray-500">
+                                {fmtDate(s.lastSignedIn)}
+                              </TableCell>
+                            )}
                             <TableCell>
                               <div className="flex flex-wrap items-center gap-1">
-                              {canManageCourseSkip && (s.isAdminSkipped ? (
-                                <div className="flex items-center gap-1">
-                                  <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50 text-xs">
-                                    {isRtl ? "الدورة" : "Course"}
-                                  </Badge>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="text-xs gap-1 h-7"
-                                    onClick={() => setRollbackConfirm({ id: s.id, name: s.name || s.email })}
-                                  >
-                                    <Undo2 className="w-3 h-3" />
-                                    {isRtl ? "تراجع" : "Undo"}
-                                  </Button>
-                                </div>
-                              ) : (
+                                {canManageCourseSkip &&
+                                  (s.isAdminSkipped ? (
+                                    <div className="flex items-center gap-1">
+                                      <Badge
+                                        variant="outline"
+                                        className="text-amber-600 border-amber-300 bg-amber-50 text-xs"
+                                      >
+                                        {isRtl ? "الدورة" : "Course"}
+                                      </Badge>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="text-xs gap-1 h-7"
+                                        onClick={() =>
+                                          setRollbackConfirm({
+                                            id: s.id,
+                                            name: s.name || s.email,
+                                          })
+                                        }
+                                      >
+                                        <Undo2 className="w-3 h-3" />
+                                        {isRtl ? "تراجع" : "Undo"}
+                                      </Button>
+                                    </div>
+                                  ) : (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="text-xs gap-1 h-7"
+                                      onClick={() =>
+                                        setSkipConfirm({
+                                          id: s.id,
+                                          name: s.name || s.email,
+                                        })
+                                      }
+                                    >
+                                      <FastForward className="w-3 h-3" />
+                                      {isRtl ? "تخطي" : "Skip"}
+                                    </Button>
+                                  ))}
+                                {canManageBrokerSkip &&
+                                  (s.brokerOnboardingComplete ? (
+                                    <div className="flex items-center gap-1">
+                                      <Badge
+                                        variant="outline"
+                                        className="text-teal-600 border-teal-300 bg-teal-50 text-xs"
+                                      >
+                                        <Building2 className="w-3 h-3 me-0.5" />
+                                        {isRtl ? "الوسيط" : "Broker"}
+                                      </Badge>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="text-xs gap-1 h-7"
+                                        onClick={() =>
+                                          setRollbackBrokerConfirm({
+                                            id: s.id,
+                                            name: s.name || s.email,
+                                          })
+                                        }
+                                      >
+                                        <Undo2 className="w-3 h-3" />
+                                        {isRtl ? "تراجع" : "Undo"}
+                                      </Button>
+                                    </div>
+                                  ) : (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="text-xs gap-1 h-7"
+                                      onClick={() =>
+                                        setSkipBrokerConfirm({
+                                          id: s.id,
+                                          name: s.name || s.email,
+                                        })
+                                      }
+                                    >
+                                      <FastForward className="w-3 h-3" />
+                                      {isRtl ? "وسيط" : "Broker"}
+                                    </Button>
+                                  ))}
                                 <Button
                                   variant="ghost"
                                   size="sm"
                                   className="text-xs gap-1 h-7"
-                                  onClick={() => setSkipConfirm({ id: s.id, name: s.name || s.email })}
+                                  onClick={() => setProfileUserId(s.id)}
+                                  title={
+                                    isRtl
+                                      ? "فتح ملف العميل"
+                                      : "Open client profile"
+                                  }
                                 >
-                                  <FastForward className="w-3 h-3" />
-                                  {isRtl ? "تخطي" : "Skip"}
+                                  <Info className="w-3 h-3" />
                                 </Button>
-                              ))}
-                              {canManageBrokerSkip && (s.brokerOnboardingComplete ? (
-                                <div className="flex items-center gap-1">
-                                  <Badge variant="outline" className="text-teal-600 border-teal-300 bg-teal-50 text-xs">
-                                    <Building2 className="w-3 h-3 me-0.5" />
-                                    {isRtl ? "الوسيط" : "Broker"}
-                                  </Badge>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="text-xs gap-1 h-7"
-                                    onClick={() => setRollbackBrokerConfirm({ id: s.id, name: s.name || s.email })}
-                                  >
-                                    <Undo2 className="w-3 h-3" />
-                                    {isRtl ? "تراجع" : "Undo"}
-                                  </Button>
-                                </div>
-                              ) : (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="text-xs gap-1 h-7"
-                                  onClick={() => setSkipBrokerConfirm({ id: s.id, name: s.name || s.email })}
-                                >
-                                  <FastForward className="w-3 h-3" />
-                                  {isRtl ? "وسيط" : "Broker"}
-                                </Button>
-                              ))}
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-xs gap-1 h-7"
-                                onClick={() => setProfileUserId(s.id)}
-                                title={isRtl ? "فتح ملف العميل" : "Open client profile"}
-                              >
-                                <Info className="w-3 h-3" />
-                              </Button>
                               </div>
                             </TableCell>
                           </TableRow>
@@ -899,7 +1323,15 @@ export default function AdminStudents() {
       </div>
 
       {/* Skip Course Confirmation Dialog */}
-      <AlertDialog open={canManageCourseSkip && !!skipConfirm} onOpenChange={(open) => { if (!open) { setSkipConfirm(null); setConfirmNameInput(""); } }}>
+      <AlertDialog
+        open={canManageCourseSkip && !!skipConfirm}
+        onOpenChange={open => {
+          if (!open) {
+            setSkipConfirm(null);
+            setConfirmNameInput("");
+          }
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -919,7 +1351,7 @@ export default function AdminStudents() {
                 </span>
                 <Input
                   value={confirmNameInput}
-                  onChange={(e) => setConfirmNameInput(e.target.value)}
+                  onChange={e => setConfirmNameInput(e.target.value)}
                   placeholder={skipConfirm?.name ?? ""}
                   className="mt-1"
                   dir="auto"
@@ -932,21 +1364,39 @@ export default function AdminStudents() {
             <AlertDialogAction
               onClick={() => {
                 if (skipConfirm) {
-                  skipCourseMutation.mutate({ userId: skipConfirm.id, courseId: 1 });
+                  skipCourseMutation.mutate({
+                    userId: skipConfirm.id,
+                    courseId: 1,
+                  });
                 }
               }}
-              disabled={skipCourseMutation.isPending || confirmNameInput.trim() !== skipConfirm?.name?.trim()}
+              disabled={
+                skipCourseMutation.isPending ||
+                confirmNameInput.trim() !== skipConfirm?.name?.trim()
+              }
             >
               {skipCourseMutation.isPending
-                ? (isRtl ? "جاري التخطي..." : "Skipping...")
-                : (isRtl ? "تأكيد التخطي" : "Confirm Skip")}
+                ? isRtl
+                  ? "جاري التخطي..."
+                  : "Skipping..."
+                : isRtl
+                  ? "تأكيد التخطي"
+                  : "Confirm Skip"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
       {/* Rollback Skip Confirmation Dialog */}
-      <AlertDialog open={canManageCourseSkip && !!rollbackConfirm} onOpenChange={(open) => { if (!open) { setRollbackConfirm(null); setConfirmNameInput(""); } }}>
+      <AlertDialog
+        open={canManageCourseSkip && !!rollbackConfirm}
+        onOpenChange={open => {
+          if (!open) {
+            setRollbackConfirm(null);
+            setConfirmNameInput("");
+          }
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -966,7 +1416,7 @@ export default function AdminStudents() {
                 </span>
                 <Input
                   value={confirmNameInput}
-                  onChange={(e) => setConfirmNameInput(e.target.value)}
+                  onChange={e => setConfirmNameInput(e.target.value)}
                   placeholder={rollbackConfirm?.name ?? ""}
                   className="mt-1"
                   dir="auto"
@@ -979,21 +1429,39 @@ export default function AdminStudents() {
             <AlertDialogAction
               onClick={() => {
                 if (rollbackConfirm) {
-                  rollbackSkipMutation.mutate({ userId: rollbackConfirm.id, courseId: 1 });
+                  rollbackSkipMutation.mutate({
+                    userId: rollbackConfirm.id,
+                    courseId: 1,
+                  });
                 }
               }}
-              disabled={rollbackSkipMutation.isPending || confirmNameInput.trim() !== rollbackConfirm?.name?.trim()}
+              disabled={
+                rollbackSkipMutation.isPending ||
+                confirmNameInput.trim() !== rollbackConfirm?.name?.trim()
+              }
             >
               {rollbackSkipMutation.isPending
-                ? (isRtl ? "جاري التراجع..." : "Rolling back...")
-                : (isRtl ? "تأكيد التراجع" : "Confirm Rollback")}
+                ? isRtl
+                  ? "جاري التراجع..."
+                  : "Rolling back..."
+                : isRtl
+                  ? "تأكيد التراجع"
+                  : "Confirm Rollback"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
       {/* Skip Broker Confirmation Dialog */}
-      <AlertDialog open={canManageBrokerSkip && !!skipBrokerConfirm} onOpenChange={(open) => { if (!open) { setSkipBrokerConfirm(null); setConfirmNameInput(""); } }}>
+      <AlertDialog
+        open={canManageBrokerSkip && !!skipBrokerConfirm}
+        onOpenChange={open => {
+          if (!open) {
+            setSkipBrokerConfirm(null);
+            setConfirmNameInput("");
+          }
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -1013,7 +1481,7 @@ export default function AdminStudents() {
                 </span>
                 <Input
                   value={confirmNameInput}
-                  onChange={(e) => setConfirmNameInput(e.target.value)}
+                  onChange={e => setConfirmNameInput(e.target.value)}
                   placeholder={skipBrokerConfirm?.name ?? ""}
                   className="mt-1"
                   dir="auto"
@@ -1029,18 +1497,33 @@ export default function AdminStudents() {
                   skipBrokerMutation.mutate({ userId: skipBrokerConfirm.id });
                 }
               }}
-              disabled={skipBrokerMutation.isPending || confirmNameInput.trim() !== skipBrokerConfirm?.name?.trim()}
+              disabled={
+                skipBrokerMutation.isPending ||
+                confirmNameInput.trim() !== skipBrokerConfirm?.name?.trim()
+              }
             >
               {skipBrokerMutation.isPending
-                ? (isRtl ? "جاري التخطي..." : "Skipping...")
-                : (isRtl ? "تأكيد التخطي" : "Confirm Skip")}
+                ? isRtl
+                  ? "جاري التخطي..."
+                  : "Skipping..."
+                : isRtl
+                  ? "تأكيد التخطي"
+                  : "Confirm Skip"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
       {/* Rollback Broker Skip Confirmation Dialog */}
-      <AlertDialog open={canManageBrokerSkip && !!rollbackBrokerConfirm} onOpenChange={(open) => { if (!open) { setRollbackBrokerConfirm(null); setConfirmNameInput(""); } }}>
+      <AlertDialog
+        open={canManageBrokerSkip && !!rollbackBrokerConfirm}
+        onOpenChange={open => {
+          if (!open) {
+            setRollbackBrokerConfirm(null);
+            setConfirmNameInput("");
+          }
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -1060,7 +1543,7 @@ export default function AdminStudents() {
                 </span>
                 <Input
                   value={confirmNameInput}
-                  onChange={(e) => setConfirmNameInput(e.target.value)}
+                  onChange={e => setConfirmNameInput(e.target.value)}
                   placeholder={rollbackBrokerConfirm?.name ?? ""}
                   className="mt-1"
                   dir="auto"
@@ -1073,14 +1556,23 @@ export default function AdminStudents() {
             <AlertDialogAction
               onClick={() => {
                 if (rollbackBrokerConfirm) {
-                  rollbackBrokerSkipMutation.mutate({ userId: rollbackBrokerConfirm.id });
+                  rollbackBrokerSkipMutation.mutate({
+                    userId: rollbackBrokerConfirm.id,
+                  });
                 }
               }}
-              disabled={rollbackBrokerSkipMutation.isPending || confirmNameInput.trim() !== rollbackBrokerConfirm?.name?.trim()}
+              disabled={
+                rollbackBrokerSkipMutation.isPending ||
+                confirmNameInput.trim() !== rollbackBrokerConfirm?.name?.trim()
+              }
             >
               {rollbackBrokerSkipMutation.isPending
-                ? (isRtl ? "جاري التراجع..." : "Rolling back...")
-                : (isRtl ? "تأكيد التراجع" : "Confirm Rollback")}
+                ? isRtl
+                  ? "جاري التراجع..."
+                  : "Rolling back..."
+                : isRtl
+                  ? "تأكيد التراجع"
+                  : "Confirm Rollback"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1089,7 +1581,7 @@ export default function AdminStudents() {
       <AdminClientProfileSheet
         userId={profileUserId}
         open={!!profileUserId}
-        onOpenChange={(open) => {
+        onOpenChange={open => {
           if (!open) setProfileUserId(null);
         }}
       />

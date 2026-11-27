@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Download, Key, Search } from 'lucide-react';
 import DashboardLayout from '@/components/DashboardLayout';
+import KeyActivityDefinitions from '@/components/admin/KeyActivityDefinitions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DataTablePagination, SortableHeader, useDataTable, zebraRow } from '@/components/DataTable';
@@ -69,6 +70,7 @@ export default function AdminRevenueReport() {
 
   return <DashboardLayout><main className="space-y-6 p-4 md:p-6" dir={isRtl ? 'rtl' : 'ltr'}>
     <header className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="flex items-center gap-2 text-2xl font-bold"><Key className="h-6 w-6 text-blue-700" />{isRtl ? 'نشاط تفعيل المفاتيح' : 'Key Activation Activity'}</h1><p className="mt-1 text-sm text-muted-foreground">{isRtl ? 'تقرير تشغيلي للوصول إلى الخدمات، وليس تقرير إيرادات أو إثبات دفع.' : 'Operational access activity—not a revenue report or proof of payment.'}</p></div><Button variant="outline" onClick={exportCsv} disabled={!filtered.length}><Download className="me-2 h-4 w-4" />{isRtl ? 'تصدير النشاط CSV' : 'Export activity CSV'}</Button></header>
+    <KeyActivityDefinitions />
     <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950">{isRtl ? 'لا تدخل أسعار المفاتيح أو تواريخ التفعيل في لوحة الإدارة المالية. مصدر الأرقام المالية هو دفتر الحركات المعتمد حسب تاريخ الدفع أو الاسترداد.' : 'Key prices and activation dates do not enter the Financial Dashboard. Financial figures come only from the approved ledger using payment or refund dates.'}</div>
     <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{[['total', isRtl ? 'كل التفعيلات' : 'All activations'], ['new', isRtl ? 'جديد' : 'New'], ['renewal', isRtl ? 'تجديد' : 'Renewal'], ['upgrade', isRtl ? 'ترقية' : 'Upgrade']].map(([key, label]) => <div key={key} className="rounded-xl border bg-card p-5"><p className="text-sm text-muted-foreground">{label}</p><p className="mt-2 text-3xl font-bold">{counts[key as keyof typeof counts]}</p></div>)}</section>
     <section className="rounded-2xl border bg-card p-5 shadow-sm">
